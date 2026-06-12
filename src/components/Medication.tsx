@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { Pill, Plus, Trash2, Clock } from "lucide-react";
+import { Pill, Plus, Trash2, Clock, X } from "lucide-react";
 import { MedicationReminder, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -26,7 +26,8 @@ export function Medication({
   const [name, setName] = useState("");
   const [dosage, setDosage] = useState("");
   const [patientId, setPatientId] = useState(currentUser.id);
-  const [times, setTimes] = useState("08:00, 20:00");
+  const [times, setTimes] = useState<string[]>(["08:00", "20:00"]);
+  const [timeDraft, setTimeDraft] = useState("");
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -45,9 +46,9 @@ export function Medication({
       setError("Nhập tên thuốc cần nhắc.");
       return;
     }
-    const parsedTimes = times.split(",").map(t => t.trim()).filter(Boolean);
+    const parsedTimes = times.filter(Boolean);
     if (parsedTimes.length === 0) {
-      setError("Nhập ít nhất một giờ uống, ví dụ 08:00.");
+      setError("Thêm ít nhất một giờ uống, ví dụ 08:00.");
       return;
     }
 
@@ -73,6 +74,18 @@ export function Medication({
     }
   };
 
+  const addTime = () => {
+    if (!timeDraft) return;
+    if (!times.includes(timeDraft)) {
+      setTimes([...times, timeDraft].sort());
+    }
+    setTimeDraft("");
+  };
+
+  const removeTime = (idx: number) => {
+    setTimes(times.filter((_, i) => i !== idx));
+  };
+
   return (
     <div className="space-y-6" id="medication-module">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
@@ -86,17 +99,48 @@ export function Medication({
         {currentUser.role !== UserRole.GUEST && (
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên thuốc" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
-            <input value={dosage} onChange={(e) => setDosage(e.target.value)} placeholder="Liều dùng" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
-            <select value={patientId} onChange={(e) => setPatientId(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500">
+            <input value={dosage} onChange={(e) => setDosage(e.target.value)} placeholder="Liều dùng" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
+            <select value={patientId} onChange={(e) => setPatientId(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500">
               {users.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
             </select>
-            <input value={times} onChange={(e) => setTimes(e.target.value)} placeholder="08:00, 20:00" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
-            <button disabled={saving} type="submit" className="bg-rose-500 hover:bg-rose-400 disabled:opacity-60 text-slate-950 rounded-xl px-3 py-2.5 font-bold flex items-center justify-center gap-1.5">
-              <Plus className="w-4 h-4" /> Thêm
-            </button>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
+
+            {/* Giờ uống - chip pickers */}
+            <div className="md:col-span-6 bg-slate-950/40 border border-slate-800 rounded-xl p-3 space-y-2">
+              <label className="text-slate-400 font-semibold flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-rose-400" /> Giờ uống thuốc trong ngày</label>
+              <div className="flex flex-wrap items-center gap-2">
+                {times.map((t, i) => (
+                  <span key={`${t}-${i}`} className="flex items-center gap-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-lg pl-2.5 pr-1 py-1 font-mono text-[11px]">
+                    {t}
+                    <button type="button" onClick={() => removeTime(i)} className="hover:text-rose-200 cursor-pointer" title="Xóa giờ này">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  type="time"
+                  value={timeDraft}
+                  onChange={(e) => setTimeDraft(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 outline-none focus:border-rose-500 font-mono text-[11px]"
+                />
+                <button type="button" onClick={addTime} className="bg-slate-800 hover:bg-slate-700 text-rose-400 rounded-lg px-2.5 py-1 text-[11px] font-bold flex items-center gap-1 cursor-pointer">
+                  <Plus className="w-3 h-3" /> Thêm giờ
+                </button>
+              </div>
+            </div>
+
+            <div className="md:col-span-3 space-y-1">
+              <label className="text-slate-500 text-[10px] block">Ngày bắt đầu</label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
+            </div>
+            <div className="md:col-span-3 space-y-1">
+              <label className="text-slate-500 text-[10px] block">Ngày kết thúc (tùy chọn)</label>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
+            </div>
+
             <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú, sau ăn..." className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
+            <button disabled={saving} type="submit" className="md:col-span-2 bg-rose-500 hover:bg-rose-400 disabled:opacity-60 text-slate-950 rounded-xl px-3 py-2.5 font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+              <Plus className="w-4 h-4" /> Thêm lịch thuốc
+            </button>
           </form>
         )}
         {error && <p className="text-[11px] text-rose-400">{error}</p>}
