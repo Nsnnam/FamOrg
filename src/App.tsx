@@ -76,18 +76,71 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(err => {
-        console.warn("Service worker registration failed:", err);
+    if (!("serviceWorker" in navigator)) return;
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.register("/sw.js").then(reg => {
+      if (reg.waiting) setSwWaiting(reg.waiting);
+      reg.addEventListener("updatefound", () => {
+        const installing = reg.installing;
+        if (!installing) return;
+        installing.addEventListener("statechange", () => {
+          if (installing.state === "installed" && navigator.serviceWorker.controller) {
+            setSwWaiting(reg.waiting || installing);
+          }
+        });
       });
-    }
+    }).catch(err => {
+      console.warn("Service worker registration failed:", err);
+    });
   }, []);
+
+  // PWA install prompt capture + live network status
+  useEffect(() => {
+    const goOnline = () => setNetworkOnline(true);
+    const goOffline = () => setNetworkOnline(false);
+    const onBeforeInstall = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
+    const onInstalled = () => setInstallPrompt(null);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    try { await installPrompt.userChoice; } catch (e) { /* ignore */ }
+    setInstallPrompt(null);
+  };
+
+  const handleApplyUpdate = () => {
+    if (swWaiting) swWaiting.postMessage("SKIP_WAITING");
+  };
   
   // Navigation layout state
-  const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem("family_active_tab") || "dashboard");
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const fromQuery = new URLSearchParams(window.location.search).get("tab"); // PWA shortcuts deep-link here
+    return fromQuery || localStorage.getItem("family_active_tab") || "dashboard";
+  });
   const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; seq: number }>({ tab: "profile", seq: 0 });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+
+  // PWA: network status, install prompt, and pending service-worker update
+  const [networkOnline, setNetworkOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [swWaiting, setSwWaiting] = useState<ServiceWorker | null>(null);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -927,7 +980,34 @@ export default function App() {
 
   return (
     <div className="h-screen overflow-hidden bg-slate-950 flex text-slate-200 selection:bg-sky-200 selection:text-sky-700 font-sans relative">
-      
+
+      {/* PWA: offline banner */}
+      {!networkOnline && (
+        <div className="fixed top-0 inset-x-0 z-[70] bg-amber-500 text-slate-950 text-[11px] font-bold text-center py-1.5 px-3 shadow-md">
+          Đang offline — dữ liệu hiển thị là bản gần nhất, thao tác mới sẽ chờ có mạng.
+        </div>
+      )}
+
+      {/* PWA: update available */}
+      {swWaiting && (
+        <button
+          onClick={handleApplyUpdate}
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer"
+        >
+          <Sparkles className="w-4 h-4" /> Có bản cập nhật mới — Bấm để làm mới
+        </button>
+      )}
+
+      {/* PWA: install prompt button */}
+      {installPrompt && (
+        <button
+          onClick={handleInstallApp}
+          className="fixed bottom-4 right-4 z-[70] bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer"
+        >
+          <Home className="w-4 h-4" /> Cài app lên máy
+        </button>
+      )}
+
       {/* Visual glowing particle effects */}
       <div className="absolute top-0 right-10 w-96 h-96 bg-purple-500/5 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-10 left-10 w-96 h-96 bg-sky-500/5 rounded-full blur-[140px] pointer-events-none" />
