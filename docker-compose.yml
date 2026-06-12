@@ -8,7 +8,8 @@ services:
     container_name: family_organizer_app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # host 3001 -> container 3000 (cổng 3000 trên host đã bị container "homepage" dùng)
+      - "3001:3000"
     volumes:
       # Persistent storage on Raspberry Pi 5.
       # DB file to store tasks, finances, notes and daily backups.
