@@ -185,6 +185,7 @@ export function Notes({
     setFormIsShared(note.isShared);
     setEditingNote(note);
     setFormError("");
+    setReadingNote(null); // close the reader so the editor isn't hidden behind it
     setIsEditorOpen(true);
   };
 
@@ -429,7 +430,7 @@ export function Notes({
       {isEditorOpen && (
         <div 
           onClick={() => setIsEditorOpen(false)}
-          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-5 z-50 p-4"
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="note-editor-modal"
         >
           <motion.div 
