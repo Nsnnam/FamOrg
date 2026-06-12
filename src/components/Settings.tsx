@@ -3,25 +3,32 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
-import { 
-  Users, 
-  Database, 
-  History, 
-  UserPlus, 
-  Trash2, 
-  RefreshCw, 
-  Download, 
-  CheckCircle, 
+import React, { useState, useEffect } from "react";
+import {
+  Users,
+  Database,
+  History,
+  UserPlus,
+  Trash2,
+  RefreshCw,
+  Download,
+  CheckCircle,
   AlertTriangle,
   Lock,
-  Compass,
-  Layers,
-  Sparkles
+  UserCircle,
+  Cake,
+  Phone,
+  Image as ImageIcon,
+  Save,
+  X,
+  KeyRound
 } from "lucide-react";
 import { User, UserRole } from "../types.js";
 import { motion } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
+import { Avatar } from "./Avatar.js";
+
+type SettingsTab = "profile" | "members" | "backups" | "logs";
 
 interface SettingsProps {
   currentUser: User;
@@ -30,6 +37,11 @@ interface SettingsProps {
   backups: any[];
   onCreateUser: (user: any) => Promise<any>;
   onDeleteUser: (id: string) => Promise<any>;
+  onUpdateProfile: (profile: any) => Promise<any>;
+  onChangePassword: (payload: { currentPassword: string; newPassword: string }) => Promise<any>;
+  onResetUserPassword: (userId: string, newPassword: string) => Promise<any>;
+  requestedTab?: SettingsTab;
+  requestedTabSeq?: number;
   onCreateBackup: () => Promise<any>;
   onRestoreBackup: (id: string) => Promise<any>;
   onDeleteBackup: (id: string) => Promise<any>;
@@ -42,6 +54,11 @@ export function Settings({
   backups,
   onCreateUser,
   onDeleteUser,
+  onUpdateProfile,
+  onChangePassword,
+  onResetUserPassword,
+  requestedTab = "profile",
+  requestedTabSeq = 0,
   onCreateBackup,
   onRestoreBackup,
   onDeleteBackup
@@ -49,19 +66,55 @@ export function Settings({
   // In-app confirmation dialog (replaces native browser confirm)
   const { confirm, ConfirmDialog } = useConfirm();
   // Tab configuration
-  const [activeTab, setActiveTab] = useState<"members" | "backups" | "logs">("members");
-  
+  const [activeTab, setActiveTab] = useState<SettingsTab>(requestedTab);
+
+  // Activity log pagination
+  const [logsLimit, setLogsLimit] = useState(30);
+
   // Registration form
   const [regUsername, setRegUsername] = useState("");
   const [regFullName, setRegFullName] = useState("");
   const [regRole, setRegRole] = useState<UserRole>(UserRole.MEMBER);
   const [regPassword, setRegPassword] = useState("");
   const [regAvatar, setRegAvatar] = useState("bg-indigo-500");
-  
+  const [regDob, setRegDob] = useState("");
+  const [regPhone, setRegPhone] = useState("");
+
+  // My-profile form (self-service personalization)
+  const [profFullName, setProfFullName] = useState(currentUser.fullName);
+  const [profDob, setProfDob] = useState(currentUser.dateOfBirth || "");
+  const [profPhone, setProfPhone] = useState(currentUser.phone || "");
+  const [profAvatarImage, setProfAvatarImage] = useState(currentUser.avatarImage || "");
+  const [profAvatarColor, setProfAvatarColor] = useState(currentUser.avatarColor || "bg-indigo-500");
+
+  // Keep the profile form in sync when the active account changes (e.g. account switch)
+  useEffect(() => {
+    setProfFullName(currentUser.fullName);
+    setProfDob(currentUser.dateOfBirth || "");
+    setProfPhone(currentUser.phone || "");
+    setProfAvatarImage(currentUser.avatarImage || "");
+    setProfAvatarColor(currentUser.avatarColor || "bg-indigo-500");
+  }, [currentUser.id]);
+
+  // Change-password form (own account)
+  const [curPwd, setCurPwd] = useState("");
+  const [newPwd, setNewPwd] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+
+  // Admin reset-password modal state
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [resetNewPwd, setResetNewPwd] = useState("");
+
   // Action state trackers
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
+
+  useEffect(() => {
+    setActiveTab(requestedTab);
+    setActionSuccess("");
+    setActionError("");
+  }, [requestedTab, requestedTabSeq]);
 
   const handleRegisterUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,15 +133,111 @@ export function Settings({
         fullName: regFullName.trim(),
         role: regRole,
         passwordPlain: regPassword,
-        avatarColor: regAvatar
+        avatarColor: regAvatar,
+        dateOfBirth: regDob || undefined,
+        phone: regPhone.trim() || undefined
       });
       setActionSuccess(`Đã tạo tài khoản thành viên mới cho ${regFullName.trim()} thành công!`);
       // Reset
       setRegUsername("");
       setRegFullName("");
       setRegPassword("");
+      setRegDob("");
+      setRegPhone("");
     } catch (err: any) {
       setActionError(err.message || "Tạo tài khoản thất bại");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      setActionError("Ảnh đại diện nên nhỏ hơn 1MB để hệ thống nhẹ nhàng!");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setProfAvatarImage(reader.result);
+    };
+    reader.onerror = () => setActionError("Không đọc được tệp ảnh này.");
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setActionError("");
+    setActionSuccess("");
+    if (!profFullName.trim()) {
+      setActionError("Tên hiển thị không được để trống!");
+      return;
+    }
+    setLoadingAction("profile");
+    try {
+      await onUpdateProfile({
+        fullName: profFullName.trim(),
+        dateOfBirth: profDob,
+        phone: profPhone,
+        avatarImage: profAvatarImage,
+        avatarColor: profAvatarColor
+      });
+      setActionSuccess("Đã cập nhật hồ sơ cá nhân của bạn thành công!");
+    } catch (err: any) {
+      setActionError(err.message || "Cập nhật hồ sơ thất bại");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setActionError("");
+    setActionSuccess("");
+    if (!curPwd || !newPwd) {
+      setActionError("Vui lòng nhập mật khẩu hiện tại và mật khẩu mới!");
+      return;
+    }
+    if (newPwd.length < 4) {
+      setActionError("Mật khẩu mới phải có ít nhất 4 ký tự!");
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setActionError("Xác nhận mật khẩu mới không khớp!");
+      return;
+    }
+    setLoadingAction("password");
+    try {
+      await onChangePassword({ currentPassword: curPwd, newPassword: newPwd });
+      setActionSuccess("Đã đổi mật khẩu thành công!");
+      setCurPwd("");
+      setNewPwd("");
+      setConfirmPwd("");
+    } catch (err: any) {
+      setActionError(err.message || "Đổi mật khẩu thất bại");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetTarget) return;
+    setActionError("");
+    setActionSuccess("");
+    if (resetNewPwd.length < 4) {
+      setActionError("Mật khẩu mới phải có ít nhất 4 ký tự!");
+      return;
+    }
+    setLoadingAction("reset-pwd");
+    try {
+      await onResetUserPassword(resetTarget.id, resetNewPwd);
+      setActionSuccess(`Đã đặt lại mật khẩu cho ${resetTarget.fullName}.`);
+      setResetTarget(null);
+      setResetNewPwd("");
+    } catch (err: any) {
+      setActionError(err.message || "Đặt lại mật khẩu thất bại");
     } finally {
       setLoadingAction(null);
     }
@@ -181,7 +330,13 @@ export function Settings({
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-4 gap-4" id="settings-sub-header">
         
         {/* Navigation Tabs */}
-        <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800 gap-1 text-xs">
+        <div className="flex flex-wrap bg-slate-950 p-1.5 rounded-xl border border-slate-800 gap-1 text-xs">
+          <button
+            onClick={() => { setActiveTab("profile"); setActionSuccess(""); setActionError(""); }}
+            className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${activeTab === "profile" ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}
+          >
+            <UserCircle className="w-4 h-4 text-indigo-400" /> Hồ sơ của tôi
+          </button>
           <button
             onClick={() => { setActiveTab("members"); setActionSuccess(""); setActionError(""); }}
             className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${activeTab === "members" ? "bg-slate-800 text-slate-100" : "text-slate-400 hover:text-slate-200"}`}
@@ -223,6 +378,164 @@ export function Settings({
       )}
 
       {/* Render sub-tab content */}
+      {activeTab === "profile" && (
+        <div className="space-y-6" id="settings-tab-profile">
+          <form onSubmit={handleSaveProfile} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            {/* Avatar personalization */}
+            <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 space-y-4">
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <ImageIcon className="w-4.5 h-4.5 text-indigo-400" /> Ảnh đại diện
+              </h3>
+
+              <div className="flex items-center gap-4">
+                <Avatar
+                  user={{ fullName: profFullName || currentUser.fullName, avatarColor: profAvatarColor, avatarImage: profAvatarImage || undefined }}
+                  className="w-20 h-20 rounded-2xl text-3xl"
+                  extraClass="shrink-0 border border-slate-800"
+                />
+                <div className="space-y-2 text-xs">
+                  <label className="inline-block bg-slate-800 hover:bg-slate-700 text-sky-400 font-semibold px-3 py-1.5 rounded-lg cursor-pointer transition-all">
+                    Tải ảnh lên
+                    <input type="file" accept="image/*" onChange={handleAvatarFile} className="hidden" />
+                  </label>
+                  {profAvatarImage && (
+                    <button
+                      type="button"
+                      onClick={() => setProfAvatarImage("")}
+                      className="flex items-center gap-1 text-slate-500 hover:text-rose-400 transition-colors"
+                    >
+                      <X className="w-3.5 h-3.5" /> Xóa ảnh, dùng màu nền
+                    </button>
+                  )}
+                  <p className="text-[10px] text-slate-500 leading-relaxed">Ảnh nên nhỏ hơn 1MB. Nếu không có ảnh, hệ thống dùng chữ cái trên nền màu bên dưới.</p>
+                </div>
+              </div>
+
+              {/* Fallback color */}
+              <div className="space-y-1.5">
+                <label className="text-slate-400 block font-semibold text-xs">Màu nền dự phòng</label>
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  {colors.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setProfAvatarColor(c)}
+                      className={`w-5.5 h-5.5 rounded-full cursor-pointer border-2 transition-all shrink-0 ${profAvatarColor === c ? "border-slate-100 scale-110" : "border-transparent opacity-80"}`}
+                      title={c}
+                      style={{ backgroundColor: c === "bg-indigo-500" ? "#6366f1" : c === "bg-sky-500" ? "#0ea5e9" : c === "bg-emerald-500" ? "#10b981" : c === "bg-teal-500" ? "#14b8a6" : c === "bg-rose-500" ? "#f43f5e" : c === "bg-pink-500" ? "#ec4899" : c === "bg-amber-500" ? "#f59e0b" : "#a855f7" }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Personal info fields */}
+            <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 space-y-3.5">
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <UserCircle className="w-4.5 h-4.5 text-sky-400" /> Thông tin cá nhân
+              </h3>
+
+              <div className="space-y-1 text-xs">
+                <label className="text-slate-400 block font-semibold">Tên đăng nhập (không đổi được)</label>
+                <input
+                  type="text"
+                  value={`@${currentUser.username}`}
+                  disabled
+                  className="w-full bg-slate-900/50 border border-slate-800 rounded-lg p-2 text-slate-500 font-mono cursor-not-allowed"
+                />
+              </div>
+
+              <div className="space-y-1 text-xs">
+                <label className="text-slate-400 block font-semibold">Tên xưng hô hiển thị <span className="text-rose-450">*</span></label>
+                <input
+                  type="text"
+                  value={profFullName}
+                  onChange={(e) => setProfFullName(e.target.value)}
+                  placeholder="Ví dụ: Bố Hùng"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1 text-xs">
+                  <label className="text-slate-400 font-semibold flex items-center gap-1"><Cake className="w-3.5 h-3.5 text-pink-400" /> Ngày sinh</label>
+                  <input
+                    type="date"
+                    value={profDob}
+                    onChange={(e) => setProfDob(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+                <div className="space-y-1 text-xs">
+                  <label className="text-slate-400 font-semibold flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-emerald-400" /> Số điện thoại</label>
+                  <input
+                    type="tel"
+                    value={profPhone}
+                    onChange={(e) => setProfPhone(e.target.value)}
+                    placeholder="09xx xxx xxx"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loadingAction === "profile"}
+                className="w-full mt-2 bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-bold py-2 px-4 rounded-xl cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <Save className="w-4 h-4" />
+                {loadingAction === "profile" ? "Đang lưu..." : "Lưu hồ sơ cá nhân"}
+              </button>
+            </div>
+          </form>
+
+          {/* Change password */}
+          <form onSubmit={handleChangePasswordSubmit} className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 space-y-3.5 max-w-md">
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <KeyRound className="w-4.5 h-4.5 text-amber-400" /> Đổi mật khẩu
+            </h3>
+            <div className="space-y-1 text-xs">
+              <label className="text-slate-400 block font-semibold">Mật khẩu hiện tại</label>
+              <input
+                type="password"
+                value={curPwd}
+                onChange={(e) => setCurPwd(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1 text-xs">
+                <label className="text-slate-400 block font-semibold">Mật khẩu mới</label>
+                <input
+                  type="password"
+                  value={newPwd}
+                  onChange={(e) => setNewPwd(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                />
+              </div>
+              <div className="space-y-1 text-xs">
+                <label className="text-slate-400 block font-semibold">Nhập lại mật khẩu mới</label>
+                <input
+                  type="password"
+                  value={confirmPwd}
+                  onChange={(e) => setConfirmPwd(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loadingAction === "password"}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 px-4 rounded-xl cursor-pointer transition-all disabled:opacity-50 text-xs flex items-center gap-1.5"
+            >
+              <KeyRound className="w-4 h-4" />
+              {loadingAction === "password" ? "Đang đổi..." : "Đổi mật khẩu"}
+            </button>
+          </form>
+        </div>
+      )}
+
       {activeTab === "members" && (
         <div className="space-y-6" id="settings-tab-members">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -236,13 +549,21 @@ export function Settings({
               <div className="divide-y divide-slate-800/60 space-y-3 max-h-[350px] overflow-y-auto pr-1">
                 {users.map(u => (
                   <div key={u.id} className="pt-3 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8.5 h-8.5 rounded-xl ${u.avatarColor} text-slate-950 font-bold text-sm flex items-center justify-center shrink-0`}>
-                        {u.fullName.charAt(0)}
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="text-slate-200 font-bold text-[13px]">{u.fullName}</p>
-                        <p className="text-slate-500 font-mono text-[10px]">@{u.username} • {new Date(u.createdAt).toLocaleDateString("vi-VN")}</p>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar user={u} className="w-8.5 h-8.5 rounded-xl text-sm" extraClass="shrink-0" />
+                      <div className="space-y-0.5 min-w-0">
+                        <p className="text-slate-200 font-bold text-[13px] truncate">{u.fullName}</p>
+                        <p className="text-slate-500 font-mono text-[10px] truncate">@{u.username} • {new Date(u.createdAt).toLocaleDateString("vi-VN")}</p>
+                        {(u.dateOfBirth || u.phone) && (
+                          <p className="text-slate-500 text-[10px] flex items-center gap-2.5 flex-wrap">
+                            {u.dateOfBirth && (
+                              <span className="flex items-center gap-1"><Cake className="w-3 h-3 text-pink-400" />{new Date(u.dateOfBirth).toLocaleDateString("vi-VN")}</span>
+                            )}
+                            {u.phone && (
+                              <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-emerald-400" />{u.phone}</span>
+                            )}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -250,6 +571,17 @@ export function Settings({
                       <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${u.role === "admin" ? "bg-red-500/10 text-red-400 border border-red-500/10" : u.role === "member" ? "bg-blue-500/10 text-blue-400 border border-blue-500/10" : "bg-green-500/10 text-green-400 border border-green-500/10"}`}>
                         {u.role.toUpperCase()}
                       </span>
+
+                      {/* Reset password (Admin only) */}
+                      {currentUser.role === UserRole.ADMIN && (
+                        <button
+                          onClick={() => { setResetTarget(u); setResetNewPwd(""); setActionError(""); setActionSuccess(""); }}
+                          className="p-1.5 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-500 hover:text-amber-400 rounded-lg cursor-pointer transition-all"
+                          title={`Đặt lại mật khẩu cho ${u.fullName}`}
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                        </button>
+                      )}
 
                       {/* Delete member (Admin only, cannot delete self) */}
                       {currentUser.role === UserRole.ADMIN && u.id !== currentUser.id && (
@@ -327,6 +659,28 @@ export function Settings({
                         placeholder="Mật khẩu riêng..."
                         value={regPassword}
                         onChange={(e) => setRegPassword(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-semibold flex items-center gap-1"><Cake className="w-3.5 h-3.5 text-pink-400" /> Ngày sinh</label>
+                      <input
+                        type="date"
+                        value={regDob}
+                        onChange={(e) => setRegDob(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-slate-400 font-semibold flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-emerald-400" /> Số điện thoại</label>
+                      <input
+                        type="tel"
+                        placeholder="09xx xxx xxx"
+                        value={regPhone}
+                        onChange={(e) => setRegPhone(e.target.value)}
                         className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none font-mono"
                       />
                     </div>
@@ -465,19 +819,83 @@ export function Settings({
               {activityLogs.length === 0 ? (
                 <p className="text-center text-slate-500 py-12 italic">Không có nhật ký hệ thống.</p>
               ) : (
-                activityLogs.map(log => (
-                  <div key={log.id} className="p-1.5 hover:bg-slate-900 rounded flex flex-col md:flex-row md:items-start justify-between gap-1 border-b border-slate-800/30">
-                    <div className="space-y-0.5 flex-1">
-                      <span className="text-[10px] text-slate-500 mr-2">[{new Date(log.createdAt).toLocaleString("vi-VN")}]</span>
-                      <span className="text-sky-400 font-extrabold mr-2">@{log.username}</span>
-                      <span className="text-amber-500 font-bold mr-2">&lt;{log.action}&gt;</span>
-                      <span className="text-slate-200 pl-1 font-sans">{log.details}</span>
+                <>
+                  {activityLogs.slice(0, logsLimit).map(log => (
+                    <div key={log.id} className="p-1.5 hover:bg-slate-900 rounded flex flex-col md:flex-row md:items-start justify-between gap-1 border-b border-slate-800/30">
+                      <div className="space-y-0.5 flex-1">
+                        <span className="text-[10px] text-slate-500 mr-2">[{new Date(log.createdAt).toLocaleString("vi-VN")}]</span>
+                        <span className="text-sky-400 font-extrabold mr-2">@{log.username}</span>
+                        <span className="text-amber-500 font-bold mr-2">&lt;{log.action}&gt;</span>
+                        <span className="text-slate-200 pl-1 font-sans">{log.details}</span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                  {activityLogs.length > logsLimit && (
+                    <button
+                      onClick={() => setLogsLimit(l => l + 30)}
+                      className="w-full mt-2 py-2 text-[11px] font-bold text-sky-400 hover:text-sky-300 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition-all cursor-pointer font-sans"
+                    >
+                      Xem thêm ({activityLogs.length - logsLimit} mục cũ hơn)
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Admin reset-password modal */}
+      {resetTarget && (
+        <div
+          onClick={() => setResetTarget(null)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[60] p-4"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 shrink-0">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-slate-100 truncate">Đặt lại mật khẩu</h3>
+                <p className="text-[11px] text-slate-500 truncate">cho {resetTarget.fullName} (@{resetTarget.username})</p>
+              </div>
+            </div>
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-slate-400 block font-semibold">Mật khẩu mới (tối thiểu 4 ký tự)</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={resetNewPwd}
+                  onChange={(e) => setResetNewPwd(e.target.value)}
+                  placeholder="Mật khẩu mới cho thành viên..."
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-sky-500 rounded-xl p-2.5 text-slate-200 outline-none font-mono"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setResetTarget(null)}
+                  className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl transition-all cursor-pointer font-bold"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={loadingAction === "reset-pwd"}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {loadingAction === "reset-pwd" ? "Đang đặt..." : "Đặt lại"}
+                </button>
+              </div>
+            </form>
+          </motion.div>
         </div>
       )}
 

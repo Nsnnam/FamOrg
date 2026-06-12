@@ -4,20 +4,22 @@
  */
 
 import React, { useMemo } from "react";
-import { 
-  CheckSquare, 
-  Calendar, 
-  FileText, 
-  TrendingDown, 
-  TrendingUp, 
-  Wallet, 
-  Activity, 
-  ArrowUpRight, 
-  Clock, 
-  AlertCircle
+import {
+  CheckSquare,
+  Calendar,
+  FileText,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  Activity,
+  ArrowUpRight,
+  Clock,
+  AlertCircle,
+  Cake
 } from "lucide-react";
 import { Task, FamilyPlan, Note, FinancialTransaction, User, TaskStatus } from "../types.js";
 import { motion } from "motion/react";
+import { Avatar } from "./Avatar.js";
 
 interface DashboardProps {
   currentUser: User;
@@ -27,8 +29,32 @@ interface DashboardProps {
   notes: Note[];
   transactions: FinancialTransaction[];
   activityLogs: any[];
+  widgets: any;
   onNavigate: (tab: string) => void;
 }
+
+// WMO weather code → Vietnamese label + emoji
+const WEATHER_CODES: Record<number, { label: string; icon: string }> = {
+  0: { label: "Trời quang", icon: "☀️" },
+  1: { label: "Ít mây", icon: "🌤️" },
+  2: { label: "Có mây", icon: "⛅" },
+  3: { label: "Nhiều mây", icon: "☁️" },
+  45: { label: "Sương mù", icon: "🌫️" },
+  48: { label: "Sương muối", icon: "🌫️" },
+  51: { label: "Mưa phùn nhẹ", icon: "🌦️" },
+  53: { label: "Mưa phùn", icon: "🌦️" },
+  55: { label: "Mưa phùn dày", icon: "🌧️" },
+  61: { label: "Mưa nhẹ", icon: "🌦️" },
+  63: { label: "Mưa vừa", icon: "🌧️" },
+  65: { label: "Mưa to", icon: "🌧️" },
+  80: { label: "Mưa rào", icon: "🌦️" },
+  81: { label: "Mưa rào", icon: "🌧️" },
+  82: { label: "Mưa rào dữ dội", icon: "⛈️" },
+  95: { label: "Dông", icon: "⛈️" },
+  96: { label: "Dông kèm mưa đá", icon: "⛈️" },
+  99: { label: "Dông mạnh", icon: "⛈️" }
+};
+const describeWeather = (code: number) => WEATHER_CODES[code] || { label: "—", icon: "🌡️" };
 
 export function Dashboard({
   currentUser,
@@ -38,6 +64,7 @@ export function Dashboard({
   notes,
   transactions,
   activityLogs,
+  widgets,
   onNavigate
 }: DashboardProps) {
   // 1. Task calculations
@@ -85,6 +112,32 @@ export function Dashboard({
     return notes.filter(n => n.isPinned).slice(0, 3);
   }, [notes]);
 
+  // 5. Upcoming birthdays (next 30 days)
+  const upcomingBirthdays = useMemo(() => {
+    const today = new Date();
+    const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    return users
+      .filter(u => u.dateOfBirth)
+      .map(u => {
+        const dob = new Date(u.dateOfBirth as string);
+        if (isNaN(dob.getTime())) return null;
+        let bday = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+        if (bday.getTime() < todayMid) {
+          bday = new Date(today.getFullYear() + 1, dob.getMonth(), dob.getDate());
+        }
+        const daysUntil = Math.round((bday.getTime() - todayMid) / 86400000);
+        return {
+          user: u,
+          daysUntil,
+          turningAge: bday.getFullYear() - dob.getFullYear(),
+          month: dob.getMonth() + 1,
+          day: dob.getDate()
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null && x.daysUntil <= 30)
+      .sort((a, b) => a.daysUntil - b.daysUntil);
+  }, [users]);
+
   // Welcome Greeting
   const welcomeMessage = useMemo(() => {
     const hours = new Date().getHours();
@@ -92,6 +145,19 @@ export function Dashboard({
     if (hours < 18) return "Chào buổi chiều, chúc gia đình làm việc hiệu quả! 🌤️";
     return "Chúc gia đình buổi tối ấm áp và thư giãn! 🌙";
   }, []);
+
+  // Widget formatting helpers
+  const fmtUsd = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
+  const fmtVnd = (n: number) => Math.round(n).toLocaleString("vi-VN") + "đ";
+  const changeBadge = (pct: number | null | undefined) => {
+    if (pct === null || pct === undefined || isNaN(pct)) return null;
+    const up = pct >= 0;
+    return (
+      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${up ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
+        {up ? "▲" : "▼"} {Math.abs(pct).toFixed(2)}%
+      </span>
+    );
+  };
 
   return (
     <div className="space-y-6" id="dashboard-tab">
@@ -113,6 +179,121 @@ export function Dashboard({
           <span>{new Date().toLocaleDateString("vi-VN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
         </div>
       </motion.div>
+
+      {/* Weather + Markets widgets */}
+      {widgets && (widgets.weather || widgets.crypto || widgets.gold || widgets.fx) && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
+
+          {/* Weather */}
+          {widgets.weather?.current && (() => {
+            const w = widgets.weather;
+            const cur = describeWeather(w.current.weather_code);
+            return (
+              <div className="lg:col-span-1 bg-gradient-to-br from-sky-500/10 to-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs text-slate-400 font-semibold">{w.city}</p>
+                    <p className="text-3xl font-extrabold text-slate-100 mt-1">{Math.round(w.current.temperature_2m)}°C</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{cur.label} • Cảm giác {Math.round(w.current.apparent_temperature)}°</p>
+                  </div>
+                  <span className="text-4xl leading-none">{cur.icon}</span>
+                </div>
+                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-800/60 text-[11px] text-slate-400">
+                  <span>💧 Độ ẩm {w.current.relative_humidity_2m}%</span>
+                  <span>💨 {Math.round(w.current.wind_speed_10m)} km/h</span>
+                </div>
+                {w.daily?.time && (
+                  <div className="flex justify-between mt-3 gap-2">
+                    {w.daily.time.slice(0, 3).map((d: string, i: number) => {
+                      const dc = describeWeather(w.daily.weather_code[i]);
+                      const dayLabel = i === 0 ? "Hôm nay" : new Date(d).toLocaleDateString("vi-VN", { weekday: "short" });
+                      return (
+                        <div key={d} className="flex-1 text-center bg-slate-950/40 rounded-lg py-2">
+                          <p className="text-[10px] text-slate-500">{dayLabel}</p>
+                          <p className="text-lg leading-tight">{dc.icon}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{Math.round(w.daily.temperature_2m_min[i])}°/{Math.round(w.daily.temperature_2m_max[i])}°</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Market mini-cards */}
+          <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+            {/* Bitcoin */}
+            {widgets.crypto?.bitcoin && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400">₿ Bitcoin</span>
+                  {changeBadge(widgets.crypto.bitcoin.usd_24h_change)}
+                </div>
+                <div className="mt-2">
+                  <p className="text-lg font-extrabold text-slate-100">{fmtUsd(widgets.crypto.bitcoin.usd)}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{fmtVnd(widgets.crypto.bitcoin.vnd)}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Ethereum */}
+            {widgets.crypto?.ethereum && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-indigo-400">Ξ Ethereum</span>
+                  {changeBadge(widgets.crypto.ethereum.usd_24h_change)}
+                </div>
+                <div className="mt-2">
+                  <p className="text-lg font-extrabold text-slate-100">{fmtUsd(widgets.crypto.ethereum.usd)}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{fmtVnd(widgets.crypto.ethereum.vnd)}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Gold */}
+            {widgets.gold && (widgets.gold.sell || widgets.gold.vndPerTael || widgets.gold.usdPerOz) && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-yellow-500">🪙 {widgets.gold.source || "Vàng"}</span>
+                  {changeBadge(widgets.gold.changePct)}
+                </div>
+                <div className="mt-2">
+                  {widgets.gold.sell ? (
+                    <>
+                      <p className="text-base font-extrabold text-slate-100">{fmtVnd(widgets.gold.sell)}</p>
+                      <p className="text-[10px] text-slate-500">Bán /lượng{widgets.gold.buy ? ` • Mua ${fmtVnd(widgets.gold.buy)}` : ""}</p>
+                    </>
+                  ) : widgets.gold.vndPerTael ? (
+                    <>
+                      <p className="text-base font-extrabold text-slate-100">{fmtVnd(widgets.gold.vndPerTael)}</p>
+                      <p className="text-[10px] text-slate-500">≈ /lượng (tham khảo)</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-lg font-extrabold text-slate-100">{fmtUsd(widgets.gold.usdPerOz)}<span className="text-[10px] text-slate-500"> /oz</span></p>
+                      <p className="text-[10px] text-slate-500">Thế giới</p>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* USD/VND */}
+            {widgets.fx?.usdVnd && (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-400">💵 USD/VND</span>
+                </div>
+                <div className="mt-2">
+                  <p className="text-lg font-extrabold text-slate-100">{fmtVnd(widgets.fx.usdVnd)}</p>
+                  <p className="text-[10px] text-slate-500">Tỷ giá 1 USD</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="dashboard-stats">
@@ -243,6 +424,37 @@ export function Dashboard({
                     </div>
                   );
                 })}
+              </div>
+            )}
+          </div>
+
+          {/* Upcoming Birthdays */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-birthdays">
+            <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
+              <Cake className="w-5 h-5 text-pink-400" />
+              Sinh nhật sắp tới
+            </h3>
+
+            {upcomingBirthdays.length === 0 ? (
+              <div className="bg-slate-950/40 border border-dashed border-slate-800 p-6 rounded-xl text-center">
+                <p className="text-sm text-slate-500">Chưa có sinh nhật nào trong 30 ngày tới. Thêm ngày sinh ở mục <span className="text-indigo-400 font-semibold">Thiết lập → Hồ sơ của tôi</span> để được nhắc nhé!</p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {upcomingBirthdays.map(b => (
+                  <div key={b.user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 hover:bg-slate-800/30 transition-all">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar user={b.user} className="w-9 h-9 rounded-xl text-sm" extraClass="shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-200 truncate">{b.user.fullName}</p>
+                        <p className="text-[11px] text-slate-500">Tròn {b.turningAge} tuổi • ngày {b.day}/{b.month}</p>
+                      </div>
+                    </div>
+                    <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg shrink-0 ${b.daysUntil === 0 ? "bg-pink-500/15 text-pink-400" : "bg-slate-800 text-slate-300"}`}>
+                      {b.daysUntil === 0 ? "Hôm nay 🎉" : `Còn ${b.daysUntil} ngày`}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

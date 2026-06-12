@@ -15,27 +15,49 @@ import {
   LogOut, 
   Menu, 
   X, 
-  Wifi, 
+  Wifi,
   AlertCircle,
   Clock,
   Sparkles,
   Info,
   Sun,
-  Moon
+  Moon,
+  Lock,
+  ShoppingCart,
+  Pill
 } from "lucide-react";
-import { User, UserRole, Task, FamilyPlan, Note, FinancialTransaction, Notification } from "./types.js";
+import {
+  User,
+  UserRole,
+  Task,
+  FamilyPlan,
+  Note,
+  FinancialTransaction,
+  Notification,
+  RewardPointEntry,
+  BudgetLimit,
+  RecurringBill,
+  MedicationReminder
+} from "./types.js";
 import { Auth } from "./components/Auth.js";
+import { Avatar } from "./components/Avatar.js";
 import { Dashboard } from "./components/Dashboard.js";
 import { Tasks } from "./components/Tasks.js";
 import { Schedules } from "./components/Schedules.js";
 import { Notes } from "./components/Notes.js";
 import { Finance } from "./components/Finance.js";
+import { Shopping } from "./components/Shopping.js";
+import { Medication } from "./components/Medication.js";
+import { Assistant } from "./components/Assistant.js";
 import { Settings } from "./components/Settings.js";
 import { motion, AnimatePresence } from "motion/react";
+
+type SettingsTab = "profile" | "members" | "backups" | "logs";
 
 export default function App() {
   // Authentication & session status
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem("family_token"));
   const [sessionInitialized, setSessionInitialized] = useState(false);
   
   // Theme state
@@ -52,11 +74,29 @@ export default function App() {
       document.documentElement.classList.remove("dark");
     }
   }, [theme]);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(err => {
+        console.warn("Service worker registration failed:", err);
+      });
+    }
+  }, []);
   
   // Navigation layout state
-  const [activeTab, setActiveTab] = useState<string>("dashboard");
+  const [activeTab, setActiveTab] = useState<string>(() => localStorage.getItem("family_active_tab") || "dashboard");
+  const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; seq: number }>({ tab: "profile", seq: 0 });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role === UserRole.GUEST && activeTab === "finance") {
+      setActiveTab("dashboard");
+      return;
+    }
+    localStorage.setItem("family_active_tab", activeTab);
+  }, [activeTab, currentUser]);
 
   // Database lists
   const [users, setUsers] = useState<User[]>([]);
@@ -64,22 +104,35 @@ export default function App() {
   const [plans, setPlans] = useState<FamilyPlan[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
+  const [rewardEntries, setRewardEntries] = useState<RewardPointEntry[]>([]);
+  const [rewardTotals, setRewardTotals] = useState<Record<string, number>>({});
+  const [budgets, setBudgets] = useState<BudgetLimit[]>([]);
+  const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
+  const [medications, setMedications] = useState<MedicationReminder[]>([]);
+  const [shoppingItems, setShoppingItems] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [backups, setBackups] = useState<any[]>([]);
+  const [widgets, setWidgets] = useState<any>(null);
 
   // Notifications modal control
   const [notifOpen, setNotifOpen] = useState(false);
+
+  // Password-gated account switch modal
+  const [switchTargetId, setSwitchTargetId] = useState<string | null>(null);
+  const [switchPassword, setSwitchPassword] = useState("");
+  const [switchError, setSwitchError] = useState("");
+  const [switchLoading, setSwitchLoading] = useState(false);
 
   // Server-Sent Events (SSE) reference
   const sseRef = useRef<EventSource | null>(null);
 
   // Authentication persistence check
   useEffect(() => {
-    const savedUserId = localStorage.getItem("family_user_id");
-    if (savedUserId) {
+    const savedToken = localStorage.getItem("family_token");
+    if (savedToken) {
       fetch(`/api/auth/me`, {
-        headers: { "Authorization": `Bearer ${savedUserId}` }
+        headers: { "Authorization": `Bearer ${savedToken}` }
       })
         .then(res => {
           if (res.ok) return res.json();
@@ -89,7 +142,8 @@ export default function App() {
           setCurrentUser(data.user);
         })
         .catch(() => {
-          localStorage.removeItem("family_user_id");
+          localStorage.removeItem("family_token");
+          setAuthToken(null);
         })
         .finally(() => {
           setSessionInitialized(true);
@@ -99,9 +153,9 @@ export default function App() {
     }
   }, []);
 
-  // Fetch functions with Bearer authentication
-  const getAuthHeader = () => {
-    return currentUser ? { "Authorization": `Bearer ${currentUser.id}` } : {};
+  // Fetch functions with Bearer authentication (signed session token)
+  const getAuthHeader = (): Record<string, string> => {
+    return authToken ? { "Authorization": `Bearer ${authToken}` } : {};
   };
 
   const fetchUsers = async () => {
@@ -171,6 +225,53 @@ export default function App() {
     }
   };
 
+  const fetchRewards = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch("/api/rewards", { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = await res.json();
+        setRewardEntries(data.entries || []);
+        setRewardTotals(data.totals || {});
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchFinancePlanning = async () => {
+    if (!currentUser || currentUser.role === UserRole.GUEST) return;
+    try {
+      const [budgetRes, billRes] = await Promise.all([
+        fetch("/api/finance/budgets", { headers: getAuthHeader() }),
+        fetch("/api/finance/recurring-bills", { headers: getAuthHeader() })
+      ]);
+      if (budgetRes.ok) {
+        const data = await budgetRes.json();
+        setBudgets(data.budgets || []);
+      }
+      if (billRes.ok) {
+        const data = await billRes.json();
+        setRecurringBills(data.recurringBills || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchMedications = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch("/api/medications", { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = await res.json();
+        setMedications(data.medications || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const fetchNotifications = async () => {
     if (!currentUser) return;
     try {
@@ -178,6 +279,19 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchShopping = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch("/api/shopping", { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = await res.json();
+        setShoppingItems(data.shoppingItems || []);
       }
     } catch (e) {
       console.error(e);
@@ -205,6 +319,19 @@ export default function App() {
     }
   };
 
+  const fetchWidgets = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await fetch("/api/widgets/overview", { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = await res.json();
+        setWidgets(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Dispatch fully unified refetch sequences
   const fetchAllData = () => {
     fetchUsers();
@@ -212,8 +339,13 @@ export default function App() {
     fetchPlans();
     fetchNotes();
     fetchTransactions();
+    fetchRewards();
+    fetchFinancePlanning();
+    fetchMedications();
+    fetchShopping();
     fetchNotifications();
     fetchBackupsAndLogs();
+    fetchWidgets();
   };
 
   // Listen to realtime server pushes (SSE sync connection)
@@ -228,6 +360,9 @@ export default function App() {
 
     // Refresh core states on login
     fetchAllData();
+
+    // Refresh dashboard widgets (weather/markets) periodically
+    const widgetTimer = setInterval(() => { fetchWidgets(); }, 10 * 60 * 1000);
 
     // Establish Server-Sent Events client loop pipeline
     const sse = new EventSource("/api/realtime");
@@ -249,6 +384,7 @@ export default function App() {
         switch (payload.type) {
           case "TASKS_UPDATE":
             fetchTasks();
+            fetchRewards();
             fetchNotifications();
             fetchBackupsAndLogs(); // refresh logs
             break;
@@ -263,7 +399,24 @@ export default function App() {
             break;
           case "FINANCE_UPDATE":
             fetchTransactions();
+            fetchFinancePlanning();
             fetchBackupsAndLogs();
+            break;
+          case "REWARDS_UPDATE":
+            fetchRewards();
+            fetchBackupsAndLogs();
+            break;
+          case "MEDICATIONS_UPDATE":
+            fetchMedications();
+            fetchNotifications();
+            fetchBackupsAndLogs();
+            break;
+          case "SHOPPING_UPDATE":
+            fetchShopping();
+            fetchBackupsAndLogs();
+            break;
+          case "NOTIFICATIONS_UPDATE":
+            fetchNotifications();
             break;
           case "USERS_UPDATE":
             fetchUsers();
@@ -285,6 +438,7 @@ export default function App() {
     };
 
     return () => {
+      clearInterval(widgetTimer);
       if (sseRef.current) {
         sseRef.current.close();
         sseRef.current = null;
@@ -293,14 +447,19 @@ export default function App() {
   }, [currentUser]);
 
   // Auth helper triggers
-  const handleLoginSuccess = (user: User) => {
-    localStorage.setItem("family_user_id", user.id);
+  const handleLoginSuccess = (user: User, token: string) => {
+    localStorage.setItem("family_token", token);
+    localStorage.setItem("family_active_tab", "dashboard");
+    setAuthToken(token);
     setCurrentUser(user);
     setActiveTab("dashboard");
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("family_user_id");
+    localStorage.removeItem("family_token");
+    localStorage.removeItem("family_user_id"); // clean up legacy key
+    localStorage.removeItem("family_active_tab");
+    setAuthToken(null);
     setCurrentUser(null);
     if (sseRef.current) {
       sseRef.current.close();
@@ -308,17 +467,42 @@ export default function App() {
     }
   };
 
-  // Quick switch account picker function inside top header
-  const handleQuickSwitchUser = (userId: string) => {
-    localStorage.setItem("family_user_id", userId);
-    fetch(`/api/auth/me`, {
-      headers: { "Authorization": `Bearer ${userId}` }
-    })
-      .then(res => res.json())
-      .then(data => {
-        setCurrentUser(data.user);
-        setActiveTab("dashboard");
+  const openSettingsTab = (tab: SettingsTab) => {
+    setSettingsTabRequest(prev => ({ tab, seq: prev.seq + 1 }));
+    setActiveTab("settings");
+    setMobileMenuOpen(false);
+    if (tab === "backups" || tab === "logs") {
+      fetchBackupsAndLogs();
+    }
+  };
+
+  // Account switch now requires the target account's password (no more passwordless jump)
+  const handleConfirmSwitch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!switchTargetId) return;
+    const target = users.find(u => u.id === switchTargetId);
+    if (!target) return;
+
+    setSwitchError("");
+    setSwitchLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: target.username, password: switchPassword })
       });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Mật khẩu không chính xác!");
+      }
+      handleLoginSuccess(data.user, data.token);
+      setSwitchTargetId(null);
+      setSwitchPassword("");
+    } catch (err: any) {
+      setSwitchError(err.message || "Không thể chuyển tài khoản");
+    } finally {
+      setSwitchLoading(false);
+    }
   };
 
   // Mutations wrappers to connect dashboard callbacks with backend routes
@@ -435,6 +619,155 @@ export default function App() {
     return res.json();
   };
 
+  const handleAddRewardEntry = async (payload: Partial<RewardPointEntry>) => {
+    const res = await fetch("/api/rewards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleSaveBudget = async (payload: Partial<BudgetLimit>) => {
+    const res = await fetch("/api/finance/budgets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleDeleteBudget = async (id: string) => {
+    const res = await fetch(`/api/finance/budgets/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleSaveRecurringBill = async (payload: Partial<RecurringBill>) => {
+    const res = await fetch("/api/finance/recurring-bills", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handlePayRecurringBill = async (id: string) => {
+    const res = await fetch(`/api/finance/recurring-bills/${id}/pay`, {
+      method: "POST",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleDeleteRecurringBill = async (id: string) => {
+    const res = await fetch(`/api/finance/recurring-bills/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleSaveMedication = async (payload: Partial<MedicationReminder>) => {
+    const res = await fetch("/api/medications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleDeleteMedication = async (id: string) => {
+    const res = await fetch(`/api/medications/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleSaveShoppingItem = async (data: any) => {
+    const res = await fetch("/api/shopping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error);
+    }
+    return res.json();
+  };
+
+  const handleToggleShoppingItem = async (id: string) => {
+    const res = await fetch(`/api/shopping/${id}/toggle`, {
+      method: "POST",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error);
+    }
+    return res.json();
+  };
+
+  const handleDeleteShoppingItem = async (id: string) => {
+    const res = await fetch(`/api/shopping/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error);
+    }
+    return res.json();
+  };
+
+  const handleClearPurchasedShopping = async () => {
+    const res = await fetch("/api/shopping/purchased", {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error);
+    }
+    return res.json();
+  };
+
   const handleCreateUser = async (userPayload: any) => {
     const res = await fetch("/api/users", {
       method: "POST",
@@ -452,6 +785,51 @@ export default function App() {
     const res = await fetch(`/api/users/${userId}`, {
       method: "DELETE",
       headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleUpdateProfile = async (profilePayload: any) => {
+    const res = await fetch("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(profilePayload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    const data = await res.json();
+    // The current user just edited their own profile — reflect it immediately
+    if (data.user) {
+      setCurrentUser(data.user);
+    }
+    fetchUsers();
+    return data;
+  };
+
+  const handleChangePassword = async (payload: { currentPassword: string; newPassword: string }) => {
+    const res = await fetch("/api/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleResetUserPassword = async (userId: string, newPassword: string) => {
+    const res = await fetch(`/api/users/${userId}/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ newPassword })
     });
     if (!res.ok) {
       const data = await res.json();
@@ -540,21 +918,23 @@ export default function App() {
     { id: "tasks", label: "Nhóm Task", icon: CheckSquare },
     { id: "plans", label: "Lập Lịch", icon: Calendar },
     { id: "notes", label: "Ghi chú", icon: FileText },
+    { id: "shopping", label: "Đi chợ", icon: ShoppingCart },
+    { id: "medications", label: "Thuốc", icon: Pill },
     // Only show finance to Admin and Members, hide from Guest child Account
     ...(currentUser.role !== UserRole.GUEST ? [{ id: "finance", label: "Chi tiêu", icon: Wallet }] : []),
     { id: "settings", label: "Thiết lập", icon: Settings2 }
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 flex text-slate-200 selection:bg-sky-200 selection:text-sky-700 font-sans relative">
+    <div className="h-screen overflow-hidden bg-slate-950 flex text-slate-200 selection:bg-sky-200 selection:text-sky-700 font-sans relative">
       
       {/* Visual glowing particle effects */}
       <div className="absolute top-0 right-10 w-96 h-96 bg-purple-500/5 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-10 left-10 w-96 h-96 bg-sky-500/5 rounded-full blur-[140px] pointer-events-none" />
 
       {/* 1. SIDEBAR Navigation Drawer (Leaning desktop screens) */}
-      <aside className="hidden lg:flex flex-col w-64 border-r border-slate-850 bg-slate-900/60 backdrop-blur-md justify-between shrink-0 p-5 z-20">
-        <div className="space-y-8">
+      <aside className="hidden lg:flex h-screen sticky top-0 flex-col w-64 border-r border-slate-850 bg-slate-900/60 backdrop-blur-md justify-between shrink-0 p-5 z-20 overflow-hidden">
+        <div className="min-h-0 flex-1 space-y-8 overflow-y-auto pr-1">
           {/* Main Visual Title */}
           <div className="flex items-center gap-2.5 px-2">
             <div className="bg-sky-500/10 p-2 rounded-xl text-sky-400 border border-sky-400/10 leading-none">
@@ -586,16 +966,20 @@ export default function App() {
         </div>
 
         {/* Sidebar Footer details */}
-        <div className="space-y-4 pt-4 border-t border-slate-850">
-          <div className="flex items-center gap-2.5 px-1.5 text-xs">
-            <div className={`w-8.5 h-8.5 rounded-xl ${currentUser.avatarColor} text-slate-950 font-extrabold flex items-center justify-center`}>
-              {currentUser.fullName.charAt(0)}
-            </div>
+        <div className="shrink-0 space-y-4 pt-4 border-t border-slate-850">
+          <button
+            type="button"
+            onClick={() => openSettingsTab("profile")}
+            className="w-full flex items-center gap-2.5 px-1.5 py-2 rounded-xl text-xs text-left hover:bg-slate-800/40 focus:outline-none focus:ring-2 focus:ring-sky-500/40 transition-all cursor-pointer"
+            title="Mở hồ sơ của tôi"
+            aria-label={`Mở hồ sơ của ${currentUser.fullName}`}
+          >
+            <Avatar user={currentUser} className="w-8.5 h-8.5 rounded-xl text-sm" extraClass="shrink-0" />
             <div className="space-y-0.5 truncate flex-1">
               <span className="font-bold text-slate-100 block truncate">{currentUser.fullName}</span>
               <span className="text-[10px] text-slate-500 uppercase font-mono block">Role: {currentUser.role}</span>
             </div>
-          </div>
+          </button>
 
           <button 
             onClick={handleLogout}
@@ -607,12 +991,12 @@ export default function App() {
       </aside>
 
       {/* 2. MAIN SCREEN AREA */}
-      <div className="flex-1 flex flex-col min-w-0 pr-0">
+      <div className="flex-1 h-screen min-h-0 flex flex-col min-w-0 pr-0 overflow-hidden">
         
         {/* TOP COMPONENT APP BAR HEADER */}
-        <header className="border-b border-slate-850 bg-slate-900/40 backdrop-blur-md px-5 py-3.5 flex items-center justify-between z-20">
+        <header className="shrink-0 sticky top-0 border-b border-slate-850 bg-slate-900/80 backdrop-blur-md px-5 py-3.5 flex items-center justify-between z-30">
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 min-w-0">
             {/* Mobile menu trigger */}
             <button 
               onClick={() => setMobileMenuOpen(true)}
@@ -645,7 +1029,14 @@ export default function App() {
               <span className="text-slate-500 px-1 text-[9px] uppercase font-mono font-bold hidden md:inline">Nhân vật:</span>
               <select
                 value={currentUser.id}
-                onChange={(e) => handleQuickSwitchUser(e.target.value)}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (id && id !== currentUser.id) {
+                    setSwitchTargetId(id);
+                    setSwitchPassword("");
+                    setSwitchError("");
+                  }
+                }}
                 className="bg-slate-900 border-0 text-slate-300 font-semibold focus:outline-none focus:ring-0 p-1 rounded-lg cursor-pointer max-w-[120px] md:max-w-[none]"
               >
                 {users.map(u => (
@@ -725,7 +1116,7 @@ export default function App() {
         </header>
 
         {/* WORKSPACE VIEW CONTAINER */}
-        <main className="flex-1 p-5 md:p-6 overflow-y-auto scrollbar-thin">
+        <main className="min-h-0 flex-1 p-5 md:p-6 overflow-y-auto scrollbar-thin">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}
@@ -736,7 +1127,7 @@ export default function App() {
               className="h-full"
             >
               {activeTab === "dashboard" && (
-                <Dashboard 
+                <Dashboard
                   currentUser={currentUser}
                   users={users}
                   tasks={tasks}
@@ -744,6 +1135,7 @@ export default function App() {
                   notes={notes}
                   transactions={transactions}
                   activityLogs={activityLogs}
+                  widgets={widgets}
                   onNavigate={(tab) => {
                     setActiveTab(tab);
                     // Also query log history if navigating to settings
@@ -757,6 +1149,9 @@ export default function App() {
                   currentUser={currentUser}
                   users={users}
                   tasks={tasks}
+                  rewardEntries={rewardEntries}
+                  rewardTotals={rewardTotals}
+                  onAddReward={handleAddRewardEntry}
                   onSaveTask={handleSaveTask}
                   onDeleteTask={handleDeleteTask}
                   onAddComment={handleAddCommentToTask}
@@ -783,13 +1178,42 @@ export default function App() {
                 />
               )}
 
+              {activeTab === "shopping" && (
+                <Shopping
+                  currentUser={currentUser}
+                  users={users}
+                  shoppingItems={shoppingItems}
+                  onSaveItem={handleSaveShoppingItem}
+                  onToggleItem={handleToggleShoppingItem}
+                  onDeleteItem={handleDeleteShoppingItem}
+                  onClearPurchased={handleClearPurchasedShopping}
+                />
+              )}
+
+              {activeTab === "medications" && (
+                <Medication
+                  currentUser={currentUser}
+                  users={users}
+                  medications={medications}
+                  onSaveMedication={handleSaveMedication}
+                  onDeleteMedication={handleDeleteMedication}
+                />
+              )}
+
               {activeTab === "finance" && currentUser.role !== UserRole.GUEST && (
-                <Finance 
+                <Finance
                   currentUser={currentUser}
                   users={users}
                   transactions={transactions}
+                  budgets={budgets}
+                  recurringBills={recurringBills}
                   onSaveTransaction={handleSaveTransaction}
                   onDeleteTransaction={handleDeleteTransaction}
+                  onSaveBudget={handleSaveBudget}
+                  onDeleteBudget={handleDeleteBudget}
+                  onSaveRecurringBill={handleSaveRecurringBill}
+                  onPayRecurringBill={handlePayRecurringBill}
+                  onDeleteRecurringBill={handleDeleteRecurringBill}
                 />
               )}
 
@@ -801,6 +1225,11 @@ export default function App() {
                   backups={backups}
                   onCreateUser={handleCreateUser}
                   onDeleteUser={handleDeleteUser}
+                  onUpdateProfile={handleUpdateProfile}
+                  onChangePassword={handleChangePassword}
+                  onResetUserPassword={handleResetUserPassword}
+                  requestedTab={settingsTabRequest.tab}
+                  requestedTabSeq={settingsTabRequest.seq}
                   onCreateBackup={handleCreateBackup}
                   onRestoreBackup={handleRestoreBackup}
                   onDeleteBackup={handleDeleteBackup}
@@ -821,9 +1250,9 @@ export default function App() {
             initial={{ x: -100 }}
             animate={{ x: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-72 bg-slate-900 border-r border-slate-800 p-5 flex flex-col justify-between"
+            className="w-72 h-full bg-slate-900 border-r border-slate-800 p-5 flex flex-col justify-between overflow-hidden"
           >
-            <div className="space-y-6">
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
               <div className="flex items-center justify-between border-b border-slate-850 pb-4">
                 <div className="flex items-center gap-2">
                   <div className="bg-sky-500/15 p-2 rounded-xl text-sky-450 leading-none">
@@ -865,16 +1294,20 @@ export default function App() {
             </div>
 
             {/* Sidebar logout */}
-            <div className="space-y-4 pt-4 border-t border-slate-850">
-              <div className="flex items-center gap-3 px-1.5 text-xs">
-                <div className={`w-8.5 h-8.5 rounded-xl ${currentUser.avatarColor} text-slate-950 font-extrabold flex items-center justify-center`}>
-                  {currentUser.fullName.charAt(0)}
-                </div>
+            <div className="shrink-0 space-y-4 pt-4 border-t border-slate-850">
+              <button
+                type="button"
+                onClick={() => openSettingsTab("profile")}
+                className="w-full flex items-center gap-3 px-1.5 py-2 rounded-xl text-xs text-left hover:bg-slate-800/40 focus:outline-none focus:ring-2 focus:ring-sky-500/40 transition-all cursor-pointer"
+                title="Mở hồ sơ của tôi"
+                aria-label={`Mở hồ sơ của ${currentUser.fullName}`}
+              >
+                <Avatar user={currentUser} className="w-8.5 h-8.5 rounded-xl text-sm" extraClass="shrink-0" />
                 <div className="space-y-0.5 truncate flex-1">
                   <span className="font-bold text-slate-100 block truncate">{currentUser.fullName}</span>
                   <span className="text-[10px] text-slate-550 uppercase font-mono block">Role: {currentUser.role}</span>
                 </div>
-              </div>
+              </button>
 
               <button 
                 onClick={handleLogout}
@@ -886,6 +1319,76 @@ export default function App() {
           </motion.div>
         </div>
       )}
+
+      <Assistant currentUser={currentUser} authHeaders={getAuthHeader()} />
+
+      {/* PASSWORD-GATED ACCOUNT SWITCH MODAL */}
+      {switchTargetId && (() => {
+        const target = users.find(u => u.id === switchTargetId);
+        if (!target) return null;
+        return (
+          <div
+            onClick={() => setSwitchTargetId(null)}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+                <Avatar user={target} className="w-10 h-10 rounded-xl text-base" extraClass="shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-slate-100 truncate">Chuyển sang {target.fullName}</h3>
+                  <p className="text-[11px] text-slate-500 font-mono truncate">@{target.username}</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleConfirmSwitch} className="space-y-3 text-xs">
+                {switchError && (
+                  <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl font-medium flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{switchError}</span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-400 block font-semibold">Nhập mật khẩu của tài khoản này</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+                    <input
+                      autoFocus
+                      type="password"
+                      value={switchPassword}
+                      onChange={(e) => setSwitchPassword(e.target.value)}
+                      placeholder="Mật khẩu..."
+                      className="w-full bg-slate-950 border border-slate-800 focus:border-sky-500 rounded-xl py-2.5 pl-10 pr-4 text-slate-200 outline-none transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setSwitchTargetId(null)}
+                    className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl transition-all cursor-pointer font-bold"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={switchLoading}
+                    className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl font-bold transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {switchLoading ? "Đang xác thực..." : "Xác nhận chuyển"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
