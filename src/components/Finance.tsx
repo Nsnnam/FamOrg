@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
+import { useConfirm } from "./ConfirmDialog.js";
 
 interface FinanceProps {
   currentUser: User;
@@ -49,6 +50,9 @@ export function Finance({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
+
+  // In-app confirmation dialog (replaces native browser confirm)
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Create fields
   const [formType, setFormType] = useState<TransactionType>(TransactionType.EXPENSE);
@@ -172,7 +176,13 @@ export function Finance({
   };
 
   const handleDeleteClick = async (txId: string) => {
-    if (confirm("Gia đình có chắc muốn xóa bản ghi chi tiêu này không?")) {
+    const ok = await confirm({
+      title: "Xóa bản ghi chi tiêu?",
+      message: "Bản ghi tài chính này sẽ bị xóa vĩnh viễn khỏi sổ quỹ gia đình. Bạn có chắc chắn muốn tiếp tục không?",
+      confirmLabel: "Xóa bản ghi",
+      tone: "danger"
+    });
+    if (ok) {
       await onDeleteTransaction(txId);
     }
   };
@@ -708,6 +718,9 @@ export function Finance({
           </div>
         </div>
       )}
+
+      {/* In-app confirmation dialog */}
+      {ConfirmDialog}
     </div>
   );
 }

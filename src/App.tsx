@@ -448,6 +448,18 @@ export default function App() {
     return res.json();
   };
 
+  const handleDeleteUser = async (userId: string) => {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
   const handleCreateBackup = async () => {
     const res = await fetch("/api/admin/backups", {
       method: "POST",
@@ -636,10 +648,9 @@ export default function App() {
                 onChange={(e) => handleQuickSwitchUser(e.target.value)}
                 className="bg-slate-900 border-0 text-slate-300 font-semibold focus:outline-none focus:ring-0 p-1 rounded-lg cursor-pointer max-w-[120px] md:max-w-[none]"
               >
-                <option value="user_admin">Gia Trưởng (Admin)</option>
-                <option value="user_mother">Mẹ Lan (Member)</option>
-                <option value="user_father">Bố Hùng (Member)</option>
-                <option value="user_child">Bé Vy (Guest)</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.fullName}</option>
+                ))}
               </select>
             </div>
 
@@ -783,12 +794,13 @@ export default function App() {
               )}
 
               {activeTab === "settings" && (
-                <Settings 
+                <Settings
                   currentUser={currentUser}
                   users={users}
                   activityLogs={activityLogs}
                   backups={backups}
                   onCreateUser={handleCreateUser}
+                  onDeleteUser={handleDeleteUser}
                   onCreateBackup={handleCreateBackup}
                   onRestoreBackup={handleRestoreBackup}
                   onDeleteBackup={handleDeleteBackup}
