@@ -18,7 +18,8 @@ import {
   Layers,
   AlertCircle,
   X,
-  Share2
+  Share2,
+  Pencil
 } from "lucide-react";
 import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, RecurrenceType } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -55,6 +56,7 @@ export function Tasks({
 
   // State controls for creation modal & detail modal
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [commentInput, setCommentInput] = useState("");
 
@@ -126,7 +128,51 @@ export function Tasks({
 
   const childUsers = useMemo(() => users.filter(u => u.role === UserRole.GUEST), [users]);
 
-  // Save Task Form Handler
+  const resetTaskForm = () => {
+    setNewTitle("");
+    setNewDesc("");
+    setNewPriority(TaskPriority.MEDIUM);
+    setNewDueDate("");
+    setNewAssignee("unassigned");
+    setNewIsShared(true);
+    setNewTagsStr("");
+    setNewRewardPoints(0);
+    setNewRecurrenceType("none");
+    setNewRecurrenceEndDate("");
+  };
+
+  // Open the modal in "create" mode (clean form)
+  const handleOpenCreate = () => {
+    resetTaskForm();
+    setEditingTaskId(null);
+    setFormError("");
+    setIsNewTaskOpen(true);
+  };
+
+  // Open the modal in "edit" mode, pre-filled from an existing task
+  const handleOpenEditTask = (task: Task) => {
+    setNewTitle(task.title);
+    setNewDesc(task.description || "");
+    setNewPriority(task.priority);
+    setNewDueDate(task.dueDate || "");
+    setNewAssignee(task.assigneeId || "unassigned");
+    setNewIsShared(task.isShared);
+    setNewTagsStr((task.tags || []).join(", "));
+    setNewRewardPoints(task.rewardPoints || 0);
+    setNewRecurrenceType(task.recurrenceType || "none");
+    setNewRecurrenceEndDate(task.recurrenceEndDate || "");
+    setEditingTaskId(task.id);
+    setFormError("");
+    setSelectedTask(null); // close detail modal if it was open
+    setIsNewTaskOpen(true);
+  };
+
+  const handleCloseTaskForm = () => {
+    setIsNewTaskOpen(false);
+    setEditingTaskId(null);
+  };
+
+  // Save Task Form Handler (create or edit)
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
@@ -140,7 +186,6 @@ export function Tasks({
       title: newTitle.trim(),
       description: newDesc.trim(),
       priority: newPriority,
-      status: TaskStatus.TODO,
       dueDate: newDueDate || new Date(Date.now() + 86450000).toISOString().slice(0, 10) + " 17:00",
       assigneeId: newAssignee === "unassigned" ? null : newAssignee,
       isShared: newIsShared,
@@ -151,22 +196,19 @@ export function Tasks({
       recurrenceEndDate: newRecurrenceEndDate || undefined
     };
 
+    if (editingTaskId) {
+      payload.id = editingTaskId; // update existing task (keeps current status)
+    } else {
+      payload.status = TaskStatus.TODO;
+    }
+
     try {
       await onSaveTask(payload);
-      // Reset
-      setNewTitle("");
-      setNewDesc("");
-      setNewPriority(TaskPriority.MEDIUM);
-      setNewDueDate("");
-      setNewAssignee("unassigned");
-      setNewIsShared(true);
-      setNewTagsStr("");
-      setNewRewardPoints(0);
-      setNewRecurrenceType("none");
-      setNewRecurrenceEndDate("");
+      resetTaskForm();
+      setEditingTaskId(null);
       setIsNewTaskOpen(false);
     } catch (err: any) {
-      setFormError(err.message || "Tạo công việc thất bại");
+      setFormError(err.message || (editingTaskId ? "Cập nhật công việc thất bại" : "Tạo công việc thất bại"));
     }
   };
 
@@ -266,12 +308,9 @@ export function Tasks({
               className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 rounded-xl text-slate-200 placeholder-slate-500 text-sm focus:outline-none transition-all"
             />
           </div>
-          <button 
+          <button
             disabled={currentUser.role === UserRole.GUEST}
-            onClick={() => {
-              setFormError("");
-              setIsNewTaskOpen(true);
-            }}
+            onClick={handleOpenCreate}
             className="bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-slate-950 px-4 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 transition-all self-start md:self-auto shrink-0 shadow-md shadow-sky-500/5 cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Thêm công việc
@@ -449,6 +488,11 @@ export function Tasks({
                       {task.title}
                     </h3>
 
+                    {/* Creator label */}
+                    <p className="text-[10px] text-slate-500 flex items-center gap-1">
+                      <UserIcon className="w-3 h-3 text-slate-500" /> Tạo bởi {creator ? creator.fullName : "ẩn danh"}
+                    </p>
+
                     {/* Description */}
                     <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
                       {task.description || "Không có miêu tả công việc."}
@@ -521,18 +565,29 @@ export function Tasks({
                     </select>
                   </div>
                   
-                  {/* Delete / View Actions buttons in hover mode */}
+                  {/* Delete / Edit / View Actions buttons in hover mode */}
                   <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-all flex gap-1.5">
-                    <button 
-                      onClick={() => setSelectedTask(task)} 
+                    <button
+                      onClick={() => setSelectedTask(task)}
                       className="bg-slate-950 hover:bg-slate-800 p-1.5 border border-slate-800 rounded-lg text-slate-400 hover:text-sky-400"
+                      title="Xem chi tiết & bình luận"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
                     </button>
                     {currentUser.role !== UserRole.GUEST && (
-                      <button 
+                      <button
+                        onClick={() => handleOpenEditTask(task)}
+                        className="bg-slate-950 hover:bg-slate-800 p-1.5 border border-slate-800 rounded-lg text-slate-400 hover:text-amber-400"
+                        title="Sửa / giao lại công việc"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {currentUser.role !== UserRole.GUEST && (
+                      <button
                         onClick={() => handleDeleteClick(task.id)}
                         className="bg-slate-950 hover:bg-slate-800 p-1.5 border border-slate-800 rounded-lg text-slate-400 hover:text-rose-400"
+                        title="Xóa công việc"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -564,12 +619,23 @@ export function Tasks({
                 </span>
                 <h2 className="text-md font-bold text-slate-100">{activeTaskDetails.title}</h2>
               </div>
-              <button 
-                onClick={() => setSelectedTask(null)}
-                className="text-slate-400 hover:text-slate-200 bg-slate-800 p-2 rounded-lg"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {currentUser.role !== UserRole.GUEST && (
+                  <button
+                    onClick={() => handleOpenEditTask(activeTaskDetails)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-amber-400 hover:text-amber-300 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg cursor-pointer"
+                    title="Sửa / giao lại công việc"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Sửa
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedTask(null)}
+                  className="text-slate-400 hover:text-slate-200 bg-slate-800 p-2 rounded-lg"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Modal Body */}
@@ -685,12 +751,12 @@ export function Tasks({
 
       {/* Slide-out or Dialog Modal for Creation Form */}
       {isNewTaskOpen && (
-        <div 
-          onClick={() => setIsNewTaskOpen(false)}
+        <div
+          onClick={handleCloseTaskForm}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="task-create-modal"
         >
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
@@ -698,10 +764,10 @@ export function Tasks({
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
-                <CheckCircle className="w-5 h-5 text-sky-400" /> Tạo việc mới hằng ngày
+                <CheckCircle className="w-5 h-5 text-sky-400" /> {editingTaskId ? "Chỉnh sửa công việc" : "Tạo việc mới hằng ngày"}
               </h3>
-              <button 
-                onClick={() => setIsNewTaskOpen(false)}
+              <button
+                onClick={handleCloseTaskForm}
                 className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg"
               >
                 <X className="w-4 h-4" />
@@ -840,18 +906,18 @@ export function Tasks({
               </div>
 
               <div className="flex items-center justify-end gap-2.5 pt-3">
-                <button 
-                  type="button" 
-                  onClick={() => setIsNewTaskOpen(false)}
+                <button
+                  type="button"
+                  onClick={handleCloseTaskForm}
                   className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl transition-all cursor-pointer font-bold"
                 >
                   Đóng lại
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl font-bold transition-all cursor-pointer"
                 >
-                  Lên nhiệm vụ
+                  {editingTaskId ? "Lưu thay đổi" : "Lên nhiệm vụ"}
                 </button>
               </div>
             </form>
