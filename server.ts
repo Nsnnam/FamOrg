@@ -518,6 +518,57 @@ app.delete("/api/medications/:id", requireAuth, requireRole([UserRole.ADMIN, Use
 
 // --- AI ASSISTANT API ---
 
+function cleanAssistantText(value: any, maxLength: number): string {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function parseAssistantJson(rawText: string): any | null {
+  const text = rawText.trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1].trim() : text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  if (!candidate) return null;
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAssistantActions(actions: any[]): any[] {
+  if (!Array.isArray(actions)) return [];
+
+  return actions
+    .map((action, actionIndex) => {
+      if (!action || action.type !== "create_shopping_items") return null;
+      const rawItems = Array.isArray(action.items) ? action.items : [];
+      const seen = new Set<string>();
+      const items = rawItems
+        .map((item: any) => {
+          const name = cleanAssistantText(typeof item === "string" ? item : item?.name, 80);
+          if (!name) return null;
+          const key = name.toLowerCase();
+          if (seen.has(key)) return null;
+          seen.add(key);
+          return {
+            name,
+            quantity: cleanAssistantText(item?.quantity, 40),
+            note: cleanAssistantText(item?.note, 120)
+          };
+        })
+        .filter(Boolean)
+        .slice(0, 20);
+
+      if (items.length === 0) return null;
+      return {
+        id: `assistant_action_${Date.now()}_${actionIndex}_${Math.random().toString(36).slice(2, 6)}`,
+        type: "create_shopping_items",
+        title: cleanAssistantText(action.title, 100) || "Thêm nguyên liệu vào danh sách đi chợ",
+        items
+      };
+    })
+    .filter(Boolean);
+}
+
 app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Response) => {
   const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   const message = String(req.body?.message || "").trim();
@@ -533,24 +584,64 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
   try {
     const [{ GoogleGenAI }] = await Promise.all([import("@google/genai")]);
     const ai = new GoogleGenAI({ apiKey });
-    const tasks = FamilyDB.getTasks().slice(-30);
-    const plans = FamilyDB.getPlans().slice(-30);
-    const transactions = FamilyDB.getTransactions().slice(-30);
-    const medications = FamilyDB.getMedications();
+    const tasks = FamilyDB.getTasks().slice(-30).map(t => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      priority: t.priority,
+      dueDate: t.dueDate,
+      assigneeId: t.assigneeId,
+      rewardPoints: t.rewardPoints
+    }));
+    const plans = FamilyDB.getPlans().slice(-30).map(p => ({
+      id: p.id,
+      title: p.title,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      isShared: p.isShared
+    }));
+    const transactions = FamilyDB.getTransactions().slice(-30).map(({ receiptImage, ...tx }) => tx);
+    const medications = FamilyDB.getMedications().map(m => ({
+      id: m.id,
+      name: m.name,
+      dosage: m.dosage,
+      patientId: m.patientId,
+      times: m.times,
+      isActive: m.isActive
+    }));
+    const shoppingItems = FamilyDB.getShoppingItems()
+      .filter(item => !item.isPurchased)
+      .slice(0, 80)
+      .map(item => ({ name: item.name, quantity: item.quantity, note: item.note }));
     const prompt = [
-      "Ban la tro ly gia dinh trong app Family Organizer. Tra loi ngan gon bang tieng Viet, uu tien viec co the lam ngay.",
+      "Bạn là trợ lý gia đình trong app Family Organizer. Trả lời ngắn gọn bằng tiếng Việt, ưu tiên việc có thể làm ngay.",
+      "Bạn PHẢI trả về duy nhất một JSON object hợp lệ, không bọc markdown, không thêm chữ ngoài JSON.",
+      "Schema: {\"reply\":\"câu trả lời cho người dùng\",\"actions\":[{\"type\":\"create_shopping_items\",\"title\":\"tiêu đề hành động\",\"items\":[{\"name\":\"tên món cần mua\",\"quantity\":\"số lượng nếu biết\",\"note\":\"ghi chú nếu cần\"}]}]}",
+      "Chỉ tạo action create_shopping_items khi người dùng yêu cầu thêm/tạo/lập danh sách đi chợ, mua sắm, hoặc hỏi menu và nhờ thêm nguyên liệu vào danh sách đi chợ. Nếu chỉ hỏi gợi ý hoặc hỏi thông tin, actions phải là [].",
+      "Không tạo quá 20 món. Gộp món trùng nhau. Không tự ý tạo task, giao dịch, thuốc hoặc lịch vì app hiện chỉ cho phép action đi chợ.",
       `Nguoi hoi: ${req.userSession?.fullName}`,
       `Tasks gan day: ${JSON.stringify(tasks)}`,
       `Lich gan day: ${JSON.stringify(plans)}`,
       `Giao dich gan day: ${JSON.stringify(transactions)}`,
       `Lich thuoc: ${JSON.stringify(medications)}`,
+      `Danh sach di cho hien tai: ${JSON.stringify(shoppingItems)}`,
       `Cau hoi: ${message}`
     ].join("\n\n");
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: prompt
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    } as any);
+    const rawText = response.text || "";
+    const parsed = parseAssistantJson(rawText);
+    if (!parsed) {
+      res.json({ answer: rawText || "Mình chưa có câu trả lời phù hợp.", actions: [] });
+      return;
+    }
+    res.json({
+      answer: cleanAssistantText(parsed.reply, 4000) || "Mình đã chuẩn bị gợi ý cho bạn.",
+      actions: normalizeAssistantActions(parsed.actions)
     });
-    res.json({ answer: response.text || "Minh chua co cau tra loi phu hop." });
   } catch (err: any) {
     console.error("Assistant error:", err);
     res.status(500).json({ error: err.message || "AI assistant dang gap loi" });
