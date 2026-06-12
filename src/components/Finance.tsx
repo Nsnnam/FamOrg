@@ -86,6 +86,10 @@ export function Finance({
   const [billFrequency, setBillFrequency] = useState<RecurringBill["frequency"]>("monthly");
   const [billError, setBillError] = useState("");
 
+  // Money input formatting: show grouped thousands (1.000.000), store as number.
+  const formatMoneyInput = (n: number) => (n > 0 ? n.toLocaleString("vi-VN") : "");
+  const parseMoneyInput = (s: string) => Number(s.replace(/[^\d]/g, "")) || 0;
+
   // Process filters
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
@@ -375,9 +379,10 @@ export function Finance({
               <option value="other">Khác</option>
             </select>
             <input
-              type="number"
-              value={budgetLimit || ""}
-              onChange={(e) => setBudgetLimit(Number(e.target.value))}
+              type="text"
+              inputMode="numeric"
+              value={formatMoneyInput(budgetLimit)}
+              onChange={(e) => setBudgetLimit(parseMoneyInput(e.target.value))}
               placeholder="Hạn mức"
               className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
             />
@@ -417,7 +422,7 @@ export function Finance({
           </div>
           <form onSubmit={handleCreateBill} className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <input value={billTitle} onChange={(e) => setBillTitle(e.target.value)} placeholder="Tên hóa đơn" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
-            <input type="number" value={billAmount || ""} onChange={(e) => setBillAmount(Number(e.target.value))} placeholder="Số tiền" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
+            <input type="text" inputMode="numeric" value={formatMoneyInput(billAmount)} onChange={(e) => setBillAmount(parseMoneyInput(e.target.value))} placeholder="Số tiền" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
             <input type="date" value={billDueDate} onChange={(e) => setBillDueDate(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
             <select value={billFrequency} onChange={(e) => setBillFrequency(e.target.value as RecurringBill["frequency"])} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
               <option value="weekly">Hàng tuần</option>
@@ -766,11 +771,12 @@ export function Finance({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1 col-span-1">
                   <label className="text-slate-400 block font-semibold">Số lượng (VNĐ) <span className="text-rose-400">*</span></label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="text"
+                    inputMode="numeric"
                     placeholder="Điền số giá trị..."
-                    value={formAmount || ""}
-                    onChange={(e) => setFormAmount(Number(e.target.value))}
+                    value={formatMoneyInput(formAmount)}
+                    onChange={(e) => setFormAmount(parseMoneyInput(e.target.value))}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-bold"
                   />
                 </div>
