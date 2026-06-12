@@ -10,7 +10,8 @@ RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 
 # Install dependencies (including devDependencies for compiling)
-RUN npm ci
+# Note: repo has no package-lock.json, so use `npm install` (not `npm ci`).
+RUN npm install
 
 # Copy the rest of the application files
 COPY tsconfig.json vite.config.ts index.html metadata.json ./
@@ -30,7 +31,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Create a directory to store persistent data (database + backups)
-RUN mkdir -p /app/data && chown -y node:node /app/data || true
+RUN mkdir -p /app/data && chown -R node:node /app/data
 
 # Set environment
 ENV NODE_ENV=production

@@ -60,11 +60,18 @@ Hệ thống được cấu trúc chặt chẽ với 3 vai trò thành viên:
    ```
 
 2. **Cấu hình môi trường (`.env`)**:
-   Tạo tệp `.env` hoặc dựa vào `.env.example` sẵn có tại cây thư mục gốc:
-   ```env
-   # .env.example
-   PORT=3000
+   Sao chép tệp mẫu `.env.example` thành `.env` rồi điền giá trị thật:
+   ```bash
+   cp .env.example .env
    ```
+   ```env
+   # GEMINI_API_KEY: Khóa API Gemini (chỉ cần khi dùng các tính năng AI).
+   GEMINI_API_KEY="MY_GEMINI_API_KEY"
+
+   # APP_URL: Địa chỉ nơi ứng dụng được host (dùng cho liên kết tự tham chiếu).
+   APP_URL="MY_APP_URL"
+   ```
+   > Lưu ý: Cổng máy chủ được cố định ở `3000` trong mã nguồn (`server.ts`), không cấu hình qua biến `PORT`.
 
 3. **Chạy ở chế độ phát triển (Development)**:
    ```bash
@@ -89,8 +96,10 @@ Nếu bạn muốn chạy ứng dụng của mình bền bỉ dạng background 
 
 ```bash
 # Khởi chạy Docker Container dạng background daemon
-docker-compose up -d --build
+docker compose up -d --build
 ```
+
+> Docker đời mới dùng `docker compose` (có dấu cách). Nếu hệ thống của bạn là bản cũ chỉ có lệnh `docker-compose` (gạch nối) thì thay thế tương ứng.
 
 Máy chủ của bạn sẽ được kích hoạt tại cổng `3000` trên hệ thống. Dữ liệu gia đình sẽ được ánh xạ liên kết vật lý (Volume Mount) ổn định vào thư mục `./data` trên máy chủ của bạn để tránh mất mát khi khởi động lại.
 
@@ -138,7 +147,7 @@ Trong trường hợp bạn muốn dọn sạch toàn bộ dữ liệu giao dị
 Bản chất hệ thống lưu trữ dạng file-based mỏng phẳng tĩnh cực kỳ tối ưu cho Raspberry Pi. Khi bạn muốn dọn dẹp triệt để:
 1. **Dừng dịch vụ Node.js hoặc container Docker**:
    ```bash
-   docker-compose down     # Nếu đang chạy bằng Docker
+   docker compose down     # Nếu đang chạy bằng Docker
    # Hoặc dừng tiến trình npm start đang vận hành
    ```
 2. **Xóa tệp cơ sở dữ liệu `db.json`**:
@@ -148,7 +157,7 @@ Bản chất hệ thống lưu trữ dạng file-based mỏng phẳng tĩnh cự
    ```
 3. **Mở lại dịch vụ / Khởi chạy lại**:
    ```bash
-   npm start               # Hoặc docker-compose up -d
+   npm start               # Hoặc docker compose up -d
    ```
 - **Cơ chế tự phục hồi (Self-Healing System)**: Khi khởi động, Backend Server sẽ quét thư mục `/data`. Nếu không phát hiện tệp `db.json`, hệ thống sẽ chủ động kích hoạt trình gieo hạt giống dữ liệu mặc định (`initialDBState()`). Tiến trình này sẽ:
   - Khởi tạo lại một cơ sở dữ liệu trống tinh khiết.
