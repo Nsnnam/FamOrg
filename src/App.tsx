@@ -1002,7 +1002,7 @@ export default function App() {
       {installPrompt && (
         <button
           onClick={handleInstallApp}
-          className="fixed bottom-4 right-4 z-[70] bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer"
+          className="fixed bottom-20 right-5 z-[70] bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer"
         >
           <Home className="w-4 h-4" /> Cài app lên máy
         </button>
