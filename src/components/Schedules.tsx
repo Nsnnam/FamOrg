@@ -73,34 +73,33 @@ export function Schedules({
     }).sort((a, b) => a.startDate.localeCompare(b.startDate));
   }, [plans, filterSharedOnly, currentUser]);
 
-  // Generate Month view days mapping (for the simple custom Calendar visualization)
-  const currentYear = 2026;
-  const currentMonthIdx = 5; // June (0-indexed i.e. 5 is June)
-  const currentMonthName = "Tháng Sáu 2026";
+  // Dynamic current-month calendar
+  const today = new Date();
+  const todayNum = today.getDate();
+  const calYear = today.getFullYear();
+  const calMonth = today.getMonth(); // 0-indexed
+  const calMonthName = today.toLocaleDateString("vi-VN", { month: "long", year: "numeric" });
+  const calMonthPrefix = `${calYear}-${String(calMonth + 1).padStart(2, "0")}`;
 
   const calendarDays = useMemo(() => {
-    // List days for June 2026
-    // June 1st, 2026 is a Monday. June has 30 days.
-    const days = [];
-    // June 1st starts on Monday (index 1 in standard calendar week: Sunday=0, Monday=1)
-    // To make a grid, let's insert empty offsets for pre-monday
-    const startOffset = 1; // 1 blank column for Sunday
-    for (let b = 0; b < startOffset; b++) {
+    const firstWeekday = new Date(calYear, calMonth, 1).getDay(); // 0=Sunday
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const days: { blank: boolean; dayNum: number }[] = [];
+    for (let b = 0; b < firstWeekday; b++) {
       days.push({ blank: true, dayNum: 0 });
     }
-    for (let d = 1; d <= 30; d++) {
+    for (let d = 1; d <= daysInMonth; d++) {
       days.push({ blank: false, dayNum: d });
     }
     return days;
-  }, []);
+  }, [calYear, calMonth]);
 
-  // Map plans to date day number list
+  // Map plans to day numbers for the current month
   const plansByDayNum = useMemo(() => {
     const mapping: Record<number, FamilyPlan[]> = {};
     filteredPlans.forEach(plan => {
-      // Expecting YYYY-MM-DD
       const dateStr = plan.startDate.slice(0, 10);
-      if (dateStr.startsWith("2026-06")) {
+      if (dateStr.startsWith(calMonthPrefix)) {
         const dayNum = parseInt(dateStr.slice(8, 10), 10);
         if (!isNaN(dayNum)) {
           if (!mapping[dayNum]) mapping[dayNum] = [];
@@ -109,7 +108,21 @@ export function Schedules({
       }
     });
     return mapping;
-  }, [filteredPlans]);
+  }, [filteredPlans, calMonthPrefix]);
+
+  // Birthdays falling in the current calendar month
+  const birthdaysByDayNum = useMemo(() => {
+    const map: Record<number, { id: string; name: string }[]> = {};
+    users.forEach(u => {
+      if (!u.dateOfBirth) return;
+      const dob = new Date(u.dateOfBirth);
+      if (isNaN(dob.getTime()) || dob.getMonth() !== calMonth) return;
+      const day = dob.getDate();
+      if (!map[day]) map[day] = [];
+      map[day].push({ id: u.id, name: u.fullName });
+    });
+    return map;
+  }, [users, calMonth]);
 
   const handleCreatePlan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -256,7 +269,7 @@ export function Schedules({
           <div className="bg-slate-950 p-4 border-b border-slate-800 flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
               <CalendarIcon className="w-5 h-5 text-amber-400" />
-              {currentMonthName} (Kế hoạch Gia đình)
+              {calMonthName} (Kế hoạch Gia đình)
             </h3>
             <span className="text-slate-500 text-[11px] font-mono">Dựa trên múi giờ thiết bị</span>
           </div>
@@ -280,23 +293,36 @@ export function Schedules({
               }
 
               const dayPlans = plansByDayNum[day.dayNum] || [];
+              const dayBirthdays = birthdaysByDayNum[day.dayNum] || [];
+              const hasEvents = dayPlans.length > 0 || dayBirthdays.length > 0;
+              const isToday = day.dayNum === todayNum;
 
               return (
-                <div 
-                  key={`day-${day.dayNum}`} 
-                  className="p-1.5 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col justify-between overflow-hidden"
+                <div
+                  key={`day-${day.dayNum}`}
+                  className={`p-1.5 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col justify-between overflow-hidden ${isToday ? "bg-sky-500/5" : ""}`}
                 >
                   <div className="flex justify-between items-center">
-                    <span className="text-[11px] font-semibold font-mono text-slate-400">{day.dayNum}</span>
-                    {dayPlans.length > 0 && (
+                    <span className={`text-[11px] font-semibold font-mono ${isToday ? "bg-sky-500 text-slate-950 px-1.5 rounded-md" : "text-slate-400"}`}>{day.dayNum}</span>
+                    {hasEvents && (
                       <span className="w-2 h-2 shrink-0 rounded-full bg-sky-400 animate-pulse" />
                     )}
                   </div>
 
-                  {/* List maximum 2 event handles */}
+                  {/* Event + birthday badges */}
                   <div className="space-y-1 overflow-y-auto max-h-[80%] pr-0.5 scrollbar-none">
+                    {dayBirthdays.map(b => (
+                      <div
+                        key={`bd-${b.id}`}
+                        title={`🎂 Sinh nhật ${b.name}`}
+                        className="text-[9px] px-1.5 py-0.5 rounded truncate font-medium flex items-center gap-1 bg-pink-500/10 text-pink-400 border border-pink-500/20"
+                      >
+                        <span className="shrink-0">🎂</span>
+                        <span className="truncate">{b.name}</span>
+                      </div>
+                    ))}
                     {dayPlans.map(plan => (
-                      <div 
+                      <div
                         key={plan.id}
                         title={`${plan.title}\n(${plan.startDate.split(" ")[1]})`}
                         className={`text-[9px] px-1.5 py-0.5 rounded truncate font-medium flex items-center gap-1 ${badgeColorClass(plan.color)}`}

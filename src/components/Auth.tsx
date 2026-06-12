@@ -4,11 +4,11 @@
  */
 
 import React, { useState } from "react";
-import { Lock, User as UserIcon, Home, Compass, UserCheck, AlertCircle } from "lucide-react";
+import { Lock, User as UserIcon, Home, AlertCircle } from "lucide-react";
 import { motion } from "motion/react";
 
 interface AuthProps {
-  onLoginSuccess: (user: any) => void;
+  onLoginSuccess: (user: any, token: string) => void;
 }
 
 export function Auth({ onLoginSuccess }: AuthProps) {
@@ -43,42 +43,9 @@ export function Auth({ onLoginSuccess }: AuthProps) {
         throw new Error(data.error || "Mật khẩu không chính xác!");
       }
 
-      onLoginSuccess(data.user);
+      onLoginSuccess(data.user, data.token);
     } catch (err: any) {
       setErrorStatus(err.message || "Không thể kết nối đến máy chủ");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Quick Account Login list for reviewer mapping
-  const quickLogins = [
-    { name: "Gia Trưởng (Admin)", user: "admin", pass: "admin123", color: "bg-red-500", desc: "Xem hết, tạo tk, backup tệp" },
-    { name: "Bố Hùng (Member)", user: "bohung", pass: "bohung123", color: "bg-blue-500", desc: "Xem, viết notes, ghi tài chính" },
-    { name: "Mẹ Lan (Member)", user: "melan", pass: "melan123", color: "bg-pink-500", desc: "Xem, ghi việc, ghi thu chi" },
-    { name: "Bé Vy (Guest/Kid)", user: "bevy", pass: "bevy123", color: "bg-amber-500", desc: "Chỉ xem lịch, cập nhật task con" }
-  ];
-
-  const handleQuickLogin = async (user: string, pass: string) => {
-    setUsername(user);
-    setPassword(pass);
-    setErrorStatus("");
-    setLoading(true);
-    try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: user, password: pass })
-      });
-
-      const data = await response.json();
-      if (response.ok && data.user) {
-        onLoginSuccess(data.user);
-      } else {
-        setErrorStatus(data.error || "Gặp lỗi đăng nhập nhanh");
-      }
-    } catch (e) {
-      setErrorStatus("Máy chủ gặp sự cố hoặc đang chờ khởi chạy");
     } finally {
       setLoading(false);
     }
@@ -149,33 +116,6 @@ export function Auth({ onLoginSuccess }: AuthProps) {
             {loading ? "Đang xác thực..." : "Đăng nhập Gia Đình"}
           </button>
         </form>
-
-        {/* Divider */}
-        <div className="relative flex items-center justify-center font-mono">
-          <div className="absolute w-full h-[1px] bg-slate-800" />
-          <span className="bg-slate-900 px-3.5 text-[9px] uppercase tracking-wider text-slate-550 z-10 shrink-0 font-bold">Khám phá nhanh (Demo)</span>
-        </div>
-
-        {/* Demo profiles quick clickable list */}
-        <div className="space-y-2">
-          <p className="text-[10px] text-slate-500 text-center">Bấm vào bất cứ thành viên nào để chuyển quyền tương thích lập tức:</p>
-          <div className="grid grid-cols-2 gap-2">
-            {quickLogins.map(p => (
-              <button 
-                key={p.user}
-                type="button"
-                onClick={() => handleQuickLogin(p.user, p.pass)}
-                className="bg-slate-950 hover:bg-slate-800 border border-slate-800/80 p-2.5 rounded-xl cursor-pointer text-left text-[11px] hover:border-slate-700 transition-all group flex flex-col justify-between"
-              >
-                <div className="flex items-center gap-1.5 pb-1">
-                  <span className={`w-3.5 h-3.5 rounded-full ${p.color} shrink-0 group-hover:scale-110 transition-transform`} />
-                  <span className="font-bold text-slate-200 truncate">{p.name.split(" ")[0]}</span>
-                </div>
-                <span className="text-[9px] text-slate-500 leading-none truncate block">{p.desc}</span>
-              </button>
-            ))}
-          </div>
-        </div>
 
       </motion.div>
     </div>

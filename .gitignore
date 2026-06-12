@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Runtime data: family database, secrets, backups, uploads — never commit
+data/
+*.db
+*.db-wal
+*.db-shm

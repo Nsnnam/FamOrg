@@ -1,0 +1,150 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useMemo, useState } from "react";
+import { Pill, Plus, Trash2, Clock } from "lucide-react";
+import { MedicationReminder, User, UserRole } from "../types.js";
+import { motion, AnimatePresence } from "motion/react";
+
+interface MedicationProps {
+  currentUser: User;
+  users: User[];
+  medications: MedicationReminder[];
+  onSaveMedication: (medication: Partial<MedicationReminder>) => Promise<any>;
+  onDeleteMedication: (id: string) => Promise<any>;
+}
+
+export function Medication({
+  currentUser,
+  users,
+  medications,
+  onSaveMedication,
+  onDeleteMedication
+}: MedicationProps) {
+  const [name, setName] = useState("");
+  const [dosage, setDosage] = useState("");
+  const [patientId, setPatientId] = useState(currentUser.id);
+  const [times, setTimes] = useState("08:00, 20:00");
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const sorted = useMemo(
+    () => [...medications].sort((a, b) => a.name.localeCompare(b.name)),
+    [medications]
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (!name.trim()) {
+      setError("Nhập tên thuốc cần nhắc.");
+      return;
+    }
+    const parsedTimes = times.split(",").map(t => t.trim()).filter(Boolean);
+    if (parsedTimes.length === 0) {
+      setError("Nhập ít nhất một giờ uống, ví dụ 08:00.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSaveMedication({
+        name: name.trim(),
+        dosage: dosage.trim(),
+        patientId,
+        times: parsedTimes,
+        startDate,
+        endDate: endDate || undefined,
+        notes: notes.trim(),
+        isActive: true
+      });
+      setName("");
+      setDosage("");
+      setNotes("");
+    } catch (err: any) {
+      setError(err.message || "Không lưu được lịch thuốc");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6" id="medication-module">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <Pill className="w-5 h-5 text-rose-400" /> Nhắc thuốc gia đình
+          </h3>
+          <span className="text-[10px] text-slate-500 font-mono">{sorted.length} lịch</span>
+        </div>
+
+        {currentUser.role !== UserRole.GUEST && (
+          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên thuốc" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
+            <input value={dosage} onChange={(e) => setDosage(e.target.value)} placeholder="Liều dùng" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
+            <select value={patientId} onChange={(e) => setPatientId(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500">
+              {users.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+            </select>
+            <input value={times} onChange={(e) => setTimes(e.target.value)} placeholder="08:00, 20:00" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
+            <button disabled={saving} type="submit" className="bg-rose-500 hover:bg-rose-400 disabled:opacity-60 text-slate-950 rounded-xl px-3 py-2.5 font-bold flex items-center justify-center gap-1.5">
+              <Plus className="w-4 h-4" /> Thêm
+            </button>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
+            <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú, sau ăn..." className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
+          </form>
+        )}
+        {error && <p className="text-[11px] text-rose-400">{error}</p>}
+      </div>
+
+      {sorted.length === 0 ? (
+        <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl py-12 text-center">
+          <p className="text-sm text-slate-500">Chưa có lịch nhắc thuốc nào.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <AnimatePresence>
+            {sorted.map(med => {
+              const patient = users.find(u => u.id === med.patientId);
+              return (
+                <motion.div
+                  key={med.id}
+                  layout
+                  initial={{ opacity: 0, y: 5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-100">{med.name}</h4>
+                      <p className="text-xs text-slate-500">{med.dosage || "Chưa ghi liều"} • {patient?.fullName || "Thành viên"}</p>
+                    </div>
+                    {currentUser.role !== UserRole.GUEST && (
+                      <button onClick={() => onDeleteMedication(med.id)} className="p-1.5 text-slate-500 hover:text-rose-400 bg-slate-950 border border-slate-800 rounded-lg">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {med.times.map(time => (
+                      <span key={time} className="text-[10px] px-2 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 font-mono flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {time}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">{med.notes || "Không có ghi chú thêm."}</p>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}

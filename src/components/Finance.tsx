@@ -20,7 +20,7 @@ import {
   CreditCard,
   FileText
 } from "lucide-react";
-import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole } from "../types.js";
+import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 
@@ -28,16 +28,30 @@ interface FinanceProps {
   currentUser: User;
   users: User[];
   transactions: FinancialTransaction[];
+  budgets: BudgetLimit[];
+  recurringBills: RecurringBill[];
   onSaveTransaction: (tx: Partial<FinancialTransaction>) => Promise<any>;
   onDeleteTransaction: (id: string) => Promise<any>;
+  onSaveBudget: (budget: Partial<BudgetLimit>) => Promise<any>;
+  onDeleteBudget: (id: string) => Promise<any>;
+  onSaveRecurringBill: (bill: Partial<RecurringBill>) => Promise<any>;
+  onPayRecurringBill: (id: string) => Promise<any>;
+  onDeleteRecurringBill: (id: string) => Promise<any>;
 }
 
 export function Finance({
   currentUser,
   users,
   transactions,
+  budgets,
+  recurringBills,
   onSaveTransaction,
-  onDeleteTransaction
+  onDeleteTransaction,
+  onSaveBudget,
+  onDeleteBudget,
+  onSaveRecurringBill,
+  onPayRecurringBill,
+  onDeleteRecurringBill
 }: FinanceProps) {
   // Query Filter States
   const [searchTerm, setSearchTerm] = useState("");
@@ -62,6 +76,15 @@ export function Finance({
   const [formDesc, setFormDesc] = useState("");
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
   const [formReceiptBase64, setFormReceiptBase64] = useState<string>("");
+  const [budgetCategory, setBudgetCategory] = useState<string>(ExpenseCategory.FOOD);
+  const [budgetLimit, setBudgetLimit] = useState<number>(0);
+  const [budgetError, setBudgetError] = useState("");
+  const [billTitle, setBillTitle] = useState("");
+  const [billAmount, setBillAmount] = useState<number>(0);
+  const [billDueDate, setBillDueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [billCategory, setBillCategory] = useState<string>(ExpenseCategory.UTILITIES);
+  const [billFrequency, setBillFrequency] = useState<RecurringBill["frequency"]>("monthly");
+  const [billError, setBillError] = useState("");
 
   // Process filters
   const filteredTransactions = useMemo(() => {
@@ -105,6 +128,22 @@ export function Finance({
       balance: totalIncome - totalExpense
     };
   }, [transactions]);
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonthBudgets = useMemo(
+    () => budgets.filter(b => b.month === currentMonth),
+    [budgets, currentMonth]
+  );
+
+  const budgetUsage = useMemo(() => {
+    const spent: Record<string, number> = {};
+    transactions
+      .filter(tx => tx.type === "expense" && tx.date.startsWith(currentMonth))
+      .forEach(tx => {
+        spent[tx.category] = (spent[tx.category] || 0) + tx.amount;
+      });
+    return spent;
+  }, [transactions, currentMonth]);
 
   // Group by category to build the visual Chart distribution
   const chartCategoryDistribution = useMemo(() => {
@@ -172,6 +211,45 @@ export function Finance({
       setIsFormOpen(false);
     } catch (err: any) {
       setFormError(err.message || "Không thể lưu giao dịch này");
+    }
+  };
+
+  const handleCreateBudget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBudgetError("");
+    if (budgetLimit <= 0) {
+      setBudgetError("Han muc phai lon hon 0");
+      return;
+    }
+    try {
+      await onSaveBudget({ month: currentMonth, category: budgetCategory, limit: Number(budgetLimit) });
+      setBudgetLimit(0);
+    } catch (err: any) {
+      setBudgetError(err.message || "Khong luu duoc ngan sach");
+    }
+  };
+
+  const handleCreateBill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBillError("");
+    if (!billTitle.trim() || billAmount <= 0) {
+      setBillError("Nhap ten hoa don va so tien hop le");
+      return;
+    }
+    try {
+      await onSaveRecurringBill({
+        title: billTitle.trim(),
+        amount: Number(billAmount),
+        category: billCategory,
+        account: AccountType.BANK,
+        frequency: billFrequency,
+        nextDueDate: billDueDate,
+        isActive: true
+      });
+      setBillTitle("");
+      setBillAmount(0);
+    } catch (err: any) {
+      setBillError(err.message || "Khong luu duoc hoa don");
     }
   };
 
@@ -272,6 +350,106 @@ export function Finance({
               -{metrics.totalExpense.toLocaleString()} VNĐ
             </h3>
             <p className="text-slate-500 text-[10px] uppercase font-mono">Mua sắm & Sinh hoạt phí</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" id="finance-planning">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-200">Ngân sách tháng {currentMonth}</h3>
+            <span className="text-[10px] text-slate-500 font-mono">{currentMonthBudgets.length} hạn mức</span>
+          </div>
+          <form onSubmit={handleCreateBudget} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2 text-xs">
+            <select
+              value={budgetCategory}
+              onChange={(e) => setBudgetCategory(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+            >
+              <option value="food">Ăn uống</option>
+              <option value="education2">Học tập</option>
+              <option value="utilities">Điện nước</option>
+              <option value="shopping">Mua sắm</option>
+              <option value="medical">Y tế</option>
+              <option value="transport">Đi lại</option>
+              <option value="other">Khác</option>
+            </select>
+            <input
+              type="number"
+              value={budgetLimit || ""}
+              onChange={(e) => setBudgetLimit(Number(e.target.value))}
+              placeholder="Hạn mức"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+            />
+            <button type="submit" className="bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl px-3 py-2 font-bold">
+              Lưu
+            </button>
+          </form>
+          {budgetError && <p className="text-[11px] text-rose-400">{budgetError}</p>}
+          <div className="space-y-2">
+            {currentMonthBudgets.length === 0 ? (
+              <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có ngân sách cho tháng này.</p>
+            ) : currentMonthBudgets.map(b => {
+              const used = budgetUsage[b.category] || 0;
+              const pct = Math.min(100, Math.round((used / b.limit) * 100));
+              return (
+                <div key={b.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-200">{translateCategory(b.category)}</span>
+                    <button onClick={() => onDeleteBudget(b.id)} className="text-slate-500 hover:text-rose-400">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
+                    <div className={`h-full ${used > b.limit ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-mono">{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-200">Hóa đơn định kỳ</h3>
+            <span className="text-[10px] text-slate-500 font-mono">{recurringBills.length} khoản</span>
+          </div>
+          <form onSubmit={handleCreateBill} className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <input value={billTitle} onChange={(e) => setBillTitle(e.target.value)} placeholder="Tên hóa đơn" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
+            <input type="number" value={billAmount || ""} onChange={(e) => setBillAmount(Number(e.target.value))} placeholder="Số tiền" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
+            <input type="date" value={billDueDate} onChange={(e) => setBillDueDate(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
+            <select value={billFrequency} onChange={(e) => setBillFrequency(e.target.value as RecurringBill["frequency"])} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
+              <option value="weekly">Hàng tuần</option>
+              <option value="monthly">Hàng tháng</option>
+              <option value="yearly">Hàng năm</option>
+            </select>
+            <select value={billCategory} onChange={(e) => setBillCategory(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
+              <option value="utilities">Điện nước</option>
+              <option value="medical">Y tế</option>
+              <option value="education2">Học tập</option>
+              <option value="other">Khác</option>
+            </select>
+            <button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl px-3 py-2 font-bold">Thêm hóa đơn</button>
+          </form>
+          {billError && <p className="text-[11px] text-rose-400">{billError}</p>}
+          <div className="space-y-2">
+            {recurringBills.length === 0 ? (
+              <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có hóa đơn lặp lại.</p>
+            ) : recurringBills.map(b => (
+              <div key={b.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-200 truncate">{b.title}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{b.amount.toLocaleString()} VNĐ • hạn {b.nextDueDate}</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button onClick={() => onPayRecurringBill(b.id)} className="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg text-[10px] font-bold">Đã trả</button>
+                  <button onClick={() => onDeleteRecurringBill(b.id)} className="p-1.5 text-slate-500 hover:text-rose-400">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>

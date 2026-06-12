@@ -20,13 +20,16 @@ import {
   X,
   Share2
 } from "lucide-react";
-import { Task, TaskStatus, TaskPriority, User, UserRole } from "../types.js";
+import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, RecurrenceType } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 
 interface TasksProps {
   currentUser: User;
   users: User[];
   tasks: Task[];
+  rewardEntries: RewardPointEntry[];
+  rewardTotals: Record<string, number>;
+  onAddReward: (entry: Partial<RewardPointEntry>) => Promise<any>;
   onSaveTask: (task: Partial<Task>) => Promise<any>;
   onDeleteTask: (id: string) => Promise<any>;
   onAddComment: (taskId: string, content: string) => Promise<any>;
@@ -36,6 +39,9 @@ export function Tasks({
   currentUser,
   users,
   tasks,
+  rewardEntries,
+  rewardTotals,
+  onAddReward,
   onSaveTask,
   onDeleteTask,
   onAddComment
@@ -60,6 +66,12 @@ export function Tasks({
   const [newAssignee, setNewAssignee] = useState<string>("unassigned");
   const [newIsShared, setNewIsShared] = useState(true);
   const [newTagsStr, setNewTagsStr] = useState("");
+  const [newRewardPoints, setNewRewardPoints] = useState(0);
+  const [newRecurrenceType, setNewRecurrenceType] = useState<RecurrenceType>("none");
+  const [newRecurrenceEndDate, setNewRecurrenceEndDate] = useState("");
+  const [manualRewardUser, setManualRewardUser] = useState("");
+  const [manualRewardPoints, setManualRewardPoints] = useState(0);
+  const [manualRewardReason, setManualRewardReason] = useState("");
   const [formError, setFormError] = useState("");
 
   // Quick action states
@@ -112,6 +124,8 @@ export function Tasks({
     return tasks.find(t => t.id === selectedTask.id) || null;
   }, [tasks, selectedTask]);
 
+  const childUsers = useMemo(() => users.filter(u => u.role === UserRole.GUEST), [users]);
+
   // Save Task Form Handler
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +144,11 @@ export function Tasks({
       dueDate: newDueDate || new Date(Date.now() + 86450000).toISOString().slice(0, 10) + " 17:00",
       assigneeId: newAssignee === "unassigned" ? null : newAssignee,
       isShared: newIsShared,
-      tags: newTagsStr.split(",").map(t => t.trim()).filter(Boolean)
+      tags: newTagsStr.split(",").map(t => t.trim()).filter(Boolean),
+      rewardPoints: Number(newRewardPoints) || 0,
+      recurrenceType: newRecurrenceType,
+      recurrenceInterval: 1,
+      recurrenceEndDate: newRecurrenceEndDate || undefined
     };
 
     try {
@@ -143,6 +161,9 @@ export function Tasks({
       setNewAssignee("unassigned");
       setNewIsShared(true);
       setNewTagsStr("");
+      setNewRewardPoints(0);
+      setNewRecurrenceType("none");
+      setNewRecurrenceEndDate("");
       setIsNewTaskOpen(false);
     } catch (err: any) {
       setFormError(err.message || "Tạo công việc thất bại");
@@ -171,6 +192,22 @@ export function Tasks({
       setCommentInput("");
     } catch (err) {
       console.error("Gửi bình luận thất bại", err);
+    }
+  };
+
+  const handleManualReward = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualRewardUser || !manualRewardPoints) return;
+    try {
+      await onAddReward({
+        userId: manualRewardUser,
+        points: Number(manualRewardPoints),
+        reason: manualRewardReason || "Thuong them"
+      });
+      setManualRewardPoints(0);
+      setManualRewardReason("");
+    } catch (err) {
+      console.error("Khong cap nhat diem thuong", err);
     }
   };
 
@@ -322,6 +359,50 @@ export function Tasks({
         </div>
       </div>
 
+      {childUsers.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4" id="child-reward-panel">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-200">Điểm thưởng cho trẻ</h3>
+              <p className="text-[11px] text-slate-500">Task có điểm sẽ tự cộng khi trẻ hoàn thành. Có thể cộng/trừ thủ công khi cần.</p>
+            </div>
+            {currentUser.role !== UserRole.GUEST && (
+              <form onSubmit={handleManualReward} className="grid grid-cols-1 sm:grid-cols-[160px_100px_1fr_auto] gap-2 text-xs">
+                <select value={manualRewardUser} onChange={(e) => setManualRewardUser(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
+                  <option value="">Chọn trẻ</option>
+                  {childUsers.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+                </select>
+                <input type="number" value={manualRewardPoints || ""} onChange={(e) => setManualRewardPoints(Number(e.target.value))} placeholder="+/- điểm" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
+                <input value={manualRewardReason} onChange={(e) => setManualRewardReason(e.target.value)} placeholder="Lý do" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
+                <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl px-3 py-2 font-bold">Cập nhật</button>
+              </form>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {childUsers.map(child => {
+              const recent = rewardEntries.filter(e => e.userId === child.id).slice(0, 3);
+              return (
+                <div key={child.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-200">{child.fullName}</span>
+                    <span className="text-lg font-extrabold text-amber-400">{rewardTotals[child.id] || 0}</span>
+                  </div>
+                  <div className="space-y-1">
+                    {recent.length === 0 ? (
+                      <p className="text-[10px] text-slate-500">Chưa có lịch sử điểm.</p>
+                    ) : recent.map(entry => (
+                      <p key={entry.id} className="text-[10px] text-slate-500 truncate">
+                        {entry.points > 0 ? "+" : ""}{entry.points} • {entry.reason}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Tasks List Grid */}
       {filteredTasks.length === 0 ? (
         <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl py-12 text-center" id="empty-tasks">
@@ -381,6 +462,21 @@ export function Tasks({
                             #{tag}
                           </span>
                         ))}
+                      </div>
+                    )}
+
+                    {((task.rewardPoints || 0) > 0 || (task.recurrenceType && task.recurrenceType !== "none")) && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {(task.rewardPoints || 0) > 0 && (
+                          <span className="text-[10px] px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg font-bold">
+                            +{task.rewardPoints} điểm
+                          </span>
+                        )}
+                        {task.recurrenceType && task.recurrenceType !== "none" && (
+                          <span className="text-[10px] px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg font-bold">
+                            Lặp {task.recurrenceType === "daily" ? "ngày" : task.recurrenceType === "weekly" ? "tuần" : "tháng"}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -693,6 +789,44 @@ export function Tasks({
                     <option value="false font-mono">Riêng tư (Chỉ Admin & người phân công thấy)</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+                <div className="space-y-1">
+                  <label className="text-slate-400 block font-semibold">Điểm thưởng</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={newRewardPoints || ""}
+                    onChange={(e) => setNewRewardPoints(Number(e.target.value))}
+                    placeholder="VD: 5"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-400 block font-semibold">Task lặp lại</label>
+                  <select
+                    value={newRecurrenceType}
+                    onChange={(e) => setNewRecurrenceType(e.target.value as RecurrenceType)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="none">Không lặp</option>
+                    <option value="daily">Hàng ngày</option>
+                    <option value="weekly">Hàng tuần</option>
+                    <option value="monthly">Hàng tháng</option>
+                  </select>
+                </div>
+                {newRecurrenceType !== "none" && (
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-slate-400 block font-semibold">Kết thúc lặp</label>
+                    <input
+                      type="date"
+                      value={newRecurrenceEndDate}
+                      onChange={(e) => setNewRecurrenceEndDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
