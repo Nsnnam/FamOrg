@@ -1,0 +1,6 @@
+{
+  "name": "Family Organizer",
+  "description": "A lightweight, stable, real-time family collaboration system for schedules, tasks, Markdown notes, and finances. Intuitively styled with the high-contrast Vibrant Palette theme. Features role-based access control, active session sync, and automatic backups, optimized for ARM64 and Raspberry Pi 5.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

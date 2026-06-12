@@ -1,0 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@450;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --slate-950: #f8fafc;  /* Main canvas bg -> light slate */
+  --slate-900: #ffffff;  /* Box/card backgrounds -> pure clinical white */
+  --slate-850: rgb(226, 232, 240);  /* Soft borders -> Slate 200 */
+  --slate-800: rgb(241, 245, 249);  /* Hover and active sub-areas -> Slate 100 */
+  
+  --slate-500: #94a3b8;  /* Placeholder / weak info -> Slate 400 */
+  --slate-450: #64748b;  /* helper details -> Slate 500 */
+  --slate-400: #475569;  /* Description text -> Slate 600 */
+  --slate-300: #334155;  /* Secondary text -> Slate 700 */
+  --slate-200: #1e293b;  /* Primary body text -> Slate 800 */
+  --slate-100: #0f172a;  /* Heavy heading titles -> Slate 900 */
+
+  /* Vibrant Accent Colors (Vibrant Indigo theme replacing Sky) */
+  --sky-950: #f0fdfa;    /* Light backdrop accent */
+  --sky-900: #f5f3ff;    /* Accent highlight backdrops */
+  --sky-850: #e0e7ff;
+  --sky-800: #c7d2fe;
+  --sky-700: #4338ca;    /* Indigo intense focus */
+  --sky-600: #4f46e5;    /* Action text hover color */
+  --sky-500: #4f46e5;    /* Primary Action Brand buttons (vivid Indigo) */
+  --sky-400: #6366f1;    /* Accent details - Indigo-500 */
+  --sky-300: #818cf8;    /* Muted accent details */
+  --sky-200: #c7d2fe;
+  --sky-100: #e0e7ff;
+}
+
+.dark {
+  --slate-950: #0d121f;  /* Deep dark navy/slate canvas */
+  --slate-900: #131b2e;  /* Box/card backgrounds -> dark navy card */
+  --slate-850: #1e2942;  /* Soft borders -> dark slate border */
+  --slate-800: #253352;  /* Hover and active sub-areas */
+  
+  --slate-500: #64748b;  /* Placeholder / weak info -> Slate 500 */
+  --slate-450: #8da1bf;  /* helper details */
+  --slate-400: #94a3b8;  /* Description text -> Slate 400 */
+  --slate-300: #cbd5e1;  /* Secondary text -> Slate 300 */
+  --slate-200: #e2e8f0;  /* Primary body text -> Slate 200 */
+  --slate-100: #f8fafc;  /* Heavy heading titles -> Slate 100 */
+
+  /* Vibrant Indigo accents customized beautifully for dark mode */
+  --sky-950: #0f172a;
+  --sky-900: #1e1b4b;
+  --sky-850: #312e81;
+  --sky-800: #3730a3;
+  --sky-700: #4338ca;
+  --sky-600: #4f46e5;
+  --sky-500: #6366f1;    /* Lighter, brighter Neon-ish Indigo for high contrast readability */
+  --sky-400: #818cf8;
+  --sky-300: #a5b4fc;
+  --sky-200: #c7d2fe;
+  --sky-100: #e0e7ff;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-slate-950: var(--slate-950);
+  --color-slate-900: var(--slate-900);
+  --color-slate-850: var(--slate-850);
+  --color-slate-800: var(--slate-800);
+  
+  --color-slate-500: var(--slate-500);
+  --color-slate-450: var(--slate-450);
+  --color-slate-400: var(--slate-400);
+  --color-slate-300: var(--slate-300);
+  --color-slate-200: var(--slate-200);
+  --color-slate-100: var(--slate-100);
+
+  --color-sky-950: var(--sky-950);
+  --color-sky-900: var(--sky-900);
+  --color-sky-850: var(--sky-850);
+  --color-sky-800: var(--sky-800);
+  --color-sky-700: var(--sky-700);
+  --color-sky-600: var(--sky-600);
+  --color-sky-500: var(--sky-500);
+  --color-sky-400: var(--sky-400);
+  --color-sky-300: var(--sky-300);
+  --color-sky-200: var(--sky-200);
+  --color-sky-100: var(--sky-100);
+}
+
+/* Global focus overlays & custom inputs to make them premium */
+input::placeholder, textarea::placeholder {
+  color: var(--slate-500) !important;
+}
+
+/* Set scrollbar style matching light/dark theme dynamics */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--slate-800);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--slate-500);
+}
+
+
