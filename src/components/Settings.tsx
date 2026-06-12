@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { User, UserRole } from "../types.js";
 import { motion } from "motion/react";
+import { useConfirm } from "./ConfirmDialog.js";
 
 interface SettingsProps {
   currentUser: User;
@@ -28,6 +29,7 @@ interface SettingsProps {
   activityLogs: any[];
   backups: any[];
   onCreateUser: (user: any) => Promise<any>;
+  onDeleteUser: (id: string) => Promise<any>;
   onCreateBackup: () => Promise<any>;
   onRestoreBackup: (id: string) => Promise<any>;
   onDeleteBackup: (id: string) => Promise<any>;
@@ -39,10 +41,13 @@ export function Settings({
   activityLogs,
   backups,
   onCreateUser,
+  onDeleteUser,
   onCreateBackup,
   onRestoreBackup,
   onDeleteBackup
 }: SettingsProps) {
+  // In-app confirmation dialog (replaces native browser confirm)
+  const { confirm, ConfirmDialog } = useConfirm();
   // Tab configuration
   const [activeTab, setActiveTab] = useState<"members" | "backups" | "logs">("members");
   
@@ -103,10 +108,38 @@ export function Settings({
     }
   };
 
+  const handleDeleteUserClick = async (member: User) => {
+    setActionError("");
+    setActionSuccess("");
+    const ok = await confirm({
+      title: `Xóa thành viên ${member.fullName}?`,
+      message: `Tài khoản @${member.username} sẽ bị xóa vĩnh viễn và không thể đăng nhập nữa. Các bản ghi (công việc, ghi chú, giao dịch) do thành viên này tạo trước đó vẫn được giữ lại trong hệ thống.`,
+      confirmLabel: "Xóa thành viên",
+      tone: "danger"
+    });
+    if (!ok) return;
+
+    setLoadingAction(`delete-user-${member.id}`);
+    try {
+      await onDeleteUser(member.id);
+      setActionSuccess(`Đã xóa tài khoản ${member.fullName} khỏi gia đình.`);
+    } catch (err: any) {
+      setActionError(err.message || "Xóa thành viên thất bại");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   const handleRestoreClick = async (backupId: string, filename: string) => {
     setActionError("");
     setActionSuccess("");
-    if (confirm(`CẢNH BÁO: Bạn có chắc chắn muốn phục hồi cơ sở dữ liệu về thời điểm "${filename}" không? Toàn bộ dữ liệu kể từ sau thời điểm đó sẽ bị THAY THẾ!`)) {
+    const ok = await confirm({
+      title: "Khôi phục cơ sở dữ liệu?",
+      message: `CẢNH BÁO: Toàn bộ dữ liệu hiện tại sẽ bị THAY THẾ bằng dữ liệu tại điểm sao lưu "${filename}". Mọi thay đổi phát sinh sau thời điểm đó sẽ mất. Bạn có chắc chắn không?`,
+      confirmLabel: "Khôi phục ngay",
+      tone: "danger"
+    });
+    if (ok) {
       setLoadingAction(`restore-${backupId}`);
       try {
         await onRestoreBackup(backupId);
@@ -124,7 +157,13 @@ export function Settings({
   };
 
   const handleDeleteBackupClick = async (backupId: string) => {
-    if (confirm("Gia đình có chắc muốn xóa tệp backup vật lý này khỏi đĩa không?")) {
+    const ok = await confirm({
+      title: "Xóa tệp sao lưu?",
+      message: "Tệp backup vật lý này sẽ bị xóa khỏi đĩa và không thể khôi phục lại. Bạn có chắc chắn không?",
+      confirmLabel: "Xóa tệp",
+      tone: "danger"
+    });
+    if (ok) {
       await onDeleteBackup(backupId);
     }
   };
@@ -207,9 +246,23 @@ export function Settings({
                       </div>
                     </div>
 
-                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${u.role === "admin" ? "bg-red-500/10 text-red-400 border border-red-500/10" : u.role === "member" ? "bg-blue-500/10 text-blue-400 border border-blue-500/10" : "bg-green-500/10 text-green-400 border border-green-500/10"}`}>
-                      {u.role.toUpperCase()}
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${u.role === "admin" ? "bg-red-500/10 text-red-400 border border-red-500/10" : u.role === "member" ? "bg-blue-500/10 text-blue-400 border border-blue-500/10" : "bg-green-500/10 text-green-400 border border-green-500/10"}`}>
+                        {u.role.toUpperCase()}
+                      </span>
+
+                      {/* Delete member (Admin only, cannot delete self) */}
+                      {currentUser.role === UserRole.ADMIN && u.id !== currentUser.id && (
+                        <button
+                          onClick={() => handleDeleteUserClick(u)}
+                          disabled={loadingAction === `delete-user-${u.id}`}
+                          className="p-1.5 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-500 hover:text-rose-400 rounded-lg cursor-pointer transition-all disabled:opacity-50"
+                          title={`Xóa tài khoản ${u.fullName}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -428,6 +481,8 @@ export function Settings({
         </div>
       )}
 
+      {/* In-app confirmation dialog */}
+      {ConfirmDialog}
     </div>
   );
 }

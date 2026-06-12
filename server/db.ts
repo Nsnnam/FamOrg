@@ -27,7 +27,10 @@ export function hashPassword(password: string): string {
   return crypto.pbkdf2Sync(password, SALT, 1000, 64, "sha512").toString("hex");
 }
 
-// Initial seed data
+// Initial seed data — a blank database with only a single admin account.
+// All demo members and sample content (tasks/plans/notes/transactions) were removed.
+// At least one admin is required because the app has no public sign-up; the
+// admin creates real members afterwards from the Settings screen.
 const initialDBState = (): FamilyOrganizerDB => {
   const users = [
     {
@@ -38,254 +41,17 @@ const initialDBState = (): FamilyOrganizerDB => {
       avatarColor: "bg-red-500",
       passwordHash: hashPassword("admin123"),
       createdAt: new Date().toISOString()
-    },
-    {
-      id: "user_mother",
-      username: "melan",
-      fullName: "Mẹ Lan (Member)",
-      role: UserRole.MEMBER,
-      avatarColor: "bg-pink-500",
-      passwordHash: hashPassword("melan123"),
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "user_father",
-      username: "bohung",
-      fullName: "Bố Hùng (Member)",
-      role: UserRole.MEMBER,
-      avatarColor: "bg-blue-500",
-      passwordHash: hashPassword("bohung123"),
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "user_child",
-      username: "bevy",
-      fullName: "Bé Vy (Guest/Kid)",
-      role: UserRole.GUEST,
-      avatarColor: "bg-amber-500",
-      passwordHash: hashPassword("bevy123"),
-      createdAt: new Date().toISOString()
-    }
-  ];
-
-  const notifications: Notification[] = [
-    {
-      id: "notif_1",
-      userId: "all",
-      title: "Chào mừng cả nhà!",
-      content: "Hệ thống Family Organizer đã khởi động thành công. Bố mẹ và bé có thể bắt đầu lập kế hoạch tuần mới rồi!",
-      type: "system",
-      isRead: false,
-      createdAt: new Date().toISOString()
-    }
-  ];
-
-  const tasks: Task[] = [
-    {
-      id: "task_1",
-      title: "Đi siêu thị mua đồ ăn tuần mới",
-      description: "Mua thịt heo, thịt bò, rau cải xanh, sữa bột cho bé Vy và nước giặt xả.",
-      status: "todo" as any,
-      priority: "high" as any,
-      dueDate: new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10) + " 17:00",
-      creatorId: "user_mother",
-      assigneeId: "user_father",
-      isShared: true,
-      tags: ["Mua sắm", "Thực phẩm"],
-      comments: [
-        {
-          id: "c_1",
-          userId: "user_father",
-          username: "bohung",
-          content: "Để anh đi làm về ghé qua siêu thị Coopmart mua luôn nhé.",
-          createdAt: new Date().toISOString()
-        }
-      ],
-      history: [
-        {
-          id: "h_1",
-          userId: "user_mother",
-          username: "melan",
-          action: "tạo task và gán cho Bố Hùng",
-          createdAt: new Date().toISOString()
-        }
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: "task_2",
-      title: "Dọn dẹp phòng đồ chơi của bé Vy",
-      description: "Nhắc nhở bé xếp gọn gàng gấu bông và lego vào tủ sau khi chơi xong.",
-      status: "in_progress" as any,
-      priority: "medium" as any,
-      dueDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10) + " 20:00",
-      creatorId: "user_father",
-      assigneeId: "user_child",
-      isShared: true,
-      tags: ["Nhà cửa", "Dạy con"],
-      comments: [],
-      history: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: "task_3",
-      title: "Làm slide báo cáo quý 2",
-      description: "Công việc công ty, chuẩn bị số liệu kế toán.",
-      status: "todo" as any,
-      priority: "high" as any,
-      dueDate: new Date(Date.now() + 86400000 * 4).toISOString().slice(0, 10) + " 09:00",
-      creatorId: "user_father",
-      assigneeId: "user_father",
-      isShared: false,
-      tags: ["Công việc"],
-      comments: [],
-      history: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ];
-
-  const plans: FamilyPlan[] = [
-    {
-      id: "plan_1",
-      title: "Đưa cả nhà đi dã ngoại Công viên Yên Sở",
-      description: "Chuẩn bị thảm trải, lều dã ngoại, hoa quả và bánh mì sandwich.",
-      startDate: new Date(Date.now() + 86400000 * 1).toISOString().slice(0, 10) + " 08:30",
-      endDate: new Date(Date.now() + 86400000 * 1).toISOString().slice(0, 10) + " 15:30",
-      isRecurring: false,
-      recurrenceType: "none",
-      creatorId: "user_father",
-      isShared: true,
-      color: "emerald",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "plan_2",
-      title: "Họp đại gia đình cuối tháng",
-      description: "Ăn cơm tối cùng ông bà nội.",
-      startDate: new Date(Date.now() + 86400000 * 7).toISOString().slice(0, 10) + " 18:00",
-      endDate: new Date(Date.now() + 86400000 * 7).toISOString().slice(0, 10) + " 21:00",
-      isRecurring: true,
-      recurrenceType: "monthly",
-      creatorId: "user_mother",
-      isShared: true,
-      color: "sky",
-      createdAt: new Date().toISOString()
-    }
-  ];
-
-  const notes: Note[] = [
-    {
-      id: "note_1",
-      title: "Mật mã Wifi gia đình & SĐT khẩn cấp",
-      content: `### 📶 Mạng Wifi Gia Đình
-- **Tên mạng (SSID):** \`Family_Home_5G\`
-- **Mật khẩu:** \`khoevadephangngay2026\`
-
-### 📞 Số Điện Thoại Quan Trọng
-- **Ông bà nội:** 0912.xxx.xxx
-- **Ông bà ngoại:** 0983.xxx.xxx
-- **Bác sĩ gia đình (phòng khám nhi):** 0904.xxx.xxx
-- **Kỹ thuật sửa điện nước:** 1900.xxxx
-`,
-      isPinned: true,
-      creatorId: "user_admin",
-      tags: ["Quan trọng", "Thông tin chung"],
-      isShared: true,
-      allowedRolesToEdit: [UserRole.ADMIN, UserRole.MEMBER],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    },
-    {
-      id: "note_2",
-      title: "Công thức nấu phở bò gia truyền",
-      content: `### Nguyên liệu chuẩn bị (cho 4 người):
-1. **Xương ống bò:** 1kg (ninh lấy nước dùng ngọt thơm)
-2. **Thịt bò (Thăn/Nạm):** 500g
-3. **Bánh phở ngon:** 1kg
-4. **Gia vị:** Đại hồi, tiểu hồi, quế chi, thảo quả, hành tây nướng, gừng nướng.
-
-### Cách nấu cụ thể:
-1. Ninh xương ống ít nhất 6 tiếng. Nhớ hớt bọt thường xuyên để nước dùng được trong.
-2. Nướng gừng, hành củ, rang thơm thảo mộc rồi bỏ vào túi vải thả vào nồi nước dùng ninh thêm 2 tiếng trước khi ăn.
-3. Cho bánh phở ra bát, xếp thịt bò tái/chín lên, rắc hành hoa rồi chan nước dùng thật sôi.
-`,
-      isPinned: false,
-      creatorId: "user_mother",
-      tags: ["Món ngon", "Gia đình"],
-      isShared: true,
-      allowedRolesToEdit: [UserRole.ADMIN, UserRole.MEMBER],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  ];
-
-  const transactions: FinancialTransaction[] = [
-    {
-      id: "tx_1",
-      type: "expense" as any,
-      amount: 450000,
-      category: "food",
-      account: "bank" as any,
-      description: "Thanh toán hóa đơn Coopmart mua thực phẩm tuần",
-      date: new Date().toISOString().slice(0, 10),
-      creatorId: "user_mother",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "tx_2",
-      type: "expense" as any,
-      amount: 1200000,
-      category: "utilities",
-      account: "bank" as any,
-      description: "Tiền điện sinh hoạt gia đình tháng 5/2026",
-      date: new Date().toISOString().slice(0, 10),
-      creatorId: "user_admin",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "tx_3",
-      type: "income" as any,
-      amount: 25000000,
-      category: "Lương tháng",
-      account: "bank" as any,
-      description: "Nhận chuyển khoản lương của bố Hùng",
-      date: new Date().toISOString().slice(0, 10),
-      creatorId: "user_father",
-      createdAt: new Date().toISOString()
-    },
-    {
-      id: "tx_4",
-      type: "expense" as any,
-      amount: 80000,
-      category: "transport",
-      account: "cash" as any,
-      description: "Đổ xăng xe máy Wave của mẹ Lan",
-      date: new Date().toISOString().slice(0, 10),
-      creatorId: "user_mother",
-      createdAt: new Date().toISOString()
     }
   ];
 
   return {
     users,
-    tasks,
-    plans,
-    notes,
-    transactions,
-    notifications,
-    activityLogs: [
-      {
-        id: "l_1",
-        userId: "user_admin",
-        username: "admin",
-        action: "Hệ thống",
-        details: "Cơ sở dữ liệu gia đình được kích hoạt với các tài khoản mẫu.",
-        createdAt: new Date().toISOString()
-      }
-    ],
+    tasks: [],
+    plans: [],
+    notes: [],
+    transactions: [],
+    notifications: [],
+    activityLogs: [],
     backups: []
   };
 };
@@ -510,6 +276,29 @@ export class FamilyDB {
     // Return safe user without secret passwordHash
     const { passwordHash, ...safeUser } = newUser;
     return safeUser;
+  }
+
+  // Delete User (Admin Only)
+  public static deleteUser(userId: string, adminId: string, adminUser: string): void {
+    const db = this.readRaw();
+    const target = db.users.find(u => u.id === userId);
+    if (!target) {
+      throw new Error("Không tìm thấy thành viên này trong gia đình!");
+    }
+    if (userId === adminId) {
+      throw new Error("Bạn không thể tự xóa tài khoản của chính mình!");
+    }
+    // Never allow removing the very last admin, or the system becomes unmanageable
+    if (target.role === UserRole.ADMIN) {
+      const adminCount = db.users.filter(u => u.role === UserRole.ADMIN).length;
+      if (adminCount <= 1) {
+        throw new Error("Không thể xóa Quản trị viên (Admin) cuối cùng của hệ thống!");
+      }
+    }
+
+    db.users = db.users.filter(u => u.id !== userId);
+    this.writeRaw(db);
+    this.logActivity(adminId, adminUser, "Xóa thành viên", `Đã xóa tài khoản ${target.fullName} (@${target.username}).`);
   }
 
   // Tasks Management

@@ -360,6 +360,19 @@ app.post("/api/users", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthReq
   }
 });
 
+app.delete("/api/users/:id", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const { id } = req.params;
+
+  try {
+    FamilyDB.deleteUser(id, session.userId, session.username);
+    broadcastSyncEvent("USERS_UPDATE", { deletedId: id });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // --- NOTIFICATIONS ENDPOINTS ---
 
 app.get("/api/notifications", requireAuth, (req: AuthRequest, res: Response) => {
