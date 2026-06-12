@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   family-organizer:
     build:
@@ -8,8 +6,11 @@ services:
     container_name: family_organizer_app
     restart: unless-stopped
     ports:
-      # host 3001 -> container 3000 (cổng 3000 trên host đã bị container "homepage" dùng)
-      - "3001:3000"
+      # Bind only to loopback + LAN IP (NOT 0.0.0.0) so the Tailscale interface
+      # stays free for `tailscale serve` to expose HTTPS on the same port 3001.
+      # This matches the rest of the homelab (immich/homepage/etc).
+      - "127.0.0.1:3001:3000"
+      - "192.168.1.2:3001:3000"
     volumes:
       # Persistent storage on Raspberry Pi 5.
       # DB file to store tasks, finances, notes and daily backups.
