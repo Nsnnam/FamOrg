@@ -30,6 +30,9 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+# Runtime library required by the native better-sqlite3 addon (compiled with g++).
+RUN apk add --no-cache libstdc++
+
 # Create a directory to store persistent data (database + backups)
 RUN mkdir -p /app/data && chown -R node:node /app/data
 

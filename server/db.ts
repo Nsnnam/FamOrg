@@ -21,6 +21,7 @@ import {
   ShoppingItem,
   Notification
 } from "../src/types.js";
+import { sqliteIsEmpty, sqliteLoad, sqliteSave, sqliteCheckpoint } from "./sqlite.js";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
@@ -141,8 +142,29 @@ if (!fs.existsSync(BACKUP_DIR)) {
   fs.mkdirSync(BACKUP_DIR, { recursive: true });
 }
 
-// In-memory lock to avoid write race conditions (mutex)
-let isWriting = false;
+// One-time storage bootstrap: if SQLite is empty, import the existing db.json
+// (preserving ids so sessions/frontend keep working), otherwise seed a blank DB.
+// The original db.json is left untouched as a pre-migration rollback snapshot.
+(function bootstrapStorage() {
+  try {
+    if (!sqliteIsEmpty()) return;
+    let seed: FamilyOrganizerDB;
+    if (fs.existsSync(DB_FILE)) {
+      try {
+        seed = normalizeDB(JSON.parse(fs.readFileSync(DB_FILE, "utf8")));
+        console.log("Đã nhập dữ liệu từ db.json sang SQLite (family.db).");
+      } catch (e) {
+        console.error("db.json hỏng, khởi tạo CSDL trắng:", e);
+        seed = initialDBState();
+      }
+    } else {
+      seed = initialDBState();
+    }
+    sqliteSave(seed);
+  } catch (e) {
+    console.error("Lỗi bootstrap SQLite:", e);
+  }
+})();
 
 function parseLocalDateTime(value: string): Date | null {
   if (!value) return null;
@@ -174,46 +196,15 @@ function advanceDateString(value: string, recurrenceType: string, interval = 1, 
 // Core DB operations helper
 export class FamilyDB {
   private static readRaw(): FamilyOrganizerDB {
-    if (!fs.existsSync(DB_FILE)) {
-      const defaultState = initialDBState();
-      fs.writeFileSync(DB_FILE, JSON.stringify(defaultState, null, 2), "utf8");
-      return defaultState;
-    }
-    try {
-      const data = fs.readFileSync(DB_FILE, "utf8");
-      return normalizeDB(JSON.parse(data));
-    } catch (e) {
-      console.error("Lỗi đọc DB file, tạo lại dựa trên file lỗi:", e);
-      // Create backup of corrupted file before destroying
-      try {
-        const corruptedBackup = path.join(DATA_DIR, `db_corrupted_${Date.now()}.json`);
-        if (fs.existsSync(DB_FILE)) {
-          fs.copyFileSync(DB_FILE, corruptedBackup);
-        }
-      } catch (backupErr) {
-        console.error("Không thể backup DB hỏng", backupErr);
-      }
-      const defaultState = initialDBState();
-      fs.writeFileSync(DB_FILE, JSON.stringify(defaultState, null, 2), "utf8");
-      return defaultState;
-    }
+    return normalizeDB(sqliteLoad());
   }
 
   private static writeRaw(db: FamilyOrganizerDB): void {
-    if (isWriting) {
-      // Small spin-lock wait/retry
-      setTimeout(() => this.writeRaw(db), 10);
-      return;
-    }
-    isWriting = true;
+    // better-sqlite3 is synchronous; the save runs in a single atomic WAL transaction.
     try {
-      const tempFile = `${DB_FILE}.tmp`;
-      fs.writeFileSync(tempFile, JSON.stringify(db, null, 2), "utf8");
-      fs.renameSync(tempFile, DB_FILE);
+      sqliteSave(db);
     } catch (e) {
-      console.error("Lỗi ghi dữ liệu DB:", e);
-    } finally {
-      isWriting = false;
+      console.error("Lỗi ghi dữ liệu vào SQLite:", e);
     }
   }
 
@@ -243,12 +234,9 @@ export class FamilyDB {
     const destPath = path.join(BACKUP_DIR, filename);
 
     try {
-      // Just copy the current live database file
-      if (fs.existsSync(DB_FILE)) {
-        fs.copyFileSync(DB_FILE, destPath);
-      } else {
-        fs.writeFileSync(destPath, JSON.stringify(db, null, 2), "utf8");
-      }
+      // Snapshot the live SQLite data to a JSON file (human-readable, restore-friendly).
+      sqliteCheckpoint();
+      fs.writeFileSync(destPath, JSON.stringify(db, null, 2), "utf8");
 
       const stats = fs.statSync(destPath);
       const sizeKb = Math.ceil(stats.size / 1024);
@@ -310,8 +298,8 @@ export class FamilyDB {
         throw new Error("Tệp sao lưu không hợp lệ hoặc thiếu thông tin cốt lõi!");
       }
 
-      // Overwrite current file
-      fs.writeFileSync(DB_FILE, JSON.stringify(parsedData, null, 2), "utf8");
+      // Load the snapshot back into SQLite (atomic replace)
+      sqliteSave(normalizeDB(parsedData));
 
       // Re-log the activity to the newly loaded db!
       this.logActivity(userId, username, "Phục hồi hệ thống", `Đã phục hồi dữ liệu về điểm sao lưu: ${backup.filename}.`);
