@@ -1,10 +1,15 @@
 {
+  "id": "/",
   "name": "Family Organizer",
   "short_name": "Family Hub",
-  "description": "Family tasks, shopping, budgets, medication reminders, and rewards.",
+  "description": "Quản lý công việc, đi chợ, ngân sách, nhắc thuốc và điểm thưởng cho cả gia đình.",
+  "lang": "vi",
+  "dir": "ltr",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "lifestyle"],
   "background_color": "#020617",
   "theme_color": "#0f172a",
   "icons": [
@@ -12,7 +17,39 @@
       "src": "/pwa-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Công việc",
+      "short_name": "Task",
+      "url": "/?tab=tasks",
+      "description": "Xem và quản lý công việc gia đình"
+    },
+    {
+      "name": "Đi chợ",
+      "short_name": "Đi chợ",
+      "url": "/?tab=shopping",
+      "description": "Danh sách mua sắm chung"
+    },
+    {
+      "name": "Nhắc thuốc",
+      "short_name": "Thuốc",
+      "url": "/?tab=medications",
+      "description": "Lịch uống thuốc của gia đình"
+    },
+    {
+      "name": "Chi tiêu",
+      "short_name": "Chi tiêu",
+      "url": "/?tab=finance",
+      "description": "Sổ thu chi và ngân sách"
     }
   ]
 }

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import crypto from "crypto";
