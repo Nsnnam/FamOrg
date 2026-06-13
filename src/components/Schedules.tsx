@@ -807,6 +807,7 @@ export function Schedules({
                   <label className="text-slate-400 block font-semibold">Bắt đầu <span className="text-rose-400">*</span></label>
                   <input
                     type="datetime-local"
+                    lang="en-GB"
                     value={newStartDate ? newStartDate.replace(" ", "T") : ""}
                     onChange={(e) => setNewStartDate(e.target.value ? e.target.value.replace("T", " ") : "")}
                     className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
@@ -817,6 +818,7 @@ export function Schedules({
                   <label className="text-slate-400 block font-semibold">Kết thúc</label>
                   <input
                     type="datetime-local"
+                    lang="en-GB"
                     value={newEndDate ? newEndDate.replace(" ", "T") : ""}
                     onChange={(e) => setNewEndDate(e.target.value ? e.target.value.replace("T", " ") : "")}
                     className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
