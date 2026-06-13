@@ -21,7 +21,8 @@ import {
   Image as ImageIcon,
   Save,
   X,
-  KeyRound
+  KeyRound,
+  Pencil
 } from "lucide-react";
 import { User, UserRole } from "../types.js";
 import { motion } from "motion/react";
@@ -40,6 +41,7 @@ interface SettingsProps {
   onUpdateProfile: (profile: any) => Promise<any>;
   onChangePassword: (payload: { currentPassword: string; newPassword: string }) => Promise<any>;
   onResetUserPassword: (userId: string, newPassword: string) => Promise<any>;
+  onAdminUpdateUser: (userId: string, data: any) => Promise<any>;
   requestedTab?: SettingsTab;
   requestedTabSeq?: number;
   onCreateBackup: () => Promise<any>;
@@ -57,6 +59,7 @@ export function Settings({
   onUpdateProfile,
   onChangePassword,
   onResetUserPassword,
+  onAdminUpdateUser,
   requestedTab = "profile",
   requestedTabSeq = 0,
   onCreateBackup,
@@ -104,6 +107,14 @@ export function Settings({
   // Admin reset-password modal state
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [resetNewPwd, setResetNewPwd] = useState("");
+
+  // Admin edit-user modal state
+  const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [euFullName, setEuFullName] = useState("");
+  const [euRole, setEuRole] = useState<UserRole>(UserRole.MEMBER);
+  const [euDob, setEuDob] = useState("");
+  const [euPhone, setEuPhone] = useState("");
+  const [euColor, setEuColor] = useState("bg-indigo-500");
 
   // Action state trackers
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
@@ -238,6 +249,44 @@ export function Settings({
       setResetNewPwd("");
     } catch (err: any) {
       setActionError(err.message || "Đặt lại mật khẩu thất bại");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleOpenEditUser = (u: User) => {
+    setEditTarget(u);
+    setEuFullName(u.fullName);
+    setEuRole(u.role);
+    setEuDob(u.dateOfBirth || "");
+    setEuPhone(u.phone || "");
+    setEuColor(u.avatarColor || "bg-indigo-500");
+    setActionError("");
+    setActionSuccess("");
+  };
+
+  const handleEditUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarget) return;
+    setActionError("");
+    setActionSuccess("");
+    if (!euFullName.trim()) {
+      setActionError("Tên hiển thị không được để trống!");
+      return;
+    }
+    setLoadingAction("edit-user");
+    try {
+      await onAdminUpdateUser(editTarget.id, {
+        fullName: euFullName.trim(),
+        role: euRole,
+        dateOfBirth: euDob,
+        phone: euPhone,
+        avatarColor: euColor
+      });
+      setActionSuccess(`Đã cập nhật thông tin của ${euFullName.trim()}.`);
+      setEditTarget(null);
+    } catch (err: any) {
+      setActionError(err.message || "Cập nhật thành viên thất bại");
     } finally {
       setLoadingAction(null);
     }
@@ -575,6 +624,15 @@ export function Settings({
                       {/* Reset password (Admin only) */}
                       {currentUser.role === UserRole.ADMIN && (
                         <button
+                          onClick={() => handleOpenEditUser(u)}
+                          className="p-1.5 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-500 hover:text-sky-400 rounded-lg cursor-pointer transition-all"
+                          title={`Sửa thông tin & vai trò của ${u.fullName}`}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {currentUser.role === UserRole.ADMIN && (
+                        <button
                           onClick={() => { setResetTarget(u); setResetNewPwd(""); setActionError(""); setActionSuccess(""); }}
                           className="p-1.5 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-slate-500 hover:text-amber-400 rounded-lg cursor-pointer transition-all"
                           title={`Đặt lại mật khẩu cho ${u.fullName}`}
@@ -842,6 +900,108 @@ export function Settings({
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Admin edit-user modal */}
+      {editTarget && (
+        <div
+          onClick={() => setEditTarget(null)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[60] p-4"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+              <Avatar user={{ fullName: euFullName || editTarget.fullName, avatarColor: euColor, avatarImage: editTarget.avatarImage }} className="w-10 h-10 rounded-xl text-base" extraClass="shrink-0" />
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold text-slate-100 truncate">Sửa thông tin thành viên</h3>
+                <p className="text-[11px] text-slate-500 font-mono truncate">@{editTarget.username}</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleEditUserSubmit} className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="text-slate-400 block font-semibold">Tên hiển thị <span className="text-rose-450">*</span></label>
+                <input
+                  type="text"
+                  value={euFullName}
+                  onChange={(e) => setEuFullName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-400 block font-semibold">Vai trò (Phân quyền)</label>
+                <select
+                  value={euRole}
+                  onChange={(e) => setEuRole(e.target.value as UserRole)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
+                >
+                  <option value="member">Thành viên (Member)</option>
+                  <option value="guest">Khách / Trẻ em (Guest)</option>
+                  <option value="admin">Quản lý (Admin)</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 min-w-0">
+                  <label className="text-slate-400 font-semibold flex items-center gap-1"><Cake className="w-3.5 h-3.5 text-pink-400" /> Ngày sinh</label>
+                  <input
+                    type="date"
+                    value={euDob}
+                    onChange={(e) => setEuDob(e.target.value)}
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+                <div className="space-y-1 min-w-0">
+                  <label className="text-slate-400 font-semibold flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-emerald-400" /> SĐT</label>
+                  <input
+                    type="tel"
+                    value={euPhone}
+                    onChange={(e) => setEuPhone(e.target.value)}
+                    placeholder="09xx xxx xxx"
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-400 block font-semibold">Màu nền avatar</label>
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  {colors.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setEuColor(c)}
+                      className={`w-5.5 h-5.5 rounded-full cursor-pointer border-2 transition-all shrink-0 ${euColor === c ? "border-slate-100 scale-110" : "border-transparent opacity-80"}`}
+                      style={{ backgroundColor: c === "bg-indigo-500" ? "#6366f1" : c === "bg-sky-500" ? "#0ea5e9" : c === "bg-emerald-500" ? "#10b981" : c === "bg-teal-500" ? "#14b8a6" : c === "bg-rose-500" ? "#f43f5e" : c === "bg-pink-500" ? "#ec4899" : c === "bg-amber-500" ? "#f59e0b" : "#a855f7" }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditTarget(null)}
+                  className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl transition-all cursor-pointer font-bold"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={loadingAction === "edit-user"}
+                  className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl font-bold transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" /> {loadingAction === "edit-user" ? "Đang lưu..." : "Lưu thay đổi"}
+                </button>
+              </div>
+            </form>
+          </motion.div>
         </div>
       )}
 

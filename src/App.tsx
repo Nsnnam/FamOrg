@@ -891,6 +891,25 @@ export default function App() {
     return res.json();
   };
 
+  const handleAdminUpdateUser = async (userId: string, data: any) => {
+    const res = await fetch(`/api/users/${userId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error);
+    }
+    const d = await res.json();
+    // If the admin edited their own account, reflect it immediately
+    if (d.user && currentUser && d.user.id === currentUser.id) {
+      setCurrentUser(d.user);
+    }
+    fetchUsers();
+    return d;
+  };
+
   const handleCreateBackup = async () => {
     const res = await fetch("/api/admin/backups", {
       method: "POST",
@@ -1308,6 +1327,7 @@ export default function App() {
                   onUpdateProfile={handleUpdateProfile}
                   onChangePassword={handleChangePassword}
                   onResetUserPassword={handleResetUserPassword}
+                  onAdminUpdateUser={handleAdminUpdateUser}
                   requestedTab={settingsTabRequest.tab}
                   requestedTabSeq={settingsTabRequest.seq}
                   onCreateBackup={handleCreateBackup}

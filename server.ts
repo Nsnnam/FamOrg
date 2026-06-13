@@ -769,6 +769,20 @@ app.delete("/api/users/:id", requireAuth, requireRole([UserRole.ADMIN]), (req: A
   }
 });
 
+app.post("/api/users/:id", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const { id } = req.params;
+  const { fullName, role, dateOfBirth, phone, avatarColor } = req.body;
+
+  try {
+    const updated = FamilyDB.adminUpdateUser(id, { fullName, role, dateOfBirth, phone, avatarColor }, session.userId, session.username);
+    broadcastSyncEvent("USERS_UPDATE", { updatedId: id });
+    res.json({ user: updated });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post("/api/users/:id/reset-password", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   const { id } = req.params;
