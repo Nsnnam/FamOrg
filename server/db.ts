@@ -505,6 +505,44 @@ export class FamilyDB {
     this.logActivity(userId, db.users[idx].username, "Đổi mật khẩu", "Đã đổi mật khẩu đăng nhập của mình.");
   }
 
+  // Admin updates another member's profile + role
+  public static adminUpdateUser(
+    targetId: string,
+    data: { fullName?: string; role?: UserRole; dateOfBirth?: string; phone?: string; avatarColor?: string },
+    adminId: string,
+    adminUser: string
+  ): User {
+    const db = this.readRaw();
+    const idx = db.users.findIndex(u => u.id === targetId);
+    if (idx === -1) throw new Error("Không tìm thấy thành viên!");
+    const user = db.users[idx];
+
+    // Never demote the very last admin (would lock everyone out of management)
+    if (data.role !== undefined && data.role !== UserRole.ADMIN && user.role === UserRole.ADMIN) {
+      const adminCount = db.users.filter(u => u.role === UserRole.ADMIN).length;
+      if (adminCount <= 1) {
+        throw new Error("Không thể đổi vai trò của Quản trị viên (Admin) cuối cùng!");
+      }
+    }
+
+    if (data.fullName !== undefined) {
+      const trimmed = data.fullName.trim();
+      if (!trimmed) throw new Error("Tên hiển thị không được để trống!");
+      user.fullName = trimmed;
+    }
+    if (data.role !== undefined) user.role = data.role;
+    if (data.dateOfBirth !== undefined) user.dateOfBirth = data.dateOfBirth || undefined;
+    if (data.phone !== undefined) user.phone = data.phone.trim() || undefined;
+    if (data.avatarColor !== undefined && data.avatarColor) user.avatarColor = data.avatarColor;
+
+    db.users[idx] = user;
+    this.writeRaw(db);
+    this.logActivity(adminId, adminUser, "Cập nhật thành viên", `Đã cập nhật ${user.fullName} (@${user.username}) — vai trò: ${user.role}.`);
+
+    const { passwordHash, ...safeUser } = user;
+    return safeUser;
+  }
+
   // Admin resets another member's password (no current password needed)
   public static adminResetPassword(targetId: string, newPassword: string, adminId: string, adminUser: string): void {
     const db = this.readRaw();
