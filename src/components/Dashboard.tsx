@@ -94,17 +94,17 @@ export function Dashboard({
     return { income, expense, balance: income - expense };
   }, [transactions, currentMonth]);
 
-  // 3. Upcoming schedule events (next 3 days)
+  // 3. Upcoming schedule events (next 20 days)
   const upcomingPlans = useMemo(() => {
     const now = new Date();
-    const threshold = new Date(Date.now() + 86400000 * 3);
+    const threshold = new Date(Date.now() + 86400000 * 20);
     return plans
       .filter(p => {
         const pDate = new Date(p.startDate.replace(" ", "T"));
         return pDate >= now && pDate <= threshold;
       })
       .sort((a, b) => a.startDate.localeCompare(b.startDate))
-      .slice(0, 5);
+      .slice(0, 8);
   }, [plans]);
 
   // 4. Pinned notes
@@ -360,7 +360,7 @@ export function Dashboard({
           id="stat-schedules"
         >
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-medium">Lịch 3 ngày tới</span>
+            <span className="text-slate-400 text-xs font-medium">Lịch 20 ngày tới</span>
             <div className="bg-amber-500/10 p-2 rounded-xl text-amber-400 group-hover:scale-110 transition-transform">
               <Calendar className="w-5 h-5" />
             </div>
@@ -396,7 +396,7 @@ export function Dashboard({
 
             {upcomingPlans.length === 0 ? (
               <div className="bg-slate-950/40 border border-dashed border-slate-800 p-6 rounded-xl text-center">
-                <p className="text-sm text-slate-500">Không có kế hoạch quan trọng nào trong 3 ngày tới.</p>
+                <p className="text-sm text-slate-500">Không có kế hoạch quan trọng nào trong 20 ngày tới.</p>
               </div>
             ) : (
               <div className="space-y-3">
