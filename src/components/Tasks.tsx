@@ -803,8 +803,8 @@ export function Tasks({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Độ ưu tiên</label>
                   <select 
                     value={newPriority}
@@ -817,19 +817,19 @@ export function Tasks({
                   </select>
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Hạn hoàn thành</label>
                   <input
                     type="datetime-local"
                     value={newDueDate ? newDueDate.replace(" ", "T") : ""}
                     onChange={(e) => setNewDueDate(e.target.value ? e.target.value.replace("T", " ") : "")}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Giao việc cho ai</label>
                   <select 
                     value={newAssignee}
@@ -856,7 +856,7 @@ export function Tasks({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Điểm thưởng</label>
                   <input
