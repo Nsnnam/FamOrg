@@ -9,7 +9,10 @@ import path from "path";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret } from "./server/db.js";
-import { UserRole } from "./src/types.js";
+import { UserRole, isLimitedViewer } from "./src/types.js";
+
+// Accepted permission roles for write validation
+const VALID_ROLES = new Set<string>([UserRole.ADMIN, UserRole.MEMBER, UserRole.CHILD, UserRole.GUEST]);
 
 const app = express();
 const PORT = 3000;
@@ -248,11 +251,11 @@ app.get("/api/tasks", requireAuth, (req: AuthRequest, res: Response) => {
 app.post("/api/tasks", requireAuth, (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   
-  // Guard write permissions - guest role cannot edit tasks other than their assigned ones or create new tasks freely
-  if (session.role === UserRole.GUEST && req.body.id && !req.body.comments) {
+  // Guard write permissions - Child/Guest can only edit tasks they created or are assigned to.
+  if (isLimitedViewer(session.role) && req.body.id && !req.body.comments) {
     const existing = FamilyDB.getTasks().find(t => t.id === req.body.id);
-    if (existing && existing.assigneeId !== session.userId) {
-      res.status(403).json({ error: "Tài khoản khách chỉ được sửa đổi trạng thái công việc của chính mình!" });
+    if (existing && existing.creatorId !== session.userId && existing.assigneeId !== session.userId) {
+      res.status(403).json({ error: "Bạn chỉ được sửa đổi công việc do mình tạo hoặc được giao!" });
       return;
     }
   }
@@ -305,10 +308,20 @@ app.get("/api/plans", requireAuth, (req: AuthRequest, res: Response) => {
   res.json({ plans });
 });
 
-app.post("/api/plans", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+app.post("/api/plans", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER, UserRole.CHILD]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
+  const planData = req.body;
+
+  if (planData.id) {
+    const existing = FamilyDB.getPlans().find(p => p.id === planData.id);
+    if (existing && existing.creatorId !== session.userId && session.role !== UserRole.ADMIN) {
+      res.status(403).json({ error: "Bạn chỉ có thể chỉnh sửa sự kiện do mình tạo. Admin có toàn quyền chỉnh sửa lịch." });
+      return;
+    }
+  }
+
   try {
-    const savedPlan = FamilyDB.savePlan(req.body, session.userId, session.username);
+    const savedPlan = FamilyDB.savePlan(planData, session.userId, session.username);
     broadcastSyncEvent("PLANS_UPDATE", { planId: savedPlan.id });
     res.json({ plan: savedPlan });
   } catch (err: any) {
@@ -316,9 +329,15 @@ app.post("/api/plans", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER
   }
 });
 
-app.delete("/api/plans/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+app.delete("/api/plans/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER, UserRole.CHILD]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   const { id } = req.params;
+  const existing = FamilyDB.getPlans().find(p => p.id === id);
+
+  if (existing && existing.creatorId !== session.userId && session.role !== UserRole.ADMIN) {
+    res.status(403).json({ error: "Bạn chỉ có thể xóa sự kiện do mình tạo. Admin có toàn quyền quản lý lịch." });
+    return;
+  }
 
   try {
     FamilyDB.deletePlan(id, session.userId, session.username);
@@ -711,10 +730,14 @@ app.get("/api/users", requireAuth, (req: AuthRequest, res: Response) => {
 
 app.post("/api/users", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
-  const { username, fullName, role, passwordPlain, avatarColor, dateOfBirth, phone } = req.body;
+  const { username, fullName, role, passwordPlain, avatarColor, dateOfBirth, phone, familyRelation } = req.body;
 
   if (!username || !fullName || !role || !passwordPlain) {
     res.status(400).json({ error: "Vui lòng nhập đầy đủ chi tiết thành viên mới!" });
+    return;
+  }
+  if (!VALID_ROLES.has(role)) {
+    res.status(400).json({ error: "Vai trò (phân quyền) không hợp lệ!" });
     return;
   }
 
@@ -726,7 +749,8 @@ app.post("/api/users", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthReq
       passwordPlain,
       avatarColor,
       dateOfBirth,
-      phone
+      phone,
+      familyRelation
     }, session.userId, session.username);
 
     broadcastSyncEvent("USERS_UPDATE");
@@ -772,10 +796,15 @@ app.delete("/api/users/:id", requireAuth, requireRole([UserRole.ADMIN]), (req: A
 app.post("/api/users/:id", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   const { id } = req.params;
-  const { fullName, role, dateOfBirth, phone, avatarColor } = req.body;
+  const { fullName, role, dateOfBirth, phone, avatarColor, familyRelation } = req.body;
+
+  if (role !== undefined && !VALID_ROLES.has(role)) {
+    res.status(400).json({ error: "Vai trò (phân quyền) không hợp lệ!" });
+    return;
+  }
 
   try {
-    const updated = FamilyDB.adminUpdateUser(id, { fullName, role, dateOfBirth, phone, avatarColor }, session.userId, session.username);
+    const updated = FamilyDB.adminUpdateUser(id, { fullName, role, dateOfBirth, phone, avatarColor, familyRelation }, session.userId, session.username);
     broadcastSyncEvent("USERS_UPDATE", { updatedId: id });
     res.json({ user: updated });
   } catch (err: any) {
@@ -1043,6 +1072,19 @@ async function startServer() {
       console.error("Lỗi tạo nhắc deadline định kỳ:", e);
     }
   }, 30 * 60 * 1000);
+
+  // Backup on startup if the most recent auto backup is missing or stale (>20h).
+  // Guards against never backing up when the server restarts more often than every 24h.
+  try {
+    const lastAuto = FamilyDB.getBackups().find(b => b.type === "auto");
+    const staleMs = 20 * 60 * 60 * 1000;
+    if (!lastAuto || Date.now() - new Date(lastAuto.createdAt).getTime() > staleMs) {
+      console.log("Tạo backup tự động lúc khởi động...");
+      FamilyDB.createBackup("auto", "system", "Hệ thống");
+    }
+  } catch (e) {
+    console.error("Lỗi backup khi khởi động:", e);
+  }
 
   // Periodic automatic daily backup + birthday reminder refresh
   setInterval(() => {

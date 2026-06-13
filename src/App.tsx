@@ -37,7 +37,10 @@ import {
   RewardPointEntry,
   BudgetLimit,
   RecurringBill,
-  MedicationReminder
+  MedicationReminder,
+  ROLE_LABELS,
+  FAMILY_RELATION_LABELS,
+  canAccessFinance
 } from "./types.js";
 import { Auth } from "./components/Auth.js";
 import { Avatar } from "./components/Avatar.js";
@@ -144,7 +147,7 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
-    if (currentUser.role === UserRole.GUEST && activeTab === "finance") {
+    if (!canAccessFinance(currentUser.role) && activeTab === "finance") {
       setActiveTab("dashboard");
       return;
     }
@@ -265,8 +268,8 @@ export default function App() {
 
   const fetchTransactions = async () => {
     if (!currentUser) return;
-    // Guest role does not have authorization to view transactions list
-    if (currentUser.role === UserRole.GUEST) return;
+    // Only adults (Admin/Member) may view the transactions list
+    if (!canAccessFinance(currentUser.role)) return;
     try {
       const res = await fetch("/api/finance", { headers: getAuthHeader() });
       if (res.ok) {
@@ -293,7 +296,7 @@ export default function App() {
   };
 
   const fetchFinancePlanning = async () => {
-    if (!currentUser || currentUser.role === UserRole.GUEST) return;
+    if (!currentUser || !canAccessFinance(currentUser.role)) return;
     try {
       const [budgetRes, billRes] = await Promise.all([
         fetch("/api/finance/budgets", { headers: getAuthHeader() }),
@@ -993,8 +996,8 @@ export default function App() {
     { id: "notes", label: "Ghi chú", icon: FileText },
     { id: "shopping", label: "Đi chợ", icon: ShoppingCart },
     { id: "medications", label: "Thuốc", icon: Pill },
-    // Only show finance to Admin and Members, hide from Guest child Account
-    ...(currentUser.role !== UserRole.GUEST ? [{ id: "finance", label: "Chi tiêu", icon: Wallet }] : []),
+    // Only show finance to Admin and Members; hidden from Child and Guest accounts
+    ...(canAccessFinance(currentUser.role) ? [{ id: "finance", label: "Chi tiêu", icon: Wallet }] : []),
     { id: "settings", label: "Thiết lập", icon: Settings2 }
   ];
 
@@ -1033,7 +1036,7 @@ export default function App() {
       <div className="absolute bottom-10 left-10 w-96 h-96 bg-sky-500/5 rounded-full blur-[140px] pointer-events-none" />
 
       {/* 1. SIDEBAR Navigation Drawer (Leaning desktop screens) */}
-      <aside className="hidden lg:flex h-screen sticky top-0 flex-col w-64 border-r border-slate-850 bg-slate-900/60 backdrop-blur-md justify-between shrink-0 p-5 z-20 overflow-hidden">
+      <aside className="hidden lg:flex h-screen sticky top-0 flex-col w-64 border-r border-slate-850 bg-slate-900/60 backdrop-blur-md justify-between shrink-0 px-5 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] z-20 overflow-hidden">
         <div className="min-h-0 flex-1 space-y-8 overflow-y-auto pr-1">
           {/* Main Visual Title */}
           <div className="flex items-center gap-2.5 px-2">
@@ -1077,11 +1080,13 @@ export default function App() {
             <Avatar user={currentUser} className="w-8.5 h-8.5 rounded-xl text-sm" extraClass="shrink-0" />
             <div className="space-y-0.5 truncate flex-1">
               <span className="font-bold text-slate-100 block truncate">{currentUser.fullName}</span>
-              <span className="text-[10px] text-slate-500 uppercase font-mono block">Role: {currentUser.role}</span>
+              <span className="text-[10px] text-slate-400 font-mono block truncate">
+                {ROLE_LABELS[currentUser.role]}{currentUser.familyRelation ? ` • ${FAMILY_RELATION_LABELS[currentUser.familyRelation]}` : ""}
+              </span>
             </div>
           </button>
 
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full text-slate-400 hover:text-rose-400 flex items-center gap-3 px-3 py-2.5 hover:bg-rose-500/5 rounded-xl text-xs font-bold transition-all cursor-pointer"
           >
@@ -1216,15 +1221,20 @@ export default function App() {
         </header>
 
         {/* WORKSPACE VIEW CONTAINER */}
-        <main className="min-h-0 flex-1 p-5 md:p-6 overflow-y-auto scrollbar-thin">
+        <main className="min-h-0 flex-1 px-5 md:px-6 pt-5 md:pt-6 overflow-y-auto scrollbar-thin">
           <AnimatePresence mode="wait">
+            {/*
+              Bottom padding lives on the (overflowing) content, not <main>:
+              a scroll container's own padding-bottom is dropped by browsers when content overflows.
+              Extra room so the last widget clears the floating buttons + phone home bar.
+            */}
             <motion.div
               key={activeTab}
               initial={{ opacity: 0, x: 5 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -5 }}
               transition={{ duration: 0.15 }}
-              className="h-full"
+              className="min-h-full pb-[max(6rem,calc(env(safe-area-inset-bottom)+5rem))]"
             >
               {activeTab === "dashboard" && (
                 <Dashboard
@@ -1300,7 +1310,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "finance" && currentUser.role !== UserRole.GUEST && (
+              {activeTab === "finance" && canAccessFinance(currentUser.role) && (
                 <Finance
                   currentUser={currentUser}
                   users={users}
@@ -1351,7 +1361,7 @@ export default function App() {
             initial={{ x: -100 }}
             animate={{ x: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-72 h-full bg-slate-900 border-r border-slate-800 p-5 flex flex-col justify-between overflow-hidden"
+            className="w-72 h-full bg-slate-900 border-r border-slate-800 px-5 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col justify-between overflow-hidden"
           >
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
               <div className="flex items-center justify-between border-b border-slate-850 pb-4">
@@ -1406,7 +1416,9 @@ export default function App() {
                 <Avatar user={currentUser} className="w-8.5 h-8.5 rounded-xl text-sm" extraClass="shrink-0" />
                 <div className="space-y-0.5 truncate flex-1">
                   <span className="font-bold text-slate-100 block truncate">{currentUser.fullName}</span>
-                  <span className="text-[10px] text-slate-550 uppercase font-mono block">Role: {currentUser.role}</span>
+                  <span className="text-[10px] text-slate-400 font-mono block truncate">
+                    {ROLE_LABELS[currentUser.role]}{currentUser.familyRelation ? ` • ${FAMILY_RELATION_LABELS[currentUser.familyRelation]}` : ""}
+                  </span>
                 </div>
               </button>
 

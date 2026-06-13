@@ -20,7 +20,7 @@ import {
   CreditCard,
   FileText
 } from "lucide-react";
-import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill } from "../types.js";
+import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 
@@ -166,7 +166,8 @@ export function Finance({
     if (!file) return;
 
     if (file.size > 2 * 1024 * 1024) {
-      alert("Hóa đơn đính kèm không được lớn dạng 2MB!");
+      setFormError("Hóa đơn đính kèm không được lớn hơn 2MB.");
+      e.target.value = "";
       return;
     }
 
@@ -551,7 +552,7 @@ export function Finance({
           </div>
 
           <button 
-            disabled={currentUser.role === UserRole.GUEST}
+            disabled={!canAccessFinance(currentUser.role)}
             onClick={() => {
               setFormError("");
               setIsFormOpen(true);
@@ -688,7 +689,7 @@ export function Finance({
                     </div>
 
                     {/* Trash capacity */}
-                    {(currentUser.role !== UserRole.GUEST && (currentUser.role === UserRole.ADMIN || tx.creatorId === currentUser.id)) && (
+                    {(canAccessFinance(currentUser.role) && (currentUser.role === UserRole.ADMIN || tx.creatorId === currentUser.id)) && (
                       <button 
                         onClick={() => handleDeleteClick(tx.id)}
                         className="p-1.5 bg-slate-950 border border-slate-800 hover:text-rose-450 hover:bg-slate-800 rounded-lg text-slate-500 transition-all cursor-pointer"

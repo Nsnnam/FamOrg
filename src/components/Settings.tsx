@@ -24,7 +24,21 @@ import {
   KeyRound,
   Pencil
 } from "lucide-react";
-import { User, UserRole } from "../types.js";
+import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
+
+// Role <select> options shared by the create + edit forms
+const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
+  { value: UserRole.ADMIN, label: "Quản lý (Admin) — toàn quyền" },
+  { value: UserRole.MEMBER, label: "Thành viên — người lớn" },
+  { value: UserRole.CHILD, label: "Con / Trẻ em" },
+  { value: UserRole.GUEST, label: "Khách (chỉ xem)" }
+];
+
+// Family relationship options (display label only, no permission effect)
+const RELATION_OPTIONS = (Object.keys(FAMILY_RELATION_LABELS) as FamilyRelation[]).map(value => ({
+  value,
+  label: FAMILY_RELATION_LABELS[value]
+}));
 import { motion } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { Avatar } from "./Avatar.js";
@@ -78,6 +92,7 @@ export function Settings({
   const [regUsername, setRegUsername] = useState("");
   const [regFullName, setRegFullName] = useState("");
   const [regRole, setRegRole] = useState<UserRole>(UserRole.MEMBER);
+  const [regRelation, setRegRelation] = useState<FamilyRelation | "">("");
   const [regPassword, setRegPassword] = useState("");
   const [regAvatar, setRegAvatar] = useState("bg-indigo-500");
   const [regDob, setRegDob] = useState("");
@@ -112,6 +127,7 @@ export function Settings({
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [euFullName, setEuFullName] = useState("");
   const [euRole, setEuRole] = useState<UserRole>(UserRole.MEMBER);
+  const [euRelation, setEuRelation] = useState<FamilyRelation | "">("");
   const [euDob, setEuDob] = useState("");
   const [euPhone, setEuPhone] = useState("");
   const [euColor, setEuColor] = useState("bg-indigo-500");
@@ -143,6 +159,7 @@ export function Settings({
         username: regUsername.toLowerCase().trim(),
         fullName: regFullName.trim(),
         role: regRole,
+        familyRelation: regRelation || undefined,
         passwordPlain: regPassword,
         avatarColor: regAvatar,
         dateOfBirth: regDob || undefined,
@@ -155,6 +172,7 @@ export function Settings({
       setRegPassword("");
       setRegDob("");
       setRegPhone("");
+      setRegRelation("");
     } catch (err: any) {
       setActionError(err.message || "Tạo tài khoản thất bại");
     } finally {
@@ -258,6 +276,7 @@ export function Settings({
     setEditTarget(u);
     setEuFullName(u.fullName);
     setEuRole(u.role);
+    setEuRelation(u.familyRelation || "");
     setEuDob(u.dateOfBirth || "");
     setEuPhone(u.phone || "");
     setEuColor(u.avatarColor || "bg-indigo-500");
@@ -279,6 +298,7 @@ export function Settings({
       await onAdminUpdateUser(editTarget.id, {
         fullName: euFullName.trim(),
         role: euRole,
+        familyRelation: euRelation || undefined,
         dateOfBirth: euDob,
         phone: euPhone,
         avatarColor: euColor
@@ -408,7 +428,7 @@ export function Settings({
 
         {/* Current status info tag */}
         <span className="text-[10px] uppercase font-mono bg-slate-950 text-slate-400 border border-slate-850 px-2.5 py-1 rounded-lg">
-          Quyền hạn: <span className="text-sky-400 font-bold">{currentUser.role === "admin" ? "Gia Trưởng (Admin)" : currentUser.role === "member" ? "Thành thành viên" : "Tài khoản Khách"}</span>
+          Quyền hạn: <span className="text-sky-400 font-bold">{ROLE_LABELS[currentUser.role]}</span>
         </span>
       </div>
 
@@ -617,9 +637,16 @@ export function Settings({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${u.role === "admin" ? "bg-red-500/10 text-red-400 border border-red-500/10" : u.role === "member" ? "bg-blue-500/10 text-blue-400 border border-blue-500/10" : "bg-green-500/10 text-green-400 border border-green-500/10"}`}>
-                        {u.role.toUpperCase()}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${u.role === "admin" ? "bg-red-500/10 text-red-400 border border-red-500/10" : u.role === "member" ? "bg-blue-500/10 text-blue-400 border border-blue-500/10" : u.role === "child" ? "bg-amber-500/10 text-amber-400 border border-amber-500/10" : "bg-green-500/10 text-green-400 border border-green-500/10"}`}>
+                          {ROLE_LABELS[u.role]}
+                        </span>
+                        {u.familyRelation && (
+                          <span className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+                            {FAMILY_RELATION_LABELS[u.familyRelation]}
+                          </span>
+                        )}
+                      </div>
 
                       {/* Reset password (Admin only) */}
                       {currentUser.role === UserRole.ADMIN && (
@@ -704,22 +731,36 @@ export function Settings({
                         onChange={(e) => setRegRole(e.target.value as UserRole)}
                         className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none"
                       >
-                        <option value="member">Thành viên (Member)</option>
-                        <option value="guest">Khách / Trẻ em (Guest)</option>
-                        <option value="admin">Quản lý (Admin)</option>
+                        {ROLE_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
                       </select>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-slate-400 block font-semibold">Mật khẩu khởi tạo <span className="text-rose-450">*</span></label>
-                      <input 
-                        type="password"
-                        placeholder="Mật khẩu riêng..."
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none font-mono"
-                      />
+                      <label className="text-slate-400 block font-semibold">Vai vế trong gia đình</label>
+                      <select
+                        value={regRelation}
+                        onChange={(e) => setRegRelation(e.target.value as FamilyRelation | "")}
+                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none"
+                      >
+                        <option value="">— Không đặt —</option>
+                        {RELATION_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
                     </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-400 block font-semibold">Mật khẩu khởi tạo <span className="text-rose-450">*</span></label>
+                    <input
+                      type="password"
+                      placeholder="Mật khẩu riêng..."
+                      value={regPassword}
+                      onChange={(e) => setRegPassword(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none font-mono"
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -934,17 +975,33 @@ export function Settings({
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-slate-400 block font-semibold">Vai trò (Phân quyền)</label>
-                <select
-                  value={euRole}
-                  onChange={(e) => setEuRole(e.target.value as UserRole)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
-                >
-                  <option value="member">Thành viên (Member)</option>
-                  <option value="guest">Khách / Trẻ em (Guest)</option>
-                  <option value="admin">Quản lý (Admin)</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 min-w-0">
+                  <label className="text-slate-400 block font-semibold">Vai trò (Phân quyền)</label>
+                  <select
+                    value={euRole}
+                    onChange={(e) => setEuRole(e.target.value as UserRole)}
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
+                  >
+                    {ROLE_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1 min-w-0">
+                  <label className="text-slate-400 block font-semibold">Vai vế trong gia đình</label>
+                  <select
+                    value={euRelation}
+                    onChange={(e) => setEuRelation(e.target.value as FamilyRelation | "")}
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="">— Không đặt —</option>
+                    {RELATION_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

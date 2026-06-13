@@ -4,17 +4,60 @@
  */
 
 // User and Role management
+// `role` is the PERMISSION tier (what the account can do).
+// `familyRelation` (below) is just a display label for who the person is in the family.
 export enum UserRole {
-  ADMIN = "admin",
-  MEMBER = "member",
-  GUEST = "guest"
+  ADMIN = "admin",   // Toàn quyền (thường là Ba/Mẹ)
+  MEMBER = "member", // Người lớn: quản lý nội dung của mình + chi tiêu
+  CHILD = "child",   // Con/Trẻ em: tự tạo việc/ghi chú/sự kiện của mình, nhận điểm thưởng, KHÔNG xem chi tiêu
+  GUEST = "guest"    // Khách: chỉ xem nội dung được chia sẻ
 }
+
+// Family relationship — display label only, does NOT affect permissions.
+export type FamilyRelation =
+  | "ong_noi" | "ba_noi" | "ong_ngoai" | "ba_ngoai"
+  | "ba" | "me" | "con" | "anh_chi_em" | "khach" | "khac";
+
+export const FAMILY_RELATION_LABELS: Record<FamilyRelation, string> = {
+  ong_noi: "Ông nội",
+  ba_noi: "Bà nội",
+  ong_ngoai: "Ông ngoại",
+  ba_ngoai: "Bà ngoại",
+  ba: "Ba",
+  me: "Mẹ",
+  con: "Con",
+  anh_chi_em: "Anh/Chị/Em",
+  khach: "Khách",
+  khac: "Khác"
+};
+
+// Human-friendly Vietnamese labels for the permission tier.
+export const ROLE_LABELS: Record<UserRole, string> = {
+  [UserRole.ADMIN]: "Quản lý (Admin)",
+  [UserRole.MEMBER]: "Thành viên",
+  [UserRole.CHILD]: "Con (Trẻ em)",
+  [UserRole.GUEST]: "Khách"
+};
+
+// --- Centralized permission policy (shared by client & server) ---
+// Adults (Admin/Member) manage finance, medication, awarding rewards.
+export const isAdultRole = (role: UserRole) => role === UserRole.ADMIN || role === UserRole.MEMBER;
+// Finance & medication modules are hidden from Child and Guest.
+export const canAccessFinance = (role: UserRole) => isAdultRole(role);
+export const canManageMedication = (role: UserRole) => isAdultRole(role);
+// Admin/Member/Child can create their own content; Guest is read-only.
+export const canCreateContent = (role: UserRole) => role !== UserRole.GUEST;
+// Child & Guest have a restricted view (only shared + their own/assigned items).
+export const isLimitedViewer = (role: UserRole) => role === UserRole.CHILD || role === UserRole.GUEST;
+// Only Child accounts accumulate reward points.
+export const earnsRewardPoints = (role: UserRole) => role === UserRole.CHILD;
 
 export interface User {
   id: string;
   username: string;
   fullName: string;
   role: UserRole;
+  familyRelation?: FamilyRelation; // Display-only relationship label (Ông/Bà/Ba/Mẹ/Con/Khách...)
   avatarColor: string; // Tailwind color name like 'bg-red-500'
   avatarImage?: string; // Optional custom avatar (base64 data-uri); falls back to avatarColor
   dateOfBirth?: string; // YYYY-MM-DD, used for birthday reminders
