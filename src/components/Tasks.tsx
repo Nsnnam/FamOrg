@@ -25,6 +25,7 @@ import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, Recur
 import { motion, AnimatePresence } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { useConfirm } from "./ConfirmDialog.js";
+import { DateTimePicker24 } from "./DateTimePicker24.js";
 
 interface TasksProps {
   currentUser: User;
@@ -1187,13 +1188,7 @@ export function Tasks({
 
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Hạn hoàn thành</label>
-                  <input
-                    type="datetime-local"
-                    lang="en-GB"
-                    value={newDueDate ? newDueDate.replace(" ", "T") : ""}
-                    onChange={(e) => setNewDueDate(e.target.value ? e.target.value.replace("T", " ") : "")}
-                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                  />
+                  <DateTimePicker24 value={newDueDate} onChange={setNewDueDate} />
                 </div>
               </div>
 

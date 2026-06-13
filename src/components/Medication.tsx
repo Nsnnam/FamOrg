@@ -7,6 +7,7 @@ import React, { useMemo, useState } from "react";
 import { Pill, Plus, Trash2, Clock, X } from "lucide-react";
 import { MedicationReminder, User, canManageMedication } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
+import { TimeSelect24 } from "./DateTimePicker24.js";
 
 interface MedicationProps {
   currentUser: User;
@@ -116,13 +117,7 @@ export function Medication({
                     </button>
                   </span>
                 ))}
-                <input
-                  type="time"
-                  lang="en-GB"
-                  value={timeDraft}
-                  onChange={(e) => setTimeDraft(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 outline-none focus:border-rose-500 font-mono text-[11px]"
-                />
+                <TimeSelect24 value={timeDraft} onChange={setTimeDraft} />
                 <button type="button" onClick={addTime} className="bg-slate-800 hover:bg-slate-700 text-rose-400 rounded-lg px-2.5 py-1 text-[11px] font-bold flex items-center gap-1 cursor-pointer">
                   <Plus className="w-3 h-3" /> Thêm giờ
                 </button>

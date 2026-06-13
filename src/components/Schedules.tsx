@@ -24,6 +24,7 @@ import {
 import { FamilyPlan, User, UserRole, isLimitedViewer } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
+import { DateTimePicker24 } from "./DateTimePicker24.js";
 
 interface SchedulesProps {
   currentUser: User;
@@ -805,24 +806,12 @@ export function Schedules({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Bắt đầu <span className="text-rose-400">*</span></label>
-                  <input
-                    type="datetime-local"
-                    lang="en-GB"
-                    value={newStartDate ? newStartDate.replace(" ", "T") : ""}
-                    onChange={(e) => setNewStartDate(e.target.value ? e.target.value.replace("T", " ") : "")}
-                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                  />
+                  <DateTimePicker24 value={newStartDate} onChange={setNewStartDate} required />
                 </div>
 
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Kết thúc</label>
-                  <input
-                    type="datetime-local"
-                    lang="en-GB"
-                    value={newEndDate ? newEndDate.replace(" ", "T") : ""}
-                    onChange={(e) => setNewEndDate(e.target.value ? e.target.value.replace("T", " ") : "")}
-                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                  />
+                  <DateTimePicker24 value={newEndDate} onChange={setNewEndDate} />
                 </div>
               </div>
 
