@@ -768,8 +768,8 @@ export function Finance({
               </div>
 
               {/* Amount & Date */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1 col-span-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Số lượng (VNĐ) <span className="text-rose-400">*</span></label>
                   <input
                     type="text"
@@ -777,24 +777,24 @@ export function Finance({
                     placeholder="Điền số giá trị..."
                     value={formatMoneyInput(formAmount)}
                     onChange={(e) => setFormAmount(parseMoneyInput(e.target.value))}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-bold"
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-bold"
                   />
                 </div>
 
-                <div className="space-y-1 col-span-1">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Mốc ngày sự kiện</label>
-                  <input 
+                  <input
                     type="date"
                     value={formDate}
                     onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
               </div>
 
               {/* Categorization and Wallet */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Hạng mục {formType === TransactionType.EXPENSE ? "chi phí" : "nguồn tiền"}</label>
                   {formType === TransactionType.EXPENSE ? (
                     <select

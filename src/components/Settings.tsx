@@ -457,24 +457,24 @@ export function Settings({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 text-xs min-w-0">
                   <label className="text-slate-400 font-semibold flex items-center gap-1"><Cake className="w-3.5 h-3.5 text-pink-400" /> Ngày sinh</label>
                   <input
                     type="date"
                     value={profDob}
                     onChange={(e) => setProfDob(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
-                <div className="space-y-1 text-xs">
+                <div className="space-y-1 text-xs min-w-0">
                   <label className="text-slate-400 font-semibold flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-emerald-400" /> Số điện thoại</label>
                   <input
                     type="tel"
                     value={profPhone}
                     onChange={(e) => setProfPhone(e.target.value)}
                     placeholder="09xx xxx xxx"
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
               </div>
@@ -664,24 +664,24 @@ export function Settings({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1 min-w-0">
                       <label className="text-slate-400 font-semibold flex items-center gap-1"><Cake className="w-3.5 h-3.5 text-pink-400" /> Ngày sinh</label>
                       <input
                         type="date"
                         value={regDob}
                         onChange={(e) => setRegDob(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                        className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                       />
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <label className="text-slate-400 font-semibold flex items-center gap-1"><Phone className="w-3.5 h-3.5 text-emerald-400" /> Số điện thoại</label>
                       <input
                         type="tel"
                         placeholder="09xx xxx xxx"
                         value={regPhone}
                         onChange={(e) => setRegPhone(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none font-mono"
+                        className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none font-mono"
                       />
                     </div>
                   </div>

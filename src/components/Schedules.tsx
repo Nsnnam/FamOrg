@@ -465,29 +465,29 @@ export function Schedules({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Bắt đầu <span className="text-rose-400">*</span></label>
                   <input
                     type="datetime-local"
                     value={newStartDate ? newStartDate.replace(" ", "T") : ""}
                     onChange={(e) => setNewStartDate(e.target.value ? e.target.value.replace("T", " ") : "")}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
 
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Kết thúc</label>
                   <input
                     type="datetime-local"
                     value={newEndDate ? newEndDate.replace(" ", "T") : ""}
                     onChange={(e) => setNewEndDate(e.target.value ? e.target.value.replace("T", " ") : "")}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Xảy ra định kỳ</label>
                   <select 
@@ -516,8 +516,8 @@ export function Schedules({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Phạm vi chia sẻ</label>
                   <select 
                     value={newIsShared ? "true" : "false"}
