@@ -118,6 +118,7 @@ export function Medication({
                 ))}
                 <input
                   type="time"
+                  lang="en-GB"
                   value={timeDraft}
                   onChange={(e) => setTimeDraft(e.target.value)}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 outline-none focus:border-rose-500 font-mono text-[11px]"

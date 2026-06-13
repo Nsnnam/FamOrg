@@ -1189,6 +1189,7 @@ export function Tasks({
                   <label className="text-slate-400 block font-semibold">Hạn hoàn thành</label>
                   <input
                     type="datetime-local"
+                    lang="en-GB"
                     value={newDueDate ? newDueDate.replace(" ", "T") : ""}
                     onChange={(e) => setNewDueDate(e.target.value ? e.target.value.replace("T", " ") : "")}
                     className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
