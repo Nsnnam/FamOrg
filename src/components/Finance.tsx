@@ -18,7 +18,8 @@ import {
   Filter, 
   X,
   CreditCard,
-  FileText
+  FileText,
+  CheckCircle2
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -42,6 +43,24 @@ interface FinanceProps {
   onDeleteRecurringBill: (id: string) => Promise<any>;
   onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
   onDeleteAsset: (id: string) => Promise<any>;
+}
+
+function isAlreadyPaidThisPeriod(bill: RecurringBill): boolean {
+  if (!bill.lastPaidDate) return false;
+  const today = new Date();
+  const paid = new Date(bill.lastPaidDate);
+  if (bill.frequency === "monthly")
+    return paid.getFullYear() === today.getFullYear() && paid.getMonth() === today.getMonth();
+  if (bill.frequency === "yearly")
+    return paid.getFullYear() === today.getFullYear();
+  // weekly: paid within last 7 days
+  return today.getTime() - paid.getTime() < 7 * 24 * 60 * 60 * 1000;
+}
+
+function payButtonLabel(frequency: RecurringBill["frequency"]): string {
+  if (frequency === "weekly") return "Trả tuần này";
+  if (frequency === "yearly") return "Trả năm này";
+  return "Trả tháng này";
 }
 
 export function Finance({
@@ -487,8 +506,30 @@ export function Finance({
                   <p className="text-[10px] text-slate-500 font-mono">{b.amount.toLocaleString()} VNĐ • hạn {b.nextDueDate}</p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <button onClick={() => onPayRecurringBill(b.id)} className="px-2.5 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-lg text-[10px] font-bold">Đã trả</button>
-                  <button onClick={() => onDeleteRecurringBill(b.id)} className="p-1.5 text-slate-500 hover:text-rose-400">
+                  {isAlreadyPaidThisPeriod(b) ? (
+                    <span className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-lg text-[10px] font-bold">
+                      <CheckCircle2 className="w-3 h-3" /> Đã thanh toán
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => onPayRecurringBill(b.id)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-lg text-[10px] font-bold hover:bg-sky-500/20 transition-colors cursor-pointer"
+                    >
+                      <CreditCard className="w-3 h-3" /> {payButtonLabel(b.frequency)}
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: "Xóa hóa đơn định kỳ?",
+                        message: `Xóa "${b.title}" sẽ không thể hoàn tác. Các giao dịch đã ghi nhận trước đó vẫn được giữ lại.`,
+                        confirmLabel: "Xóa hóa đơn",
+                        tone: "danger"
+                      });
+                      if (ok) onDeleteRecurringBill(b.id);
+                    }}
+                    className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                  >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
