@@ -19,7 +19,8 @@ import {
   X,
   CreditCard,
   FileText,
-  CheckCircle2
+  CheckCircle2,
+  Pencil
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -43,6 +44,21 @@ interface FinanceProps {
   onDeleteRecurringBill: (id: string) => Promise<any>;
   onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
   onDeleteAsset: (id: string) => Promise<any>;
+}
+
+const BILL_CATEGORIES = [
+  { value: "rent",       label: "Thuê nhà" },
+  { value: "utilities",  label: "Điện nước" },
+  { value: "internet",   label: "Cước Internet" },
+  { value: "phone",      label: "Điện thoại" },
+  { value: "insurance",  label: "Bảo hiểm" },
+  { value: "medical",    label: "Y tế" },
+  { value: "education2", label: "Học tập" },
+  { value: "other",      label: "Khác" },
+] as const;
+
+function translateBillCategory(value: string): string {
+  return BILL_CATEGORIES.find(c => c.value === value)?.label ?? value;
 }
 
 function isAlreadyPaidThisPeriod(bill: RecurringBill): boolean {
@@ -114,6 +130,13 @@ export function Finance({
   const [billCategory, setBillCategory] = useState<string>(ExpenseCategory.UTILITIES);
   const [billFrequency, setBillFrequency] = useState<RecurringBill["frequency"]>("monthly");
   const [billError, setBillError] = useState("");
+  const [editingBill, setEditingBill] = useState<RecurringBill | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editAmount, setEditAmount] = useState<number>(0);
+  const [editCategory, setEditCategory] = useState<string>(BILL_CATEGORIES[0].value);
+  const [editFrequency, setEditFrequency] = useState<RecurringBill["frequency"]>("monthly");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editError, setEditError] = useState("");
 
   // Money input formatting: show grouped thousands (1.000.000), store as number.
   const formatMoneyInput = (n: number) => (n > 0 ? n.toLocaleString("vi-VN") : "");
@@ -285,6 +308,39 @@ export function Finance({
       setBillAmount(0);
     } catch (err: any) {
       setBillError(err.message || "Khong luu duoc hoa don");
+    }
+  };
+
+  const handleOpenEditBill = (b: RecurringBill) => {
+    setEditingBill(b);
+    setEditTitle(b.title);
+    setEditAmount(b.amount);
+    setEditCategory(b.category);
+    setEditFrequency(b.frequency);
+    setEditDueDate(b.nextDueDate);
+    setEditError("");
+  };
+
+  const handleSaveEditBill = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBill) return;
+    setEditError("");
+    if (!editTitle.trim() || editAmount <= 0) {
+      setEditError("Nhập tên và số tiền hợp lệ");
+      return;
+    }
+    try {
+      await onSaveRecurringBill({
+        id: editingBill.id,
+        title: editTitle.trim(),
+        amount: Number(editAmount),
+        category: editCategory,
+        frequency: editFrequency,
+        nextDueDate: editDueDate,
+      });
+      setEditingBill(null);
+    } catch (err: any) {
+      setEditError(err.message || "Không thể lưu thay đổi");
     }
   };
 
@@ -488,10 +544,7 @@ export function Finance({
               <option value="yearly">Hàng năm</option>
             </select>
             <select value={billCategory} onChange={(e) => setBillCategory(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-              <option value="utilities">Điện nước</option>
-              <option value="medical">Y tế</option>
-              <option value="education2">Học tập</option>
-              <option value="other">Khác</option>
+              {BILL_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
             <button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl px-3 py-2 font-bold">Thêm hóa đơn</button>
           </form>
@@ -503,7 +556,7 @@ export function Finance({
               <div key={b.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-slate-200 truncate">{b.title}</p>
-                  <p className="text-[10px] text-slate-500 font-mono">{b.amount.toLocaleString()} VNĐ • hạn {b.nextDueDate}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{b.amount.toLocaleString()} VNĐ • {translateBillCategory(b.category)} • hạn {b.nextDueDate}</p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {isAlreadyPaidThisPeriod(b) ? (
@@ -518,6 +571,12 @@ export function Finance({
                       <CreditCard className="w-3 h-3" /> {payButtonLabel(b.frequency)}
                     </button>
                   )}
+                  <button
+                    onClick={() => handleOpenEditBill(b)}
+                    className="p-1.5 text-slate-500 hover:text-sky-400 transition-colors cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
                   <button
                     onClick={async () => {
                       const ok = await confirm({
@@ -989,6 +1048,75 @@ export function Finance({
       )}
 
       </>
+      )}
+
+      {/* Edit recurring bill modal */}
+      {editingBill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-slate-100">Chỉnh sửa hóa đơn định kỳ</h3>
+              <button onClick={() => setEditingBill(null)} className="text-slate-500 hover:text-slate-300 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveEditBill} className="space-y-3 text-xs">
+              <input
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                placeholder="Tên hóa đơn"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+              />
+              <input
+                type="text"
+                inputMode="numeric"
+                value={formatMoneyInput(editAmount)}
+                onChange={e => setEditAmount(parseMoneyInput(e.target.value))}
+                placeholder="Số tiền"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+              />
+              <input
+                type="date"
+                value={editDueDate}
+                onChange={e => setEditDueDate(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+              />
+              <select
+                value={editFrequency}
+                onChange={e => setEditFrequency(e.target.value as RecurringBill["frequency"])}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+              >
+                <option value="weekly">Hàng tuần</option>
+                <option value="monthly">Hàng tháng</option>
+                <option value="yearly">Hàng năm</option>
+              </select>
+              <select
+                value={editCategory}
+                onChange={e => setEditCategory(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+              >
+                {BILL_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              {editError && <p className="text-[11px] text-rose-400">{editError}</p>}
+              <p className="text-[10px] text-slate-500">Thay đổi không ảnh hưởng đến các kỳ đã thanh toán trước đó.</p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setEditingBill(null)}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl px-3 py-2 font-bold cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl px-3 py-2 font-bold cursor-pointer"
+                >
+                  Lưu thay đổi
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* In-app confirmation dialog */}
