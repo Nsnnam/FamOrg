@@ -18,11 +18,29 @@ import {
   RewardPointEntry,
   BudgetLimit,
   RecurringBill,
+  FamilyAsset,
   MedicationReminder,
   ShoppingItem,
   Notification
 } from "../src/types.js";
 import { sqliteIsEmpty, sqliteLoad, sqliteSave, sqliteCheckpoint } from "./sqlite.js";
+import { deleteMediaByUrl } from "./media.js";
+
+// Whitelist of valid asset types (mirrors AssetType in src/types.ts).
+const VALID_ASSET_TYPES = new Set<string>([
+  "crypto", "land", "gold_bar", "gold_ring", "gold_jewelry", "gold_other", "other"
+]);
+
+// Collect the stored image URLs referenced by an asset's photos.
+function assetPhotoUrls(asset: { photos?: any[] } | undefined | null): string[] {
+  if (!asset || !Array.isArray(asset.photos)) return [];
+  const urls: string[] = [];
+  asset.photos.forEach(p => {
+    if (p?.fullDataUrl) urls.push(p.fullDataUrl);
+    if (p?.thumbnailDataUrl) urls.push(p.thumbnailDataUrl);
+  });
+  return urls;
+}
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
@@ -103,6 +121,7 @@ const initialDBState = (): FamilyOrganizerDB => {
     rewardLedger: [],
     budgets: [],
     recurringBills: [],
+    assets: [],
     medications: [],
     shoppingItems: [],
     notifications: [],
@@ -121,6 +140,7 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.rewardLedger = db.rewardLedger || [];
   db.budgets = db.budgets || [];
   db.recurringBills = db.recurringBills || [];
+  db.assets = db.assets || [];
   db.medications = db.medications || [];
   db.shoppingItems = db.shoppingItems || [];
   db.notifications = db.notifications || [];
@@ -363,6 +383,10 @@ export class FamilyDB {
     return this.readRaw().recurringBills;
   }
 
+  public static getAssets() {
+    return this.readRaw().assets;
+  }
+
   public static getMedications() {
     return this.readRaw().medications;
   }
@@ -435,8 +459,11 @@ export class FamilyDB {
       user.avatarColor = data.avatarColor;
     }
     if (data.avatarImage !== undefined) {
-      // Empty string clears the custom image and falls back to the color avatar
-      user.avatarImage = data.avatarImage || undefined;
+      // Empty string clears the custom image and falls back to the color avatar.
+      // Delete the previous file if it was a stored upload and is being replaced.
+      const next = data.avatarImage || undefined;
+      if (user.avatarImage && user.avatarImage !== next) deleteMediaByUrl(user.avatarImage);
+      user.avatarImage = next;
     }
 
     db.users[idx] = user;
@@ -508,6 +535,7 @@ export class FamilyDB {
 
     db.users = db.users.filter(u => u.id !== userId);
     this.writeRaw(db);
+    deleteMediaByUrl(target.avatarImage); // clean up their uploaded avatar file
     this.logActivity(adminId, adminUser, "Xóa thành viên", `Đã xóa tài khoản ${target.fullName} (@${target.username}).`);
   }
 
@@ -910,6 +938,8 @@ export class FamilyDB {
       // UPDATE
       const idx = db.transactions.findIndex(t => t.id === txData.id);
       if (idx === -1) throw new Error("Giao dịch không tồn tại");
+      const oldReceipt = db.transactions[idx].receiptImage;
+      if (oldReceipt && oldReceipt !== newTx.receiptImage) deleteMediaByUrl(oldReceipt);
       db.transactions[idx] = newTx;
       this.logActivity(userId, username, "Sửa giao dịch tài chính", `Đã điều chỉnh giao dịch "${newTx.description}" (${newTx.amount.toLocaleString()} VNĐ)`);
     } else {
@@ -930,6 +960,7 @@ export class FamilyDB {
     const tx = db.transactions[idx];
     db.transactions.splice(idx, 1);
     this.writeRaw(db);
+    deleteMediaByUrl(tx.receiptImage); // remove the stored receipt file, if any
     this.logActivity(userId, username, "Xóa giao dịch tài chính", `Đã xóa giao dịch "${tx.description}" (${tx.amount.toLocaleString()} VNĐ).`);
   }
 
@@ -1064,6 +1095,93 @@ export class FamilyDB {
     this.writeRaw(db);
     this.logActivity(userId, username, "Thanh toan hoa don", `Da thanh toan "${bill.title}" (${bill.amount.toLocaleString()} VND).`);
     return { bill, transaction: tx };
+  }
+
+  // --- FAMILY ASSETS ---
+  public static saveAsset(data: Partial<FamilyAsset>, userId: string, username: string): FamilyAsset {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    const safeQuantity = Number.isFinite(Number(data.quantity)) ? Number(data.quantity) : 1;
+    const safeEstimatedValue = Number.isFinite(Number(data.estimatedValue)) ? Number(data.estimatedValue) : 0;
+    const safePurchaseValue = data.purchaseValue !== undefined && Number.isFinite(Number(data.purchaseValue))
+      ? Number(data.purchaseValue)
+      : undefined;
+
+    if (data.id) {
+      const idx = db.assets.findIndex(a => a.id === data.id);
+      if (idx === -1) throw new Error("Không tìm thấy tài sản");
+      const existing = db.assets[idx];
+      const nextName = data.name !== undefined ? String(data.name).trim() : existing.name;
+      const updated = {
+        ...existing,
+        ...data,
+        type: data.type && VALID_ASSET_TYPES.has(data.type) ? data.type : existing.type,
+        name: nextName || existing.name,
+        quantity: safeQuantity,
+        estimatedValue: safeEstimatedValue,
+        purchaseValue: safePurchaseValue,
+        currency: data.currency || existing.currency || "VND",
+        photos: Array.isArray(data.photos) ? data.photos : existing.photos || [],
+        createdById: existing.createdById,
+        createdAt: existing.createdAt,
+        updatedAt: now
+      } as FamilyAsset;
+      db.assets[idx] = updated;
+      this.writeRaw(db);
+      // Delete files for photos removed during this edit.
+      const keptUrls = new Set(assetPhotoUrls(updated));
+      assetPhotoUrls(existing).forEach(url => { if (!keptUrls.has(url)) deleteMediaByUrl(url); });
+      this.logActivity(userId, username, "Cập nhật tài sản", `Đã cập nhật tài sản "${updated.name}".`);
+      return updated;
+    }
+
+    const asset: FamilyAsset = {
+      id: `asset_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: data.type && VALID_ASSET_TYPES.has(data.type) ? data.type : "other",
+      name: (data.name || "Tài sản mới").trim(),
+      ownerId: data.ownerId || undefined,
+      quantity: safeQuantity,
+      unit: (data.unit || "mục").trim(),
+      estimatedValue: safeEstimatedValue,
+      purchaseValue: safePurchaseValue,
+      currency: data.currency || "VND",
+      purchaseDate: data.purchaseDate || undefined,
+      location: data.location?.trim() || "",
+      notes: data.notes?.trim() || "",
+      photos: Array.isArray(data.photos) ? data.photos : [],
+      symbol: data.symbol?.trim() || "",
+      network: data.network?.trim() || "",
+      walletLabel: data.walletLabel?.trim() || "",
+      walletAddressMasked: data.walletAddressMasked?.trim() || "",
+      address: data.address?.trim() || "",
+      areaM2: data.areaM2 !== undefined && Number.isFinite(Number(data.areaM2)) ? Number(data.areaM2) : undefined,
+      certificateNo: data.certificateNo?.trim() || "",
+      parcelNo: data.parcelNo?.trim() || "",
+      goldPurity: data.goldPurity?.trim() || "",
+      weight: data.weight !== undefined && Number.isFinite(Number(data.weight)) ? Number(data.weight) : undefined,
+      weightUnit: data.weightUnit?.trim() || "",
+      brand: data.brand?.trim() || "",
+      serialNo: data.serialNo?.trim() || "",
+      createdById: userId,
+      createdAt: now,
+      updatedAt: now
+    };
+    db.assets.unshift(asset);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Thêm tài sản", `Đã thêm tài sản "${asset.name}" (${asset.estimatedValue.toLocaleString()} ${asset.currency}).`);
+    return asset;
+  }
+
+  public static deleteAsset(id: string, userId: string, username: string): void {
+    const db = this.readRaw();
+    const idx = db.assets.findIndex(a => a.id === id);
+    if (idx === -1) return;
+    const asset = db.assets[idx];
+    db.assets.splice(idx, 1);
+    this.writeRaw(db);
+    // Remove all stored photo files for this asset.
+    assetPhotoUrls(asset).forEach(deleteMediaByUrl);
+    this.logActivity(userId, username, "Xóa tài sản", `Đã xóa tài sản "${asset.name}".`);
   }
 
   // --- SHOPPING LIST ---

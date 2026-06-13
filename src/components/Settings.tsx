@@ -42,6 +42,8 @@ const RELATION_OPTIONS = (Object.keys(FAMILY_RELATION_LABELS) as FamilyRelation[
 import { motion } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { Avatar } from "./Avatar.js";
+import { optimizeImageFile } from "../utils/image.js";
+import { uploadDataUrl } from "../utils/uploadImage.js";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
 
@@ -134,6 +136,7 @@ export function Settings({
 
   // Action state trackers
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [avatarProcessing, setAvatarProcessing] = useState(false);
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
 
@@ -180,19 +183,30 @@ export function Settings({
     }
   };
 
-  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
-    if (file.size > 1024 * 1024) {
-      setActionError("Ảnh đại diện nên nhỏ hơn 1MB để hệ thống nhẹ nhàng!");
-      return;
+
+    setActionError("");
+    setActionSuccess("");
+    setAvatarProcessing(true);
+    try {
+      const optimized = await optimizeImageFile(file, {
+        maxSourceBytes: 20 * 1024 * 1024,
+        targetBytes: 850 * 1024,
+        maxSizes: [512, 384, 256],
+        qualities: [0.86, 0.76, 0.66, 0.56],
+        backgroundColor: "#ffffff"
+      });
+      const url = await uploadDataUrl(optimized.dataUrl, "avatars");
+      setProfAvatarImage(url);
+      setActionSuccess(`Đã tải ảnh đại diện (~${optimized.sizeKb}KB, ${optimized.width}x${optimized.height}). Bấm "Lưu hồ sơ cá nhân" để áp dụng.`);
+    } catch (err: any) {
+      setActionError(err.message || "Không xử lý được tệp ảnh này.");
+    } finally {
+      setAvatarProcessing(false);
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setProfAvatarImage(reader.result);
-    };
-    reader.onerror = () => setActionError("Không đọc được tệp ảnh này.");
-    reader.readAsDataURL(file);
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -464,20 +478,21 @@ export function Settings({
                   extraClass="shrink-0 border border-slate-800"
                 />
                 <div className="space-y-2 text-xs">
-                  <label className="inline-block bg-slate-800 hover:bg-slate-700 text-sky-400 font-semibold px-3 py-1.5 rounded-lg cursor-pointer transition-all">
-                    Tải ảnh lên
-                    <input type="file" accept="image/*" onChange={handleAvatarFile} className="hidden" />
+                  <label className={`inline-block bg-slate-800 hover:bg-slate-700 text-sky-400 font-semibold px-3 py-1.5 rounded-lg transition-all ${avatarProcessing ? "opacity-60 cursor-wait pointer-events-none" : "cursor-pointer"}`}>
+                    {avatarProcessing ? "Đang tối ưu ảnh..." : "Tải ảnh lên"}
+                    <input type="file" accept="image/*" onChange={handleAvatarFile} disabled={avatarProcessing} className="hidden" />
                   </label>
                   {profAvatarImage && (
                     <button
                       type="button"
+                      disabled={avatarProcessing}
                       onClick={() => setProfAvatarImage("")}
-                      className="flex items-center gap-1 text-slate-500 hover:text-rose-400 transition-colors"
+                      className="flex items-center gap-1 text-slate-500 hover:text-rose-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <X className="w-3.5 h-3.5" /> Xóa ảnh, dùng màu nền
                     </button>
                   )}
-                  <p className="text-[10px] text-slate-500 leading-relaxed">Ảnh nên nhỏ hơn 1MB. Nếu không có ảnh, hệ thống dùng chữ cái trên nền màu bên dưới.</p>
+                  <p className="text-[10px] text-slate-500 leading-relaxed">Ảnh lớn sẽ được tự thu nhỏ và nén trước khi lưu. Nếu không có ảnh, hệ thống dùng chữ cái trên nền màu bên dưới.</p>
                 </div>
               </div>
 
@@ -550,11 +565,11 @@ export function Settings({
 
               <button
                 type="submit"
-                disabled={loadingAction === "profile"}
+                disabled={loadingAction === "profile" || avatarProcessing}
                 className="w-full mt-2 bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-bold py-2 px-4 rounded-xl cursor-pointer transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 <Save className="w-4 h-4" />
-                {loadingAction === "profile" ? "Đang lưu..." : "Lưu hồ sơ cá nhân"}
+                {loadingAction === "profile" ? "Đang lưu..." : avatarProcessing ? "Đang tối ưu ảnh..." : "Lưu hồ sơ cá nhân"}
               </button>
             </div>
           </form>

@@ -20,9 +20,11 @@ import {
   CreditCard,
   FileText
 } from "lucide-react";
-import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, canAccessFinance } from "../types.js";
+import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
+import { Assets } from "./Assets.js";
+import { optimizeAndUpload } from "../utils/uploadImage.js";
 
 interface FinanceProps {
   currentUser: User;
@@ -30,6 +32,7 @@ interface FinanceProps {
   transactions: FinancialTransaction[];
   budgets: BudgetLimit[];
   recurringBills: RecurringBill[];
+  assets: FamilyAsset[];
   onSaveTransaction: (tx: Partial<FinancialTransaction>) => Promise<any>;
   onDeleteTransaction: (id: string) => Promise<any>;
   onSaveBudget: (budget: Partial<BudgetLimit>) => Promise<any>;
@@ -37,6 +40,8 @@ interface FinanceProps {
   onSaveRecurringBill: (bill: Partial<RecurringBill>) => Promise<any>;
   onPayRecurringBill: (id: string) => Promise<any>;
   onDeleteRecurringBill: (id: string) => Promise<any>;
+  onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
+  onDeleteAsset: (id: string) => Promise<any>;
 }
 
 export function Finance({
@@ -45,14 +50,18 @@ export function Finance({
   transactions,
   budgets,
   recurringBills,
+  assets,
   onSaveTransaction,
   onDeleteTransaction,
   onSaveBudget,
   onDeleteBudget,
   onSaveRecurringBill,
   onPayRecurringBill,
-  onDeleteRecurringBill
+  onDeleteRecurringBill,
+  onSaveAsset,
+  onDeleteAsset
 }: FinanceProps) {
+  const [financeView, setFinanceView] = useState<"cashflow" | "assets">("cashflow");
   // Query Filter States
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -76,6 +85,7 @@ export function Finance({
   const [formDesc, setFormDesc] = useState("");
   const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10));
   const [formReceiptBase64, setFormReceiptBase64] = useState<string>("");
+  const [receiptProcessing, setReceiptProcessing] = useState(false);
   const [budgetCategory, setBudgetCategory] = useState<string>(ExpenseCategory.FOOD);
   const [budgetLimit, setBudgetLimit] = useState<number>(0);
   const [budgetError, setBudgetError] = useState("");
@@ -160,27 +170,28 @@ export function Finance({
     return Object.entries(list).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
 
-  // File selected converter
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Optimize the receipt photo in the browser, then store it as a file (DB keeps only the URL).
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      setFormError("Hóa đơn đính kèm không được lớn hơn 2MB.");
-      e.target.value = "";
-      return;
+    setFormError("");
+    setReceiptProcessing(true);
+    try {
+      const uploaded = await optimizeAndUpload(file, "receipts", {
+        maxSourceBytes: 20 * 1024 * 1024,
+        targetBytes: 600 * 1024,
+        maxSizes: [1280, 1024, 768],
+        qualities: [0.82, 0.72, 0.62],
+        backgroundColor: "#ffffff"
+      });
+      setFormReceiptBase64(uploaded.url);
+    } catch (err: any) {
+      setFormError(err.message || "Không xử lý được ảnh hóa đơn.");
+    } finally {
+      setReceiptProcessing(false);
     }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        setFormReceiptBase64(reader.result);
-      }
-    };
-    reader.onerror = (error) => {
-      console.error("Lỗi chuyển Base64 hóa đơn:", error);
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
@@ -306,6 +317,33 @@ export function Finance({
 
   return (
     <div className="space-y-6" id="finance-module">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-xl flex flex-col sm:flex-row gap-2 text-xs font-bold">
+        <button
+          type="button"
+          onClick={() => setFinanceView("cashflow")}
+          className={`flex-1 px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all ${financeView === "cashflow" ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"}`}
+        >
+          <Wallet className="w-4 h-4" /> Thu chi & ngân sách
+        </button>
+        <button
+          type="button"
+          onClick={() => setFinanceView("assets")}
+          className={`flex-1 px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all ${financeView === "assets" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"}`}
+        >
+          <FileText className="w-4 h-4" /> Tài sản gia đình
+        </button>
+      </div>
+
+      {financeView === "assets" ? (
+        <Assets
+          currentUser={currentUser}
+          users={users}
+          assets={assets}
+          onSaveAsset={onSaveAsset}
+          onDeleteAsset={onDeleteAsset}
+        />
+      ) : (
+        <>
       
       {/* Wallet Cards Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4" id="finance-summaries">
@@ -839,13 +877,15 @@ export function Finance({
 
               {/* Receipt File upload */}
               <div className="space-y-1 bg-slate-950/40 p-4 border border-slate-800 rounded-xl">
-                <label className="text-slate-400 block font-semibold mb-1">Đính kèm ảnh chụp hóa đơn (Tối ưu nhẹ dưới 2MB)</label>
-                <input 
-                  type="file" 
+                <label className="text-slate-400 block font-semibold mb-1">Đính kèm ảnh chụp hóa đơn (tự tối ưu trước khi lưu)</label>
+                <input
+                  type="file"
                   accept="image/*"
                   onChange={handleFileChange}
-                  className="w-full text-slate-400 font-mono text-[10px] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-slate-800 file:text-sky-400 file:cursor-pointer hover:file:bg-slate-755"
+                  disabled={receiptProcessing}
+                  className="w-full text-slate-400 font-mono text-[10px] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-slate-800 file:text-sky-400 file:cursor-pointer hover:file:bg-slate-755 disabled:opacity-50"
                 />
+                {receiptProcessing && <p className="text-[10px] text-sky-400 mt-1">Đang tối ưu & tải ảnh hóa đơn...</p>}
                 
                 {formReceiptBase64 && (
                   <div className="mt-3 flex items-center justify-between bg-slate-900 p-2 border border-slate-800 rounded-lg">
@@ -905,6 +945,9 @@ export function Finance({
             </button>
           </div>
         </div>
+      )}
+
+      </>
       )}
 
       {/* In-app confirmation dialog */}
