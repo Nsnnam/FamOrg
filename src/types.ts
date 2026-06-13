@@ -245,6 +245,8 @@ export type AssetType =
   | "gold_ring"
   | "gold_jewelry"
   | "gold_other"
+  | "vehicle"
+  | "stock"
   | "other";
 
 export interface AssetPhoto {

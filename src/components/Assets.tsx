@@ -6,10 +6,12 @@
 import React, { useMemo, useState } from "react";
 import {
   Calendar,
+  Car,
   Coins,
   Gem,
   Image as ImageIcon,
   Landmark,
+  LineChart,
   MapPin,
   Pencil,
   Plus,
@@ -41,6 +43,8 @@ const ASSET_TYPES: { value: AssetType; label: string; short: string }[] = [
   { value: "gold_ring", label: "Vàng nhẫn", short: "Vàng nhẫn" },
   { value: "gold_jewelry", label: "Vàng trang sức", short: "Trang sức" },
   { value: "gold_other", label: "Vàng loại khác", short: "Vàng khác" },
+  { value: "vehicle", label: "Xe cộ", short: "Xe" },
+  { value: "stock", label: "Cổ phần / cổ phiếu", short: "Cổ phiếu" },
   { value: "other", label: "Tài sản khác", short: "Khác" }
 ];
 
@@ -58,6 +62,8 @@ function defaultUnitForType(type: AssetType) {
   if (type === "crypto") return "coin";
   if (type === "land") return "m2";
   if (isGoldType(type)) return "chỉ";
+  if (type === "vehicle") return "chiếc";
+  if (type === "stock") return "cổ phiếu";
   return "món";
 }
 
@@ -65,6 +71,8 @@ function typeClass(type: AssetType) {
   if (type === "crypto") return "text-sky-400 bg-sky-500/10 border-sky-500/20";
   if (type === "land") return "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
   if (isGoldType(type)) return "text-amber-400 bg-amber-500/10 border-amber-500/20";
+  if (type === "vehicle") return "text-orange-400 bg-orange-500/10 border-orange-500/20";
+  if (type === "stock") return "text-violet-400 bg-violet-500/10 border-violet-500/20";
   return "text-slate-400 bg-slate-800 border-slate-700";
 }
 
@@ -442,7 +450,7 @@ export function Assets({
             const owner = users.find(u => u.id === asset.ownerId);
             const creator = users.find(u => u.id === asset.createdById);
             const firstPhoto = asset.photos?.[0];
-            const Icon = asset.type === "land" ? Landmark : asset.type === "crypto" ? Coins : isGoldType(asset.type) ? Gem : Wallet;
+            const Icon = asset.type === "land" ? Landmark : asset.type === "crypto" ? Coins : asset.type === "vehicle" ? Car : asset.type === "stock" ? LineChart : isGoldType(asset.type) ? Gem : Wallet;
 
             return (
               <article key={asset.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-4">
@@ -505,6 +513,18 @@ export function Assets({
                     <>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Trọng lượng: <span className="text-amber-400 font-bold tabular-nums">{asset.weight ? `${asset.weight} ${asset.weightUnit || asset.unit}` : "—"}</span></p>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Tuổi vàng: <span className="text-slate-200">{asset.goldPurity || "—"}</span></p>
+                    </>
+                  )}
+                  {asset.type === "vehicle" && (
+                    <>
+                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Hãng / dòng: <span className="text-orange-400 font-bold">{asset.brand || "—"}</span></p>
+                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Biển số / số khung: <span className="text-slate-200">{asset.serialNo || "—"}</span></p>
+                    </>
+                  )}
+                  {asset.type === "stock" && (
+                    <>
+                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Mã CP: <span className="text-violet-400 font-bold">{asset.symbol || "—"}</span></p>
+                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Sàn / Cty CK: <span className="text-slate-200">{asset.brand || "—"}</span></p>
                     </>
                   )}
                 </div>
@@ -639,6 +659,20 @@ export function Assets({
                     <input value={formGoldPurity} onChange={(e) => setFormGoldPurity(e.target.value)} placeholder="9999 / 24K / 18K" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
                     <input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="SJC/PNJ/DOJI" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
                     <input value={formSerialNo} onChange={(e) => setFormSerialNo(e.target.value)} placeholder="Số seri nếu có" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                  </div>
+                )}
+
+                {formType === "vehicle" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
+                    <input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="Hãng / dòng xe: Honda SH, Toyota Vios" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                    <input value={formSerialNo} onChange={(e) => setFormSerialNo(e.target.value)} placeholder="Biển số / số khung" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                  </div>
+                )}
+
+                {formType === "stock" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
+                    <input value={formSymbol} onChange={(e) => setFormSymbol(e.target.value.toUpperCase())} placeholder="Mã CP: VNM, FPT, HPG" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                    <input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="Sàn / Cty CK: HOSE, SSI, VND" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
                   </div>
                 )}
 

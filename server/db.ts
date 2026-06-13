@@ -28,7 +28,7 @@ import { deleteMediaByUrl } from "./media.js";
 
 // Whitelist of valid asset types (mirrors AssetType in src/types.ts).
 const VALID_ASSET_TYPES = new Set<string>([
-  "crypto", "land", "gold_bar", "gold_ring", "gold_jewelry", "gold_other", "other"
+  "crypto", "land", "gold_bar", "gold_ring", "gold_jewelry", "gold_other", "vehicle", "stock", "other"
 ]);
 
 // Collect the stored image URLs referenced by an asset's photos.
