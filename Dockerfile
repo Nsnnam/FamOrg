@@ -15,6 +15,7 @@ RUN npm install
 
 # Copy the rest of the application files
 COPY tsconfig.json vite.config.ts index.html metadata.json ./
+COPY public/ ./public/
 COPY src/ ./src/
 COPY server.ts ./
 COPY server/ ./server/
