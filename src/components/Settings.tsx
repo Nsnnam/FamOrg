@@ -954,9 +954,9 @@ export function Settings({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
           >
-            <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-800 shrink-0">
               <Avatar user={{ fullName: euFullName || editTarget.fullName, avatarColor: euColor, avatarImage: editTarget.avatarImage }} className="w-10 h-10 rounded-xl text-base" extraClass="shrink-0" />
               <div className="min-w-0">
                 <h3 className="text-sm font-bold text-slate-100 truncate">Sửa thông tin thành viên</h3>
@@ -964,7 +964,8 @@ export function Settings({
               </div>
             </div>
 
-            <form onSubmit={handleEditUserSubmit} className="space-y-3 text-xs">
+            <form onSubmit={handleEditUserSubmit} className="flex flex-col min-h-0 flex-1 overflow-hidden text-xs">
+              <div className="space-y-3 overflow-y-auto px-5 py-4 flex-1 min-h-0">
               <div className="space-y-1">
                 <label className="text-slate-400 block font-semibold">Tên hiển thị <span className="text-rose-450">*</span></label>
                 <input
@@ -1041,7 +1042,9 @@ export function Settings({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-1">
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-slate-800 shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditTarget(null)}
@@ -1072,7 +1075,7 @@ export function Settings({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
               <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 shrink-0">
