@@ -7,9 +7,9 @@
   --slate-850: rgb(226, 232, 240);  /* Soft borders -> Slate 200 */
   --slate-800: rgb(241, 245, 249);  /* Hover and active sub-areas -> Slate 100 */
   
-  --slate-500: #94a3b8;  /* Placeholder / weak info -> Slate 400 */
-  --slate-450: #64748b;  /* helper details -> Slate 500 */
-  --slate-400: #475569;  /* Description text -> Slate 600 */
+  --slate-500: #64748b;  /* Placeholder / weak info -> Slate 500 (was 400, too light on white) */
+  --slate-450: #475569;  /* helper details -> Slate 600 for stronger contrast */
+  --slate-400: #334155;  /* Description text -> Slate 700 */
   --slate-300: #334155;  /* Secondary text -> Slate 700 */
   --slate-200: #1e293b;  /* Primary body text -> Slate 800 */
   --slate-100: #0f172a;  /* Heavy heading titles -> Slate 900 */
@@ -34,9 +34,9 @@
   --slate-850: #1e2942;  /* Soft borders -> dark slate border */
   --slate-800: #253352;  /* Hover and active sub-areas */
   
-  --slate-500: #64748b;  /* Placeholder / weak info -> Slate 500 */
-  --slate-450: #8da1bf;  /* helper details */
-  --slate-400: #94a3b8;  /* Description text -> Slate 400 */
+  --slate-500: #8392a8;  /* Placeholder / weak info -> lighter for readability on dark cards */
+  --slate-450: #9fb0c9;  /* helper details -> brighter */
+  --slate-400: #aab8cc;  /* Description text -> brighter for readability */
   --slate-300: #cbd5e1;  /* Secondary text -> Slate 300 */
   --slate-200: #e2e8f0;  /* Primary body text -> Slate 200 */
   --slate-100: #f8fafc;  /* Heavy heading titles -> Slate 100 */

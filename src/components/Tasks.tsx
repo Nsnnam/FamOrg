@@ -21,8 +21,10 @@ import {
   Share2,
   Pencil
 } from "lucide-react";
-import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, RecurrenceType } from "../types.js";
+import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, RecurrenceType, isLimitedViewer, isAdultRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
+import { Avatar } from "./Avatar.js";
+import { useConfirm } from "./ConfirmDialog.js";
 
 interface TasksProps {
   currentUser: User;
@@ -53,12 +55,14 @@ export function Tasks({
   const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [scopeFilter, setScopeFilter] = useState<"all" | "shared" | "personal">("all");
+  const [completedWindowDays, setCompletedWindowDays] = useState<"7" | "30" | "90" | "all">("30");
 
   // State controls for creation modal & detail modal
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [commentInput, setCommentInput] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // New task form fields
   const [newTitle, setNewTitle] = useState("");
@@ -109,8 +113,8 @@ export function Tasks({
         if (task.creatorId !== currentUser.id && task.assigneeId !== currentUser.id) return false;
       }
 
-      // Guest access control: Guests can only see shared tasks AND tasks physically assigned to them
-      if (currentUser.role === UserRole.GUEST) {
+      // Limited viewers (Child & Guest) only see shared tasks AND tasks they created or are assigned to
+      if (isLimitedViewer(currentUser.role)) {
         if (!task.isShared && task.creatorId !== currentUser.id && task.assigneeId !== currentUser.id) {
           return false;
         }
@@ -126,7 +130,13 @@ export function Tasks({
     return tasks.find(t => t.id === selectedTask.id) || null;
   }, [tasks, selectedTask]);
 
-  const childUsers = useMemo(() => users.filter(u => u.role === UserRole.GUEST), [users]);
+  const childUsers = useMemo(() => users.filter(u => u.role === UserRole.CHILD), [users]);
+
+  // Adults manage any task; a Child may edit only tasks they created or are assigned to. Only adults can delete.
+  const canEditTask = (task: Task) =>
+    isAdultRole(currentUser.role) ||
+    (currentUser.role === UserRole.CHILD && (task.creatorId === currentUser.id || task.assigneeId === currentUser.id));
+  const canDeleteTask = (_task: Task) => isAdultRole(currentUser.role);
 
   const resetTaskForm = () => {
     setNewTitle("");
@@ -254,15 +264,22 @@ export function Tasks({
   };
 
   const handleDeleteClick = async (taskId: string) => {
-    if (confirm("Bạn có tin chắc muốn xóa công việc này không?")) {
-      try {
-        await onDeleteTask(taskId);
-        if (selectedTask?.id === taskId) {
-          setSelectedTask(null);
-        }
-      } catch (err) {
-        console.error("Không thể xóa task:", err);
+    const ok = await confirm({
+      title: "Xóa công việc?",
+      message: "Công việc này sẽ bị xóa khỏi danh sách task gia đình. Bạn có chắc chắn muốn tiếp tục không?",
+      confirmLabel: "Xóa công việc",
+      cancelLabel: "Đóng lại",
+      tone: "danger"
+    });
+    if (!ok) return;
+
+    try {
+      await onDeleteTask(taskId);
+      if (selectedTask?.id === taskId) {
+        setSelectedTask(null);
       }
+    } catch (err) {
+      console.error("Không thể xóa task:", err);
     }
   };
 
@@ -291,6 +308,124 @@ export function Tasks({
       case TaskStatus.COMPLETED: return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
       case TaskStatus.OVERDUE: return "bg-rose-500/10 text-rose-400 border-rose-400/20";
     }
+  };
+
+  const priorityLabel = (p: TaskPriority) => {
+    switch (p) {
+      case TaskPriority.HIGH: return "Khẩn cấp";
+      case TaskPriority.MEDIUM: return "Trung bình";
+      case TaskPriority.LOW: return "Hàng ngày";
+    }
+  };
+
+  const recurrenceLabel = (type?: RecurrenceType) => {
+    if (!type || type === "none") return "";
+    if (type === "daily") return "Lặp ngày";
+    if (type === "weekly") return "Lặp tuần";
+    return "Lặp tháng";
+  };
+
+  const priorityRank: Record<TaskPriority, number> = {
+    [TaskPriority.HIGH]: 0,
+    [TaskPriority.MEDIUM]: 1,
+    [TaskPriority.LOW]: 2
+  };
+
+  const sortedTasks = (items: Task[]) => {
+    return [...items].sort((a, b) => {
+      if (a.status === TaskStatus.COMPLETED && b.status !== TaskStatus.COMPLETED) return 1;
+      if (a.status !== TaskStatus.COMPLETED && b.status === TaskStatus.COMPLETED) return -1;
+      const priorityDiff = priorityRank[a.priority] - priorityRank[b.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      return (a.dueDate || "").localeCompare(b.dueDate || "");
+    });
+  };
+
+  const parseTaskDate = (value?: string | null) => {
+    if (!value) return null;
+    const parsed = new Date(String(value).replace(" ", "T"));
+    return isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const completedReferenceDate = (task: Task) => {
+    return parseTaskDate(task.completedAt) ||
+      parseTaskDate(task.updatedAt) ||
+      parseTaskDate(task.dueDate) ||
+      parseTaskDate(task.createdAt);
+  };
+
+  const shouldShowCompletedTask = (task: Task) => {
+    if (task.status !== TaskStatus.COMPLETED) return true;
+    if (completedWindowDays === "all") return true;
+    const referenceDate = completedReferenceDate(task);
+    if (!referenceDate) return false;
+    const cutoff = new Date();
+    cutoff.setHours(0, 0, 0, 0);
+    cutoff.setDate(cutoff.getDate() - Number(completedWindowDays));
+    return referenceDate.getTime() >= cutoff.getTime();
+  };
+
+  const boardTasks = useMemo(() => {
+    return filteredTasks.filter(shouldShowCompletedTask);
+  }, [filteredTasks, completedWindowDays]);
+
+  const hiddenCompletedCount = useMemo(() => {
+    return filteredTasks.filter(task => task.status === TaskStatus.COMPLETED && !shouldShowCompletedTask(task)).length;
+  }, [filteredTasks, completedWindowDays]);
+
+  const boardStats = useMemo(() => {
+    const active = boardTasks.filter(t => t.status !== TaskStatus.COMPLETED);
+    return {
+      total: boardTasks.length,
+      active: active.length,
+      high: active.filter(t => t.priority === TaskPriority.HIGH).length,
+      unassigned: boardTasks.filter(t => !t.assigneeId).length
+    };
+  }, [boardTasks]);
+
+  const kanbanColumns = [
+    {
+      status: TaskStatus.TODO,
+      title: "Chưa làm",
+      hint: "Việc cần nhận và sắp xếp",
+      icon: Layers,
+      headerClass: "border-slate-700 text-slate-300",
+      accentClass: "bg-slate-500"
+    },
+    {
+      status: TaskStatus.IN_PROGRESS,
+      title: "Đang làm",
+      hint: "Đang được xử lý",
+      icon: Clock,
+      headerClass: "border-sky-500/30 text-sky-300",
+      accentClass: "bg-sky-500"
+    },
+    {
+      status: TaskStatus.OVERDUE,
+      title: "Quá hạn",
+      hint: "Cần xử lý sớm",
+      icon: AlertCircle,
+      headerClass: "border-rose-500/30 text-rose-300",
+      accentClass: "bg-rose-500"
+    },
+    {
+      status: TaskStatus.COMPLETED,
+      title: "Hoàn thành",
+      hint: "Đã xong trong gia đình",
+      icon: CheckCircle,
+      headerClass: "border-emerald-500/30 text-emerald-300",
+      accentClass: "bg-emerald-500"
+    }
+  ];
+
+  const visibleKanbanColumns = statusFilter === "all"
+    ? kanbanColumns
+    : kanbanColumns.filter(column => column.status === statusFilter);
+
+  const quickNextStatus = (task: Task): { label: string; status: TaskStatus } => {
+    if (task.status === TaskStatus.TODO) return { label: "Bắt đầu", status: TaskStatus.IN_PROGRESS };
+    if (task.status === TaskStatus.COMPLETED) return { label: "Mở lại", status: TaskStatus.TODO };
+    return { label: "Hoàn thành", status: TaskStatus.COMPLETED };
   };
 
   return (
@@ -389,6 +524,7 @@ export function Tasks({
                 setAssigneeFilter("all");
                 setPriorityFilter("all");
                 setScopeFilter("all");
+                setCompletedWindowDays("30");
               }}
               className="w-full bg-slate-950 border border-slate-800 hover:bg-slate-800 hover:text-slate-100 p-2 text-slate-400 font-semibold rounded-lg text-center transition-all cursor-pointer"
             >
@@ -405,7 +541,7 @@ export function Tasks({
               <h3 className="text-sm font-bold text-slate-200">Điểm thưởng cho trẻ</h3>
               <p className="text-[11px] text-slate-500">Task có điểm sẽ tự cộng khi trẻ hoàn thành. Có thể cộng/trừ thủ công khi cần.</p>
             </div>
-            {currentUser.role !== UserRole.GUEST && (
+            {isAdultRole(currentUser.role) && (
               <form onSubmit={handleManualReward} className="grid grid-cols-1 sm:grid-cols-[160px_100px_1fr_auto] gap-2 text-xs">
                 <select value={manualRewardUser} onChange={(e) => setManualRewardUser(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
                   <option value="">Chọn trẻ</option>
@@ -448,7 +584,237 @@ export function Tasks({
           <p className="text-sm text-slate-500">Không tìm thấy công việc phù hợp với bộ lọc hiển thị.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="tasks-list">
+        <>
+          <div className="space-y-4" id="tasks-kanban-board">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+              <div>
+                <h3 className="text-sm font-bold text-slate-100 text-balance">Bảng công việc gia đình</h3>
+                <p className="text-[11px] text-slate-500 text-pretty">Sắp xếp theo trạng thái, ưu tiên và hạn xử lý để cả nhà nhìn là biết việc nào cần làm trước.</p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                  <span className="block text-slate-500">Tổng</span>
+                  <span className="font-extrabold text-slate-100 tabular-nums">{boardStats.total}</span>
+                </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                  <span className="block text-slate-500">Đang mở</span>
+                  <span className="font-extrabold text-sky-400 tabular-nums">{boardStats.active}</span>
+                </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                  <span className="block text-slate-500">Khẩn cấp</span>
+                  <span className="font-extrabold text-rose-400 tabular-nums">{boardStats.high}</span>
+                </div>
+                <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                  <span className="block text-slate-500">Chưa giao</span>
+                  <span className="font-extrabold text-amber-400 tabular-nums">{boardStats.unassigned}</span>
+                </div>
+              </div>
+              <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-[11px] min-w-[180px]">
+                <label htmlFor="completed-window-filter" className="block text-slate-500 mb-1">Hoàn thành</label>
+                <select
+                  id="completed-window-filter"
+                  value={completedWindowDays}
+                  onChange={(e) => setCompletedWindowDays(e.target.value as "7" | "30" | "90" | "all")}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500"
+                >
+                  <option value="7">7 ngày gần nhất</option>
+                  <option value="30">30 ngày gần nhất</option>
+                  <option value="90">90 ngày gần nhất</option>
+                  <option value="all">Tất cả</option>
+                </select>
+                {hiddenCompletedCount > 0 && (
+                  <p className="mt-1 text-[10px] text-slate-500 tabular-nums">Đang ẩn {hiddenCompletedCount} task cũ.</p>
+                )}
+              </div>
+            </div>
+
+            <div className={`grid grid-cols-1 md:grid-cols-2 ${visibleKanbanColumns.length > 2 ? "2xl:grid-cols-4" : "xl:grid-cols-2"} gap-4`}>
+              {visibleKanbanColumns.map(column => {
+                const Icon = column.icon;
+                const columnTasks = sortedTasks(boardTasks.filter(task => task.status === column.status));
+
+                return (
+                  <section key={column.status} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/70 shadow-lg overflow-hidden">
+                    <div className={`border-b ${column.headerClass} bg-slate-950/70 px-4 py-3`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`size-2 rounded-full ${column.accentClass} shrink-0`} />
+                          <Icon className="size-4 shrink-0" />
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-bold text-slate-100 truncate">{column.title}</h4>
+                            <p className="text-[10px] text-slate-500 truncate">{column.hint}</p>
+                          </div>
+                        </div>
+                        <span className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-300 tabular-nums">
+                          {columnTasks.length}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="p-3 space-y-3 min-h-[220px]">
+                      {columnTasks.length === 0 ? (
+                        <div className="h-32 border border-dashed border-slate-800 rounded-xl flex items-center justify-center px-4 text-center">
+                          <p className="text-[11px] text-slate-500">Không có task ở cột này.</p>
+                        </div>
+                      ) : (
+                        <AnimatePresence initial={false}>
+                          {columnTasks.map(task => {
+                            const assignee = users.find(u => u.id === task.assigneeId);
+                            const creator = users.find(u => u.id === task.creatorId);
+                            const next = quickNextStatus(task);
+                            const dueDate = task.dueDate?.split(" ")[0] || "Chưa đặt hạn";
+                            const recurrence = recurrenceLabel(task.recurrenceType);
+
+                            return (
+                              <motion.article
+                                key={task.id}
+                                layout
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 6 }}
+                                transition={{ duration: 0.15 }}
+                                className={`rounded-xl border bg-slate-950/80 p-3 shadow-sm space-y-3 ${task.priority === TaskPriority.HIGH && task.status !== TaskStatus.COMPLETED ? "border-rose-500/35" : "border-slate-800"} ${savingId === task.id ? "opacity-60 pointer-events-none" : ""}`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 border rounded-lg ${priorityColor(task.priority)}`}>
+                                    {priorityLabel(task.priority)}
+                                  </span>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedTask(task)}
+                                      className="size-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-sky-400 flex items-center justify-center cursor-pointer"
+                                      title="Xem chi tiết & bình luận"
+                                      aria-label={`Xem chi tiết task ${task.title}`}
+                                    >
+                                      <MessageSquare className="size-3.5" />
+                                    </button>
+                                    {canEditTask(task) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenEditTask(task)}
+                                        className="size-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-amber-400 flex items-center justify-center cursor-pointer"
+                                        title="Sửa / giao lại công việc"
+                                        aria-label={`Sửa task ${task.title}`}
+                                      >
+                                        <Pencil className="size-3.5" />
+                                      </button>
+                                    )}
+                                    {canDeleteTask(task) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteClick(task.id)}
+                                        className="size-7 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-rose-400 flex items-center justify-center cursor-pointer"
+                                        title="Xóa công việc"
+                                        aria-label={`Xóa task ${task.title}`}
+                                      >
+                                        <Trash2 className="size-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTask(task)}
+                                  className="block w-full text-left cursor-pointer"
+                                >
+                                  <h4 className={`text-sm font-bold leading-snug text-pretty ${task.status === TaskStatus.COMPLETED ? "line-through text-slate-500" : "text-slate-100 hover:text-sky-400"}`}>
+                                    {task.title}
+                                  </h4>
+                                  <p className="mt-1 text-[11px] text-slate-500 line-clamp-2 leading-relaxed text-pretty">
+                                    {task.description || "Không có mô tả công việc."}
+                                  </p>
+                                </button>
+
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {assignee ? (
+                                        <>
+                                          <Avatar user={assignee} className="size-6 rounded-full text-[10px]" extraClass="shrink-0" />
+                                          <span className="text-slate-300 truncate">{assignee.fullName}</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="size-6 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0">
+                                            <UserIcon className="size-3 text-slate-500" />
+                                          </span>
+                                          <span className="text-slate-500 italic truncate">Chưa giao</span>
+                                        </>
+                                      )}
+                                    </div>
+                                    <span className="text-slate-500 flex items-center gap-1 shrink-0 font-mono tabular-nums">
+                                      <Calendar className="size-3 text-amber-500/80" />
+                                      {dueDate}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-1.5">
+                                    <span className={`text-[10px] px-2 py-0.5 border rounded-lg font-semibold ${statusColor(task.status)}`}>
+                                      {statusName(task.status)}
+                                    </span>
+                                    {task.isShared ? (
+                                      <span className="text-[10px] px-2 py-0.5 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-lg font-semibold flex items-center gap-1">
+                                        <Share2 className="size-3" /> Chung
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg font-semibold">
+                                        Cá nhân
+                                      </span>
+                                    )}
+                                    {(task.rewardPoints || 0) > 0 && (
+                                      <span className="text-[10px] px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg font-bold">
+                                        +{task.rewardPoints} điểm
+                                      </span>
+                                    )}
+                                    {recurrence && (
+                                      <span className="text-[10px] px-2 py-0.5 bg-slate-900 text-slate-400 border border-slate-800 rounded-lg font-semibold">
+                                        {recurrence}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {task.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {task.tags.slice(0, 4).map((tag, i) => (
+                                        <span key={i} className="text-[10px] px-1.5 py-0.5 bg-slate-900 text-slate-500 border border-slate-800 rounded">
+                                          #{tag}
+                                        </span>
+                                      ))}
+                                      {task.tags.length > 4 && (
+                                        <span className="text-[10px] px-1.5 py-0.5 text-slate-600">+{task.tags.length - 4}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+                                  <span className="min-w-0 truncate text-[10px] text-slate-600">
+                                    Tạo bởi {creator ? creator.fullName : "ẩn danh"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleUpdateStatus(task, next.status)}
+                                    className="shrink-0 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-slate-100 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer"
+                                  >
+                                    {next.label}
+                                  </button>
+                                </div>
+                              </motion.article>
+                            );
+                          })}
+                        </AnimatePresence>
+                      )}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+
+          {false && (
+          <div className="hidden" id="tasks-list">
           <AnimatePresence>
             {filteredTasks.map((task) => {
               const assignee = users.find(u => u.id === task.assigneeId);
@@ -574,7 +940,7 @@ export function Tasks({
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
                     </button>
-                    {currentUser.role !== UserRole.GUEST && (
+                    {canEditTask(task) && (
                       <button
                         onClick={() => handleOpenEditTask(task)}
                         className="bg-slate-950 hover:bg-slate-800 p-1.5 border border-slate-800 rounded-lg text-slate-400 hover:text-amber-400"
@@ -583,7 +949,7 @@ export function Tasks({
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                     )}
-                    {currentUser.role !== UserRole.GUEST && (
+                    {canDeleteTask(task) && (
                       <button
                         onClick={() => handleDeleteClick(task.id)}
                         className="bg-slate-950 hover:bg-slate-800 p-1.5 border border-slate-800 rounded-lg text-slate-400 hover:text-rose-400"
@@ -597,7 +963,9 @@ export function Tasks({
               );
             })}
           </AnimatePresence>
-        </div>
+          </div>
+          )}
+        </>
       )}
 
       {/* Slideout Detail or Modal for Comments & Comment history logs */}
@@ -620,7 +988,7 @@ export function Tasks({
                 <h2 className="text-md font-bold text-slate-100">{activeTaskDetails.title}</h2>
               </div>
               <div className="flex items-center gap-2">
-                {currentUser.role !== UserRole.GUEST && (
+                {canEditTask(activeTaskDetails) && (
                   <button
                     onClick={() => handleOpenEditTask(activeTaskDetails)}
                     className="flex items-center gap-1.5 text-xs font-bold text-amber-400 hover:text-amber-300 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-lg cursor-pointer"
@@ -924,6 +1292,7 @@ export function Tasks({
           </motion.div>
         </div>
       )}
+      {ConfirmDialog}
     </div>
   );
 }

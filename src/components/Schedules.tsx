@@ -17,9 +17,11 @@ import {
   LayoutList,
   LayoutGrid,
   CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
   X
 } from "lucide-react";
-import { FamilyPlan, User, UserRole } from "../types.js";
+import { FamilyPlan, User, UserRole, isLimitedViewer } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 
@@ -111,8 +113,8 @@ export function Schedules({
       if (filterSharedOnly === "shared" && !p.isShared) return false;
       if (filterSharedOnly === "personal" && p.isShared) return false;
 
-      // Guest role validation: guest only sees shared plans
-      if (currentUser.role === UserRole.GUEST && !p.isShared && p.creatorId !== currentUser.id) {
+      // Limited viewers (Child & Guest) only see shared events + their own
+      if (isLimitedViewer(currentUser.role) && !p.isShared && p.creatorId !== currentUser.id) {
         return false;
       }
 
@@ -125,13 +127,25 @@ export function Schedules({
     }).sort((a, b) => a.startDate.localeCompare(b.startDate));
   }, [plans, filterSharedOnly, currentUser]);
 
-  // Dynamic current-month calendar
+  // Calendar cursor — user can browse to any month/year (e.g. plans half a year / a year ahead)
   const today = new Date();
-  const todayNum = today.getDate();
-  const calYear = today.getFullYear();
-  const calMonth = today.getMonth(); // 0-indexed
-  const calMonthName = today.toLocaleDateString("vi-VN", { month: "long", year: "numeric" });
-  const calMonthPrefix = `${calYear}-${String(calMonth + 1).padStart(2, "0")}`;
+  const [calYear, setCalYear] = useState(today.getFullYear());
+  const [calMonth, setCalMonth] = useState(today.getMonth()); // 0-indexed
+  const calMonthName = new Date(calYear, calMonth, 1).toLocaleDateString("vi-VN", { month: "long", year: "numeric" });
+  const isViewingToday = calYear === today.getFullYear() && calMonth === today.getMonth();
+
+  const goToPrevMonth = () => {
+    if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); }
+    else setCalMonth(calMonth - 1);
+  };
+  const goToNextMonth = () => {
+    if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); }
+    else setCalMonth(calMonth + 1);
+  };
+  const goToToday = () => { setCalYear(today.getFullYear()); setCalMonth(today.getMonth()); };
+
+  // Year options span a few years back and several ahead for forward planning
+  const yearOptions = Array.from({ length: 10 }, (_, i) => today.getFullYear() - 3 + i);
 
   const calendarDays = useMemo(() => {
     const firstWeekday = new Date(calYear, calMonth, 1).getDay(); // 0=Sunday
@@ -412,12 +426,63 @@ export function Schedules({
         /* Monthly style responsive Grid */
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden" id="calendar-monthly-grid-view">
           
-          <div className="bg-slate-950 p-4 border-b border-slate-800 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5 text-amber-400" />
-              {calMonthName} (Kế hoạch Gia đình)
+          <div className="bg-slate-950 p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2 capitalize">
+              <CalendarIcon className="w-5 h-5 text-amber-400 shrink-0" />
+              {calMonthName}
             </h3>
-            <span className="text-slate-500 text-[11px] font-mono">Dựa trên múi giờ thiết bị</span>
+
+            {/* Month / year navigation */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {!isViewingToday && (
+                <button
+                  type="button"
+                  onClick={goToToday}
+                  className="mr-1 px-2.5 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  Hôm nay
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={goToPrevMonth}
+                aria-label="Tháng trước"
+                className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-sky-400 rounded-lg cursor-pointer transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <select
+                value={calMonth}
+                onChange={(e) => setCalMonth(Number(e.target.value))}
+                aria-label="Chọn tháng"
+                className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
+              >
+                {Array.from({ length: 12 }, (_, m) => (
+                  <option key={m} value={m}>Tháng {m + 1}</option>
+                ))}
+              </select>
+
+              <select
+                value={calYear}
+                onChange={(e) => setCalYear(Number(e.target.value))}
+                aria-label="Chọn năm"
+                className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer font-mono"
+              >
+                {yearOptions.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={goToNextMonth}
+                aria-label="Tháng sau"
+                className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-sky-400 rounded-lg cursor-pointer transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* Weekday labels */}
@@ -441,7 +506,7 @@ export function Schedules({
               const dayPlans = plansByDayNum[day.dayNum] || [];
               const dayBirthdays = birthdaysByDayNum[day.dayNum] || [];
               const hasEvents = dayPlans.length > 0 || dayBirthdays.length > 0;
-              const isToday = day.dayNum === todayNum;
+              const isToday = isViewingToday && day.dayNum === today.getDate();
 
               return (
                 <div

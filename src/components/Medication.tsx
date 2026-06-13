@@ -5,7 +5,7 @@
 
 import React, { useMemo, useState } from "react";
 import { Pill, Plus, Trash2, Clock, X } from "lucide-react";
-import { MedicationReminder, User, UserRole } from "../types.js";
+import { MedicationReminder, User, canManageMedication } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 
 interface MedicationProps {
@@ -96,7 +96,7 @@ export function Medication({
           <span className="text-[10px] text-slate-500 font-mono">{sorted.length} lịch</span>
         </div>
 
-        {currentUser.role !== UserRole.GUEST && (
+        {canManageMedication(currentUser.role) && (
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên thuốc" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
             <input value={dosage} onChange={(e) => setDosage(e.target.value)} placeholder="Liều dùng" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
@@ -169,7 +169,7 @@ export function Medication({
                       <h4 className="text-sm font-bold text-slate-100">{med.name}</h4>
                       <p className="text-xs text-slate-500">{med.dosage || "Chưa ghi liều"} • {patient?.fullName || "Thành viên"}</p>
                     </div>
-                    {currentUser.role !== UserRole.GUEST && (
+                    {canManageMedication(currentUser.role) && (
                       <button onClick={() => onDeleteMedication(med.id)} className="p-1.5 text-slate-500 hover:text-rose-400 bg-slate-950 border border-slate-800 rounded-lg">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

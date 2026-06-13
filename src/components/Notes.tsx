@@ -18,8 +18,9 @@ import {
   X,
   Share2
 } from "lucide-react";
-import { Note, User, UserRole } from "../types.js";
+import { Note, User, UserRole, isLimitedViewer } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
+import { useConfirm } from "./ConfirmDialog.js";
 
 interface NotesProps {
   currentUser: User;
@@ -115,6 +116,7 @@ export function Notes({
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [readingNote, setReadingNote] = useState<Note | null>(null);
   const [formError, setFormError] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Editor states
   const [formTitle, setFormTitle] = useState("");
@@ -142,8 +144,8 @@ export function Notes({
       // 2. Tag filter
       if (tagFilter !== "all" && !n.tags.includes(tagFilter)) return false;
 
-      // 3. Shared scope protection: Guest can only view shared, non-shared are visible only to creator or Admin
-      if (currentUser.role === UserRole.GUEST) {
+      // 3. Shared scope protection: limited viewers (Child/Guest) only see shared + their own; others see all but others' private
+      if (isLimitedViewer(currentUser.role)) {
         if (!n.isShared && n.creatorId !== currentUser.id) return false;
       } else {
         if (!n.isShared && n.creatorId !== currentUser.id && currentUser.role !== UserRole.ADMIN) {
@@ -222,10 +224,17 @@ export function Notes({
 
   // Delete note trigger
   const handleDeleteClick = async (noteId: string) => {
-    if (confirm("Gia đình có chắc muốn xóa ghi chú này không? Thao tác không thể phục hồi!")) {
-      await onDeleteNote(noteId);
-      if (readingNote?.id === noteId) setReadingNote(null);
-    }
+    const ok = await confirm({
+      title: "Xóa ghi chú?",
+      message: "Ghi chú này sẽ bị xóa vĩnh viễn và không thể phục hồi. Bạn có chắc chắn muốn tiếp tục không?",
+      confirmLabel: "Xóa ghi chú",
+      cancelLabel: "Đóng lại",
+      tone: "danger"
+    });
+    if (!ok) return;
+
+    await onDeleteNote(noteId);
+    if (readingNote?.id === noteId) setReadingNote(null);
   };
 
   // Quick toggle pin state
@@ -613,6 +622,7 @@ export function Notes({
           </motion.div>
         </div>
       )}
+      {ConfirmDialog}
     </div>
   );
 }

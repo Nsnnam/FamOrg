@@ -10,6 +10,7 @@ import {
   FamilyOrganizerDB,
   User,
   UserRole,
+  FamilyRelation,
   Task,
   FamilyPlan,
   Note,
@@ -31,6 +32,9 @@ const SECRET_FILE = path.join(DATA_DIR, "session_secret.key");
 // Legacy salt kept only to verify passwords hashed by the old scheme.
 const LEGACY_SALT = "family_organizer_salt_2026";
 const PBKDF2_ITERATIONS = 120000;
+
+// Keep only the most recent N automatic backups (manual backups are kept indefinitely).
+const MAX_AUTO_BACKUPS = 7;
 
 // Password hashing: per-user random salt, stored as "salt$hash".
 export function hashPassword(password: string, salt?: string): string {
@@ -250,6 +254,23 @@ export class FamilyDB {
         type
       });
 
+      // Retention: keep only the most recent auto backups; remove old files + metadata.
+      // db.backups is newest-first (unshift), so the filtered list is also newest-first.
+      const autoBackups = db.backups.filter(b => b.type === "auto");
+      if (autoBackups.length > MAX_AUTO_BACKUPS) {
+        const toRemove = autoBackups.slice(MAX_AUTO_BACKUPS);
+        for (const old of toRemove) {
+          try {
+            const oldPath = path.join(BACKUP_DIR, old.filename);
+            if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+          } catch (e) {
+            console.error("Không xóa được tệp backup cũ:", old.filename, e);
+          }
+        }
+        const removeIds = new Set(toRemove.map(b => b.id));
+        db.backups = db.backups.filter(b => !removeIds.has(b.id));
+      }
+
       this.writeRaw(db);
       this.logActivity(userId, username, "Backup dữ liệu", `Đã tạo tệp sao lưu ${filename} thành công (${sizeKb} KB).`);
       return { filename, sizeKb };
@@ -361,7 +382,7 @@ export class FamilyDB {
   // MUTATIONS (each returns the modified db items or a success state)
   
   // Create User (Admin Only)
-  public static createUser(u: { username: string; fullName: string; role: UserRole; passwordPlain: string; avatarColor: string; dateOfBirth?: string; phone?: string }, adminId: string, adminUser: string): User {
+  public static createUser(u: { username: string; fullName: string; role: UserRole; passwordPlain: string; avatarColor: string; dateOfBirth?: string; phone?: string; familyRelation?: FamilyRelation }, adminId: string, adminUser: string): User {
     const db = this.readRaw();
     if (db.users.some(existing => existing.username === u.username.toLowerCase())) {
       throw new Error("Tài khoản này đã tồn tại trong gia đình!");
@@ -372,6 +393,7 @@ export class FamilyDB {
       username: u.username.toLowerCase().trim(),
       fullName: u.fullName.trim(),
       role: u.role,
+      familyRelation: u.familyRelation || undefined,
       avatarColor: u.avatarColor || "bg-indigo-500",
       dateOfBirth: u.dateOfBirth || undefined,
       phone: u.phone ? u.phone.trim() : undefined,
@@ -508,7 +530,7 @@ export class FamilyDB {
   // Admin updates another member's profile + role
   public static adminUpdateUser(
     targetId: string,
-    data: { fullName?: string; role?: UserRole; dateOfBirth?: string; phone?: string; avatarColor?: string },
+    data: { fullName?: string; role?: UserRole; dateOfBirth?: string; phone?: string; avatarColor?: string; familyRelation?: FamilyRelation },
     adminId: string,
     adminUser: string
   ): User {
@@ -531,6 +553,7 @@ export class FamilyDB {
       user.fullName = trimmed;
     }
     if (data.role !== undefined) user.role = data.role;
+    if (data.familyRelation !== undefined) user.familyRelation = data.familyRelation || undefined;
     if (data.dateOfBirth !== undefined) user.dateOfBirth = data.dateOfBirth || undefined;
     if (data.phone !== undefined) user.phone = data.phone.trim() || undefined;
     if (data.avatarColor !== undefined && data.avatarColor) user.avatarColor = data.avatarColor;
@@ -611,7 +634,7 @@ export class FamilyDB {
         const awardUserId = updatedTask.assigneeId || userId;
         const awardUser = db.users.find(u => u.id === awardUserId);
         const alreadyAwarded = db.rewardLedger.some(e => e.taskId === updatedTask.id && e.userId === awardUserId);
-        if (awardUser?.role === UserRole.GUEST && !alreadyAwarded) {
+        if (awardUser?.role === UserRole.CHILD && !alreadyAwarded) {
           db.rewardLedger.unshift({
             id: `reward_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             userId: awardUserId,

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import {
   CheckSquare,
   Calendar,
@@ -55,6 +55,42 @@ const WEATHER_CODES: Record<number, { label: string; icon: string }> = {
   99: { label: "Dông mạnh", icon: "⛈️" }
 };
 const describeWeather = (code: number) => WEATHER_CODES[code] || { label: "—", icon: "🌡️" };
+
+// Smoothly counts from the previous value up to the target (easeOutCubic).
+function useCountUp(target: number | null | undefined, duration = 900): number {
+  const [display, setDisplay] = useState(0);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    if (target === null || target === undefined || isNaN(target)) return;
+    const from = fromRef.current;
+    if (from === target) return;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const current = from + (target - from) * eased;
+      setDisplay(current);
+      fromRef.current = current;
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else { fromRef.current = target; setDisplay(target); }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return display;
+}
+
+// Renders a number that rolls up to its value once data arrives.
+function AnimatedNumber({ value, format }: { value: number; format: (n: number) => string }) {
+  const display = useCountUp(value);
+  return <>{format(display)}</>;
+}
+
+// Pulsing placeholder shown in a widget slot while its data is still loading.
+const Skeleton = ({ className = "" }: { className?: string }) => (
+  <span className={`inline-block bg-slate-700/40 rounded-md animate-pulse align-middle ${className}`} />
+);
 
 export function Dashboard({
   currentUser,
@@ -180,120 +216,169 @@ export function Dashboard({
         </div>
       </motion.div>
 
-      {/* Weather + Markets widgets */}
-      {widgets && (widgets.weather || widgets.crypto || widgets.gold || widgets.fx) && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
+      {/* Weather + Markets widgets — always rendered (skeleton while loading) to avoid layout shift */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
 
-          {/* Weather */}
-          {widgets.weather?.current && (() => {
-            const w = widgets.weather;
-            const cur = describeWeather(w.current.weather_code);
-            return (
-              <div className="lg:col-span-1 bg-gradient-to-br from-sky-500/10 to-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs text-slate-400 font-semibold">{w.city}</p>
-                    <p className="text-3xl font-extrabold text-slate-100 mt-1">{Math.round(w.current.temperature_2m)}°C</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{cur.label} • Cảm giác {Math.round(w.current.apparent_temperature)}°</p>
-                  </div>
-                  <span className="text-4xl leading-none">{cur.icon}</span>
-                </div>
-                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-800/60 text-[11px] text-slate-400">
-                  <span>💧 Độ ẩm {w.current.relative_humidity_2m}%</span>
-                  <span>💨 {Math.round(w.current.wind_speed_10m)} km/h</span>
-                </div>
-                {w.daily?.time && (
-                  <div className="flex justify-between mt-3 gap-2">
-                    {w.daily.time.slice(0, 3).map((d: string, i: number) => {
-                      const dc = describeWeather(w.daily.weather_code[i]);
-                      const dayLabel = i === 0 ? "Hôm nay" : new Date(d).toLocaleDateString("vi-VN", { weekday: "short" });
-                      return (
-                        <div key={d} className="flex-1 text-center bg-slate-950/40 rounded-lg py-2">
-                          <p className="text-[10px] text-slate-500">{dayLabel}</p>
-                          <p className="text-lg leading-tight">{dc.icon}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{Math.round(w.daily.temperature_2m_min[i])}°/{Math.round(w.daily.temperature_2m_max[i])}°</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Market mini-cards */}
-          <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-            {/* Bitcoin */}
-            {widgets.crypto?.bitcoin && (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-400">₿ Bitcoin</span>
-                  {changeBadge(widgets.crypto.bitcoin.usd_24h_change)}
-                </div>
-                <div className="mt-2">
-                  <p className="text-lg font-extrabold text-slate-100">{fmtUsd(widgets.crypto.bitcoin.usd)}</p>
-                  <p className="text-[10px] text-slate-500 font-mono">{fmtVnd(widgets.crypto.bitcoin.vnd)}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Ethereum */}
-            {widgets.crypto?.ethereum && (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-indigo-400">Ξ Ethereum</span>
-                  {changeBadge(widgets.crypto.ethereum.usd_24h_change)}
-                </div>
-                <div className="mt-2">
-                  <p className="text-lg font-extrabold text-slate-100">{fmtUsd(widgets.crypto.ethereum.usd)}</p>
-                  <p className="text-[10px] text-slate-500 font-mono">{fmtVnd(widgets.crypto.ethereum.vnd)}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Gold */}
-            {widgets.gold && (widgets.gold.sell || widgets.gold.vndPerTael || widgets.gold.usdPerOz) && (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-yellow-500">🪙 {widgets.gold.source || "Vàng"}</span>
-                  {changeBadge(widgets.gold.changePct)}
-                </div>
-                <div className="mt-2">
-                  {widgets.gold.sell ? (
-                    <>
-                      <p className="text-base font-extrabold text-slate-100">{fmtVnd(widgets.gold.sell)}</p>
-                      <p className="text-[10px] text-slate-500">Bán /lượng{widgets.gold.buy ? ` • Mua ${fmtVnd(widgets.gold.buy)}` : ""}</p>
-                    </>
-                  ) : widgets.gold.vndPerTael ? (
-                    <>
-                      <p className="text-base font-extrabold text-slate-100">{fmtVnd(widgets.gold.vndPerTael)}</p>
-                      <p className="text-[10px] text-slate-500">≈ /lượng (tham khảo)</p>
-                    </>
+        {/* Weather */}
+        {(() => {
+          const w = widgets?.weather;
+          const hasW = !!w?.current;
+          const cur = hasW ? describeWeather(w.current.weather_code) : null;
+          return (
+            <div className="lg:col-span-1 bg-gradient-to-br from-sky-500/10 to-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col min-h-[188px]">
+              <div className="flex items-start justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs text-slate-400 font-semibold truncate">{hasW ? w.city : "Thời tiết"}</p>
+                  {hasW ? (
+                    <p className="text-3xl font-extrabold text-slate-100 mt-1">
+                      <AnimatedNumber value={w.current.temperature_2m} format={(n) => `${Math.round(n)}°C`} />
+                    </p>
                   ) : (
-                    <>
-                      <p className="text-lg font-extrabold text-slate-100">{fmtUsd(widgets.gold.usdPerOz)}<span className="text-[10px] text-slate-500"> /oz</span></p>
-                      <p className="text-[10px] text-slate-500">Thế giới</p>
-                    </>
+                    <Skeleton className="h-8 w-24 mt-1.5" />
+                  )}
+                  {hasW ? (
+                    <p className="text-xs text-slate-400 mt-0.5">{cur!.label} • Cảm giác {Math.round(w.current.apparent_temperature)}°</p>
+                  ) : (
+                    <Skeleton className="h-3 w-32 mt-2" />
                   )}
                 </div>
+                <span className="text-4xl leading-none">{hasW ? cur!.icon : "🌡️"}</span>
               </div>
-            )}
+              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-800/60 text-[11px] text-slate-400">
+                {hasW ? (
+                  <>
+                    <span>💧 Độ ẩm {w.current.relative_humidity_2m}%</span>
+                    <span>💨 {Math.round(w.current.wind_speed_10m)} km/h</span>
+                  </>
+                ) : (
+                  <Skeleton className="h-3 w-40" />
+                )}
+              </div>
+              <div className="flex justify-between mt-3 gap-2">
+                {hasW && w.daily?.time ? (
+                  w.daily.time.slice(0, 3).map((d: string, i: number) => {
+                    const dc = describeWeather(w.daily.weather_code[i]);
+                    const dayLabel = i === 0 ? "Hôm nay" : new Date(d).toLocaleDateString("vi-VN", { weekday: "short" });
+                    return (
+                      <div key={d} className="flex-1 text-center bg-slate-950/40 rounded-lg py-2">
+                        <p className="text-[10px] text-slate-500">{dayLabel}</p>
+                        <p className="text-lg leading-tight">{dc.icon}</p>
+                        <p className="text-[10px] text-slate-400 font-mono">{Math.round(w.daily.temperature_2m_min[i])}°/{Math.round(w.daily.temperature_2m_max[i])}°</p>
+                      </div>
+                    );
+                  })
+                ) : (
+                  [0, 1, 2].map(i => (
+                    <div key={i} className="flex-1 bg-slate-950/40 rounded-lg py-2 flex flex-col items-center gap-1.5">
+                      <Skeleton className="h-2 w-8" />
+                      <Skeleton className="h-4 w-4" />
+                      <Skeleton className="h-2 w-9" />
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
-            {/* USD/VND */}
-            {widgets.fx?.usdVnd && (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-emerald-400">💵 USD/VND</span>
-                </div>
-                <div className="mt-2">
-                  <p className="text-lg font-extrabold text-slate-100">{fmtVnd(widgets.fx.usdVnd)}</p>
+        {/* Market mini-cards */}
+        <div className="lg:col-span-2 grid grid-cols-2 gap-4">
+          {/* Bitcoin */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[92px]">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-400">₿ Bitcoin</span>
+              {widgets?.crypto?.bitcoin ? changeBadge(widgets.crypto.bitcoin.usd_24h_change) : null}
+            </div>
+            <div className="mt-2">
+              {widgets?.crypto?.bitcoin ? (
+                <>
+                  <p className="text-lg font-extrabold text-slate-100"><AnimatedNumber value={widgets.crypto.bitcoin.usd} format={fmtUsd} /></p>
+                  <p className="text-[10px] text-slate-500 font-mono"><AnimatedNumber value={widgets.crypto.bitcoin.vnd} format={fmtVnd} /></p>
+                </>
+              ) : (
+                <>
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-2.5 w-20 mt-1.5" />
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Ethereum */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[92px]">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-indigo-400">Ξ Ethereum</span>
+              {widgets?.crypto?.ethereum ? changeBadge(widgets.crypto.ethereum.usd_24h_change) : null}
+            </div>
+            <div className="mt-2">
+              {widgets?.crypto?.ethereum ? (
+                <>
+                  <p className="text-lg font-extrabold text-slate-100"><AnimatedNumber value={widgets.crypto.ethereum.usd} format={fmtUsd} /></p>
+                  <p className="text-[10px] text-slate-500 font-mono"><AnimatedNumber value={widgets.crypto.ethereum.vnd} format={fmtVnd} /></p>
+                </>
+              ) : (
+                <>
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-2.5 w-20 mt-1.5" />
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Gold */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[92px]">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-yellow-500">🪙 {widgets?.gold?.source || "Vàng"}</span>
+              {widgets?.gold ? changeBadge(widgets.gold.changePct) : null}
+            </div>
+            <div className="mt-2">
+              {widgets?.gold && (widgets.gold.sell || widgets.gold.vndPerTael || widgets.gold.usdPerOz) ? (
+                widgets.gold.sell ? (
+                  <>
+                    <p className="text-base font-extrabold text-slate-100"><AnimatedNumber value={widgets.gold.sell} format={fmtVnd} /></p>
+                    <p className="text-[10px] text-slate-500">Bán /lượng{widgets.gold.buy ? ` • Mua ${fmtVnd(widgets.gold.buy)}` : ""}</p>
+                  </>
+                ) : widgets.gold.vndPerTael ? (
+                  <>
+                    <p className="text-base font-extrabold text-slate-100"><AnimatedNumber value={widgets.gold.vndPerTael} format={fmtVnd} /></p>
+                    <p className="text-[10px] text-slate-500">≈ /lượng (tham khảo)</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-extrabold text-slate-100"><AnimatedNumber value={widgets.gold.usdPerOz} format={fmtUsd} /><span className="text-[10px] text-slate-500"> /oz</span></p>
+                    <p className="text-[10px] text-slate-500">Thế giới</p>
+                  </>
+                )
+              ) : (
+                <>
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-2.5 w-20 mt-1.5" />
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* USD/VND */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[92px]">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-400">💵 USD/VND</span>
+            </div>
+            <div className="mt-2">
+              {widgets?.fx?.usdVnd ? (
+                <>
+                  <p className="text-lg font-extrabold text-slate-100"><AnimatedNumber value={widgets.fx.usdVnd} format={fmtVnd} /></p>
                   <p className="text-[10px] text-slate-500">Tỷ giá 1 USD</p>
-                </div>
-              </div>
-            )}
+                </>
+              ) : (
+                <>
+                  <Skeleton className="h-5 w-24" />
+                  <Skeleton className="h-2.5 w-20 mt-1.5" />
+                </>
+              )}
+            </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Main Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="dashboard-stats">
