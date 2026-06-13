@@ -60,6 +60,8 @@ services:
       - WATCHTOWER_HTTP_API_UPDATE=true    # enable the on-demand /v1/update endpoint
       - WATCHTOWER_HTTP_API_PERIODIC_POLLS=true
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+      # Docker 29+ raised the minimum API version to 1.40; force Watchtower's old SDK to match.
+      - DOCKER_API_VERSION=1.40
     # No host port needed: the app reaches Watchtower in-network via http://watchtower:8080.
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
