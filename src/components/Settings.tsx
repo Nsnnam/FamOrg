@@ -22,7 +22,9 @@ import {
   Save,
   X,
   KeyRound,
-  Pencil
+  Pencil,
+  Tag,
+  Rocket
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
 
@@ -39,6 +41,11 @@ const RELATION_OPTIONS = (Object.keys(FAMILY_RELATION_LABELS) as FamilyRelation[
   value,
   label: FAMILY_RELATION_LABELS[value]
 }));
+
+function authHeaders(): Record<string, string> {
+  const token = localStorage.getItem("family_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 import { motion } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { Avatar } from "./Avatar.js";
@@ -139,6 +146,50 @@ export function Settings({
   const [avatarProcessing, setAvatarProcessing] = useState(false);
   const [actionSuccess, setActionSuccess] = useState("");
   const [actionError, setActionError] = useState("");
+
+  // Version & self-update state
+  const [versionInfo, setVersionInfo] = useState<any>(null);
+  const [updateCheck, setUpdateCheck] = useState<any>(null);
+  const [updateBusy, setUpdateBusy] = useState<"" | "check" | "apply">("");
+  const [updateMsg, setUpdateMsg] = useState("");
+
+  useEffect(() => {
+    fetch("/api/version", { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setVersionInfo(d); })
+      .catch(() => {});
+  }, []);
+
+  const handleCheckUpdate = async () => {
+    setUpdateBusy("check");
+    setUpdateMsg("");
+    try {
+      const res = await fetch("/api/version/check", { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không kiểm tra được cập nhật.");
+      setUpdateCheck(data);
+    } catch (err: any) {
+      setUpdateCheck(null);
+      setUpdateMsg(err.message || "Không kiểm tra được cập nhật.");
+    } finally {
+      setUpdateBusy("");
+    }
+  };
+
+  const handleApplyUpdate = async () => {
+    setUpdateBusy("apply");
+    setUpdateMsg("");
+    try {
+      const res = await fetch("/api/update", { method: "POST", headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Cập nhật thất bại.");
+      setUpdateMsg(data.message || "Đã kích hoạt cập nhật.");
+    } catch (err: any) {
+      setUpdateMsg(err.message || "Cập nhật thất bại.");
+    } finally {
+      setUpdateBusy("");
+    }
+  };
 
   useEffect(() => {
     setActiveTab(requestedTab);
@@ -1133,6 +1184,74 @@ export function Settings({
           </motion.div>
         </div>
       )}
+
+      {/* Version & self-update */}
+      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-sky-400" /> Phiên bản & Cập nhật
+            </h3>
+            <p className="text-[11px] text-slate-500 font-mono">
+              {versionInfo
+                ? `Bản: ${versionInfo.shortCommit || versionInfo.version}${versionInfo.buildTime ? ` • build ${new Date(versionInfo.buildTime).toLocaleString("vi-VN")}` : ""}`
+                : "Đang tải thông tin phiên bản..."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCheckUpdate}
+            disabled={updateBusy !== ""}
+            className="bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-all self-start sm:self-auto shrink-0 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${updateBusy === "check" ? "animate-spin" : ""}`} />
+            {updateBusy === "check" ? "Đang kiểm tra..." : "Kiểm tra cập nhật"}
+          </button>
+        </div>
+
+        {updateCheck && (
+          <div className="text-xs">
+            {updateCheck.updateAvailable === true ? (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-xl space-y-2">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <Rocket className="w-4 h-4" /> Có bản mới! ({updateCheck.currentCommit || "?"} → {updateCheck.latestCommit})
+                </p>
+                {updateCheck.latestMessage && <p className="text-amber-200/80 font-mono text-[11px]">“{updateCheck.latestMessage}”</p>}
+
+                {currentUser.role === UserRole.ADMIN && updateCheck.canAutoUpdate && (
+                  <button
+                    type="button"
+                    onClick={handleApplyUpdate}
+                    disabled={updateBusy !== ""}
+                    className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Rocket className="w-4 h-4" /> {updateBusy === "apply" ? "Đang cập nhật..." : "Cập nhật ngay"}
+                  </button>
+                )}
+                {!updateCheck.canAutoUpdate && (
+                  <p className="text-amber-200/70 text-[11px]">
+                    Tự động cập nhật chưa bật. Trên Pi chạy: <code className="bg-slate-900 px-1.5 py-0.5 rounded font-mono">docker compose pull &amp;&amp; docker compose up -d</code>
+                  </p>
+                )}
+              </div>
+            ) : updateCheck.updateAvailable === false ? (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0" /> Bạn đang dùng phiên bản mới nhất.
+              </div>
+            ) : (
+              <div className="p-3 bg-slate-800/60 border border-slate-700 text-slate-400 rounded-xl">
+                Bản đang chạy là bản dev/local nên không so sánh được với GitHub. (Mới nhất trên GitHub: {updateCheck.latestCommit || "?"})
+              </div>
+            )}
+          </div>
+        )}
+
+        {updateMsg && (
+          <div className="p-3 bg-sky-500/10 border border-sky-500/20 text-sky-300 rounded-xl text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" /> {updateMsg}
+          </div>
+        )}
+      </div>
 
       {/* In-app confirmation dialog */}
       {ConfirmDialog}

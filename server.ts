@@ -63,6 +63,18 @@ function validateAssetPhotosPayload(photos: unknown) {
 const app = express();
 const PORT = 3000;
 
+// --- VERSION / UPDATE CONFIG ---
+// APP_VERSION/GIT_SHA/BUILD_TIME are baked into the image at build time (see Dockerfile + CI).
+const APP_VERSION = process.env.APP_VERSION || "dev";
+const GIT_SHA = process.env.GIT_SHA || "";
+const BUILD_TIME = process.env.BUILD_TIME || "";
+// GitHub repo used to check whether a newer commit exists on the default branch.
+const GITHUB_REPO = process.env.GITHUB_REPO || "happysmartlight/Family-Organizer";
+const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
+// Optional Watchtower HTTP API for one-click in-app updates.
+const WATCHTOWER_URL = process.env.WATCHTOWER_URL || "";
+const WATCHTOWER_TOKEN = process.env.WATCHTOWER_HTTP_API_TOKEN || "";
+
 // Body parser - supports rich receipt images in finances
 app.use(express.json({ limit: "15mb" }));
 
@@ -215,6 +227,62 @@ app.post("/api/uploads", requireAuth, (req: AuthRequest, res: Response) => {
     res.json(saved);
   } catch (err: any) {
     res.status(400).json({ error: err.message || "Tải ảnh lên thất bại." });
+  }
+});
+
+// --- VERSION & SELF-UPDATE ---
+
+app.get("/api/version", requireAuth, (_req: AuthRequest, res: Response) => {
+  res.json({
+    version: APP_VERSION,
+    commit: GIT_SHA,
+    shortCommit: GIT_SHA ? GIT_SHA.slice(0, 7) : "",
+    buildTime: BUILD_TIME,
+    canAutoUpdate: Boolean(WATCHTOWER_URL && WATCHTOWER_TOKEN)
+  });
+});
+
+// Compare the running build's commit against the latest commit on the GitHub branch.
+app.get("/api/version/check", requireAuth, async (_req: AuthRequest, res: Response) => {
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/commits/${GITHUB_BRANCH}`;
+    const headers: Record<string, string> = { Accept: "application/vnd.github+json", "User-Agent": "family-organizer" };
+    if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+    const ghRes = await fetch(url, { headers });
+    if (!ghRes.ok) throw new Error(`GitHub trả về mã ${ghRes.status}`);
+    const data: any = await ghRes.json();
+    const latestSha: string = data.sha || "";
+    const message: string = (data.commit?.message || "").split("\n")[0];
+    const date: string = data.commit?.committer?.date || data.commit?.author?.date || "";
+    res.json({
+      currentCommit: GIT_SHA ? GIT_SHA.slice(0, 7) : "",
+      latestCommit: latestSha ? latestSha.slice(0, 7) : "",
+      // null = can't tell (running an un-versioned local/dev build)
+      updateAvailable: GIT_SHA ? (Boolean(latestSha) && latestSha !== GIT_SHA) : null,
+      latestMessage: message,
+      latestDate: date,
+      canAutoUpdate: Boolean(WATCHTOWER_URL && WATCHTOWER_TOKEN)
+    });
+  } catch (err: any) {
+    res.status(502).json({ error: err.message || "Không kiểm tra được cập nhật." });
+  }
+});
+
+// Trigger Watchtower to pull the newest image and restart the app (admin only).
+app.post("/api/update", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
+  if (!WATCHTOWER_URL || !WATCHTOWER_TOKEN) {
+    res.status(400).json({ error: "Chưa cấu hình Watchtower trên máy chủ (WATCHTOWER_URL / WATCHTOWER_HTTP_API_TOKEN)." });
+    return;
+  }
+  try {
+    const ghRes = await fetch(`${WATCHTOWER_URL.replace(/\/$/, "")}/v1/update`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${WATCHTOWER_TOKEN}` }
+    });
+    if (!ghRes.ok) throw new Error(`Watchtower trả về mã ${ghRes.status}`);
+    res.json({ success: true, message: "Đã yêu cầu cập nhật. Ứng dụng sẽ tải bản mới và khởi động lại trong giây lát." });
+  } catch (err: any) {
+    res.status(502).json({ error: err.message || "Không kích hoạt được cập nhật tự động." });
   }
 });
 

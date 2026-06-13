@@ -172,6 +172,7 @@ export default function App() {
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [backups, setBackups] = useState<any[]>([]);
   const [widgets, setWidgets] = useState<any>(null);
+  const [appVersion, setAppVersion] = useState<string>("");
 
   // Notifications modal control
   const [notifOpen, setNotifOpen] = useState(false);
@@ -409,6 +410,18 @@ export default function App() {
     fetchNotifications();
     fetchBackupsAndLogs();
     fetchWidgets();
+    fetchAppVersion();
+  };
+
+  const fetchAppVersion = async () => {
+    try {
+      const res = await fetch("/api/version", { headers: getAuthHeader() });
+      if (!res.ok) return;
+      const d = await res.json();
+      setAppVersion(d.shortCommit || d.version || "");
+    } catch (e) {
+      // version is non-critical; ignore
+    }
   };
 
   // Listen to realtime server pushes (SSE sync connection)
@@ -1113,7 +1126,7 @@ export default function App() {
             <div className="space-y-0.5 truncate flex-1">
               <span className="font-bold text-slate-100 block truncate">{currentUser.fullName}</span>
               <span className="text-[10px] text-slate-400 font-mono block truncate">
-                {ROLE_LABELS[currentUser.role]}{currentUser.familyRelation ? ` • ${FAMILY_RELATION_LABELS[currentUser.familyRelation]}` : ""}
+                {ROLE_LABELS[currentUser.role]}{currentUser.familyRelation ? ` • ${FAMILY_RELATION_LABELS[currentUser.familyRelation]}` : ""}{appVersion ? ` • v${appVersion}` : ""}
               </span>
             </div>
           </button>
@@ -1452,7 +1465,7 @@ export default function App() {
                 <div className="space-y-0.5 truncate flex-1">
                   <span className="font-bold text-slate-100 block truncate">{currentUser.fullName}</span>
                   <span className="text-[10px] text-slate-400 font-mono block truncate">
-                    {ROLE_LABELS[currentUser.role]}{currentUser.familyRelation ? ` • ${FAMILY_RELATION_LABELS[currentUser.familyRelation]}` : ""}
+                    {ROLE_LABELS[currentUser.role]}{currentUser.familyRelation ? ` • ${FAMILY_RELATION_LABELS[currentUser.familyRelation]}` : ""}{appVersion ? ` • v${appVersion}` : ""}
                   </span>
                 </div>
               </button>
