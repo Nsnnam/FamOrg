@@ -18,6 +18,10 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      # Compose auto-reads ./.env for ${VAR} substitution; ":-" => empty if missing
+      # (gitignored, never baked into the image). Used by the AI assistant.
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - APP_URL=${APP_URL:-}
     logging:
       driver: "json-file"
       options:
