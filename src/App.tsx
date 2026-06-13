@@ -897,11 +897,12 @@ export default function App() {
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(data)
     });
+    // Parse defensively: an empty/non-JSON body (e.g. missing route) must not crash the UI
+    const text = await res.text();
+    const d = text ? (() => { try { return JSON.parse(text); } catch { return {}; } })() : {};
     if (!res.ok) {
-      const d = await res.json();
-      throw new Error(d.error);
+      throw new Error(d.error || `Máy chủ trả về lỗi ${res.status}. Hãy thử khởi động lại server.`);
     }
-    const d = await res.json();
     // If the admin edited their own account, reflect it immediately
     if (d.user && currentUser && d.user.id === currentUser.id) {
       setCurrentUser(d.user);
