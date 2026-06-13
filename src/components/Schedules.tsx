@@ -661,7 +661,7 @@ export function Schedules({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               onClick={(e) => e.stopPropagation()}
-              className={`bg-slate-900 border border-slate-800 ${borderLeftColor(viewingPlan.color)} rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4`}
+              className={`bg-slate-900 border border-slate-800 ${borderLeftColor(viewingPlan.color)} rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto`}
             >
               <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-800">
                 <div className="space-y-1 min-w-0">
@@ -758,13 +758,13 @@ export function Schedules({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-5 shadow-2xl space-y-4"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-800 shrink-0">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
                 <CalendarIcon className="w-5 h-5 text-sky-400" /> {editingPlan ? "Chỉnh sửa sự kiện" : "Đăng ký lịch trình sinh hoạt"}
               </h3>
-              <button 
+              <button
                 type="button"
                 aria-label="Đóng form lịch trình"
                 onClick={handleClosePlanForm}
@@ -774,7 +774,8 @@ export function Schedules({
               </button>
             </div>
 
-            <form onSubmit={handleSavePlan} className="space-y-4 text-xs">
+            <form onSubmit={handleSavePlan} className="flex flex-col min-h-0 flex-1 overflow-hidden text-xs">
+              <div className="space-y-4 overflow-y-auto px-5 py-4 flex-1 min-h-0">
               {formError && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl font-medium">
                   {formError}
@@ -873,9 +874,11 @@ export function Schedules({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-3">
-                <button 
-                  type="button" 
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-slate-800 shrink-0">
+                <button
+                  type="button"
                   onClick={handleClosePlanForm}
                   className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl transition-all cursor-pointer font-bold"
                 >

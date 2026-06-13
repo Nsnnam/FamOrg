@@ -1448,7 +1448,7 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4"
+              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
                 <Avatar user={target} className="w-10 h-10 rounded-xl text-base" extraClass="shrink-0" />
