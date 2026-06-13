@@ -1,5 +1,9 @@
 services:
   family-organizer:
+    # Pull the published image from GHCR so Watchtower can auto-update it.
+    # CI (.github/workflows/docker-publish.yml) builds & pushes this on every push to main.
+    # `build:` is kept so you can still build locally with `docker compose up -d --build`.
+    image: ghcr.io/happysmartlight/family-organizer:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -13,7 +17,7 @@ services:
       - "192.168.1.2:3001:3000"
     volumes:
       # Persistent storage on Raspberry Pi 5.
-      # DB file to store tasks, finances, notes and daily backups.
+      # DB file + uploaded images (avatars/assets/receipts) + daily backups.
       - ./data:/app/data
     environment:
       - NODE_ENV=production
@@ -22,6 +26,38 @@ services:
       # (gitignored, never baked into the image). Used by the AI assistant.
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - APP_URL=${APP_URL:-}
+      # Self-update: the app's "Cập nhật ngay" button calls Watchtower's HTTP API.
+      - WATCHTOWER_URL=http://watchtower:8080
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+      - GITHUB_REPO=${GITHUB_REPO:-happysmartlight/Family-Organizer}
+    labels:
+      # Let Watchtower manage (auto-update) this container.
+      - "com.centurylinklabs.watchtower.enable=true"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      # Needs the Docker socket to pull images and recreate containers.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true            # remove old images after update
+      - WATCHTOWER_LABEL_ENABLE=true       # only watch containers labelled above
+      - WATCHTOWER_POLL_INTERVAL=86400     # also auto-check once a day
+      - WATCHTOWER_HTTP_API_UPDATE=true    # enable the on-demand /v1/update endpoint
+      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=true
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
+    ports:
+      # Exposed only on loopback; the app reaches it in-network via http://watchtower:8080.
+      - "127.0.0.1:8080:8080"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     logging:
       driver: "json-file"
       options:

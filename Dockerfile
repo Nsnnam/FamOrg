@@ -37,6 +37,15 @@ RUN apk add --no-cache libstdc++
 # Create a directory to store persistent data (database + backups)
 RUN mkdir -p /app/data && chown -R node:node /app/data
 
+# Version metadata baked at build time (CI passes the git SHA + timestamp).
+# Falls back to "dev" for a plain local `docker compose up --build`.
+ARG APP_VERSION=dev
+ARG GIT_SHA=
+ARG BUILD_TIME=
+ENV APP_VERSION=$APP_VERSION
+ENV GIT_SHA=$GIT_SHA
+ENV BUILD_TIME=$BUILD_TIME
+
 # Set environment
 ENV NODE_ENV=production
 ENV PORT=3000
