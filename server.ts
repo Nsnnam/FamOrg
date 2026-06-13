@@ -10,9 +10,55 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret } from "./server/db.js";
 import { UserRole, isLimitedViewer } from "./src/types.js";
+import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
 
 // Accepted permission roles for write validation
 const VALID_ROLES = new Set<string>([UserRole.ADMIN, UserRole.MEMBER, UserRole.CHILD, UserRole.GUEST]);
+const MAX_AVATAR_IMAGE_CHARS = 2_500_000;
+
+// Images are stored either as "/uploads/..." file references (new) or, for older
+// records, inline base64 "data:image/..." URLs. Both are accepted on write.
+function isStoredImageRef(value: string): boolean {
+  return value.startsWith("/uploads/") || value.startsWith("data:image/");
+}
+
+function validateAvatarImagePayload(avatarImage: unknown) {
+  if (avatarImage === undefined || avatarImage === "") return;
+  if (typeof avatarImage !== "string" || !isStoredImageRef(avatarImage)) {
+    throw new Error("Ảnh đại diện không hợp lệ.");
+  }
+  // Length cap only matters for inline base64; file refs are short.
+  if (avatarImage.startsWith("data:image/") && avatarImage.length > MAX_AVATAR_IMAGE_CHARS) {
+    throw new Error("Ảnh đại diện sau khi tối ưu vẫn quá lớn. Vui lòng chọn ảnh khác.");
+  }
+}
+
+const MAX_ASSET_PHOTOS = 8;
+const MAX_ASSET_PHOTO_CHARS = 2_500_000;
+
+function validateImageRef(value: unknown, label: string, maxChars: number) {
+  if (typeof value !== "string" || !isStoredImageRef(value)) {
+    throw new Error(`${label} không hợp lệ.`);
+  }
+  if (value.startsWith("data:image/") && value.length > maxChars) {
+    throw new Error(`${label} quá lớn. Vui lòng để app tối ưu ảnh trước khi lưu.`);
+  }
+}
+
+function validateAssetPhotosPayload(photos: unknown) {
+  if (photos === undefined) return;
+  if (!Array.isArray(photos)) throw new Error("Danh sách ảnh tài sản không hợp lệ.");
+  if (photos.length > MAX_ASSET_PHOTOS) {
+    throw new Error(`Mỗi tài sản chỉ nên lưu tối đa ${MAX_ASSET_PHOTOS} ảnh.`);
+  }
+
+  photos.forEach((photo, idx) => {
+    if (!photo || typeof photo !== "object") throw new Error(`Ảnh tài sản #${idx + 1} không hợp lệ.`);
+    const item = photo as any;
+    validateImageRef(item.thumbnailDataUrl, `Ảnh thu nhỏ #${idx + 1}`, 500_000);
+    validateImageRef(item.fullDataUrl, `Ảnh xem lớn #${idx + 1}`, MAX_ASSET_PHOTO_CHARS);
+  });
+}
 
 const app = express();
 const PORT = 3000;
@@ -124,6 +170,11 @@ const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => 
 
 app.use(authMiddleware as any);
 
+// Serve uploaded media (avatars/assets/receipts) as static files. Filenames are
+// random/unguessable; the app runs on a private LAN/Tailscale network. Mounted
+// before the SPA catch-all so image URLs resolve in both dev and production.
+app.use("/uploads", express.static(UPLOADS_DIR, { maxAge: "7d", immutable: true, fallthrough: false }));
+
 // Enforce authentication on APIs
 const requireAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
   if (!req.userSession) {
@@ -147,6 +198,25 @@ const requireRole = (roles: UserRole[]) => {
     next();
   };
 };
+
+// --- MEDIA UPLOAD ---
+// Accepts an optimized base64 data URL, writes it to disk under the given
+// category folder, and returns the "/uploads/..." URL to store in the DB.
+const UPLOAD_CATEGORIES = new Set(["avatars", "assets", "receipts"]);
+
+app.post("/api/uploads", requireAuth, (req: AuthRequest, res: Response) => {
+  const { dataUrl, category, subfolder } = req.body || {};
+  if (!UPLOAD_CATEGORIES.has(category)) {
+    res.status(400).json({ error: "Loại ảnh tải lên không hợp lệ." });
+    return;
+  }
+  try {
+    const saved = saveDataUrlToFile(dataUrl, category, subfolder);
+    res.json(saved);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Tải ảnh lên thất bại." });
+  }
+});
 
 // --- AUTH API ENDPOINTS ---
 
@@ -512,6 +582,56 @@ app.delete("/api/finance/recurring-bills/:id", requireAuth, requireRole([UserRol
   res.json({ success: true });
 });
 
+app.get("/api/finance/assets", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  res.json({ assets: FamilyDB.getAssets() });
+});
+
+app.post("/api/finance/assets", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const assetData = req.body;
+
+  try {
+    validateAssetPhotosPayload(assetData.photos);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+    return;
+  }
+
+  if (assetData.id) {
+    const existing = FamilyDB.getAssets().find(a => a.id === assetData.id);
+    if (existing && existing.createdById !== session.userId && session.role !== UserRole.ADMIN) {
+      res.status(403).json({ error: "Bạn chỉ có thể chỉnh sửa tài sản do mình tạo. Admin có toàn quyền quản lý tài sản." });
+      return;
+    }
+  }
+
+  try {
+    const asset = FamilyDB.saveAsset(assetData, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { assetId: asset.id });
+    res.json({ asset });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/finance/assets/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const existing = FamilyDB.getAssets().find(a => a.id === req.params.id);
+
+  if (existing && existing.createdById !== session.userId && session.role !== UserRole.ADMIN) {
+    res.status(403).json({ error: "Bạn chỉ có thể xóa tài sản do mình tạo. Admin có toàn quyền quản lý tài sản." });
+    return;
+  }
+
+  try {
+    FamilyDB.deleteAsset(req.params.id, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { deletedAssetId: req.params.id });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // --- MEDICATION API ENDPOINTS ---
 
 app.get("/api/medications", requireAuth, (req: AuthRequest, res: Response) => {
@@ -766,6 +886,7 @@ app.post("/api/profile", requireAuth, (req: AuthRequest, res: Response) => {
   const { fullName, dateOfBirth, phone, avatarImage, avatarColor } = req.body;
 
   try {
+    validateAvatarImagePayload(avatarImage);
     const updated = FamilyDB.updateProfile(session.userId, {
       fullName,
       dateOfBirth,

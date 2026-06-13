@@ -238,6 +238,58 @@ export interface RecurringBill {
   updatedAt: string;
 }
 
+export type AssetType =
+  | "crypto"
+  | "land"
+  | "gold_bar"
+  | "gold_ring"
+  | "gold_jewelry"
+  | "gold_other"
+  | "other";
+
+export interface AssetPhoto {
+  id: string;
+  fileName: string;
+  thumbnailDataUrl: string;
+  fullDataUrl: string;
+  width: number;
+  height: number;
+  sizeKb: number;
+  createdAt: string;
+}
+
+export interface FamilyAsset {
+  id: string;
+  type: AssetType;
+  name: string;
+  ownerId?: string;
+  quantity: number;
+  unit: string;
+  estimatedValue: number;
+  purchaseValue?: number;
+  currency: "VND" | "USD";
+  purchaseDate?: string;
+  location?: string;
+  notes?: string;
+  photos: AssetPhoto[];
+  symbol?: string;
+  network?: string;
+  walletLabel?: string;
+  walletAddressMasked?: string;
+  address?: string;
+  areaM2?: number;
+  certificateNo?: string;
+  parcelNo?: string;
+  goldPurity?: string;
+  weight?: number;
+  weightUnit?: string;
+  brand?: string;
+  serialNo?: string;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MedicationReminder {
   id: string;
   name: string;
@@ -275,6 +327,7 @@ export interface FamilyOrganizerDB {
   rewardLedger: RewardPointEntry[];
   budgets: BudgetLimit[];
   recurringBills: RecurringBill[];
+  assets: FamilyAsset[];
   medications: MedicationReminder[];
   shoppingItems: ShoppingItem[];
   notifications: Notification[];

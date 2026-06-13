@@ -33,6 +33,7 @@ import {
   FamilyPlan,
   Note,
   FinancialTransaction,
+  FamilyAsset,
   Notification,
   RewardPointEntry,
   BudgetLimit,
@@ -160,6 +161,7 @@ export default function App() {
   const [plans, setPlans] = useState<FamilyPlan[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
+  const [assets, setAssets] = useState<FamilyAsset[]>([]);
   const [rewardEntries, setRewardEntries] = useState<RewardPointEntry[]>([]);
   const [rewardTotals, setRewardTotals] = useState<Record<string, number>>({});
   const [budgets, setBudgets] = useState<BudgetLimit[]>([]);
@@ -298,9 +300,10 @@ export default function App() {
   const fetchFinancePlanning = async () => {
     if (!currentUser || !canAccessFinance(currentUser.role)) return;
     try {
-      const [budgetRes, billRes] = await Promise.all([
+      const [budgetRes, billRes, assetRes] = await Promise.all([
         fetch("/api/finance/budgets", { headers: getAuthHeader() }),
-        fetch("/api/finance/recurring-bills", { headers: getAuthHeader() })
+        fetch("/api/finance/recurring-bills", { headers: getAuthHeader() }),
+        fetch("/api/finance/assets", { headers: getAuthHeader() })
       ]);
       if (budgetRes.ok) {
         const data = await budgetRes.json();
@@ -309,6 +312,10 @@ export default function App() {
       if (billRes.ok) {
         const data = await billRes.json();
         setRecurringBills(data.recurringBills || []);
+      }
+      if (assetRes.ok) {
+        const data = await assetRes.json();
+        setAssets(data.assets || []);
       }
     } catch (e) {
       console.error(e);
@@ -740,6 +747,31 @@ export default function App() {
 
   const handleDeleteRecurringBill = async (id: string) => {
     const res = await fetch(`/api/finance/recurring-bills/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleSaveAsset = async (payload: Partial<FamilyAsset>) => {
+    const res = await fetch("/api/finance/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleDeleteAsset = async (id: string) => {
+    const res = await fetch(`/api/finance/assets/${id}`, {
       method: "DELETE",
       headers: getAuthHeader()
     });
@@ -1317,6 +1349,7 @@ export default function App() {
                   transactions={transactions}
                   budgets={budgets}
                   recurringBills={recurringBills}
+                  assets={assets}
                   onSaveTransaction={handleSaveTransaction}
                   onDeleteTransaction={handleDeleteTransaction}
                   onSaveBudget={handleSaveBudget}
@@ -1324,6 +1357,8 @@ export default function App() {
                   onSaveRecurringBill={handleSaveRecurringBill}
                   onPayRecurringBill={handlePayRecurringBill}
                   onDeleteRecurringBill={handleDeleteRecurringBill}
+                  onSaveAsset={handleSaveAsset}
+                  onDeleteAsset={handleDeleteAsset}
                 />
               )}
 

@@ -24,6 +24,7 @@ const COLLECTIONS: { key: keyof FamilyOrganizerDB; table: string }[] = [
   { key: "rewardLedger", table: "reward_ledger" },
   { key: "budgets", table: "budgets" },
   { key: "recurringBills", table: "recurring_bills" },
+  { key: "assets", table: "assets" },
   { key: "medications", table: "medications" },
   { key: "shoppingItems", table: "shopping_items" },
   { key: "notifications", table: "notifications" },
