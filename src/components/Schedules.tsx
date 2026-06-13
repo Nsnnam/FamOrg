@@ -37,6 +37,7 @@ export function Schedules({
 }: SchedulesProps) {
   const [viewMode, setViewMode] = useState<"list" | "board">("board"); // 'list' = agenda, 'board' = monthly style grid
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [viewingPlan, setViewingPlan] = useState<FamilyPlan | null>(null);
   const [formError, setFormError] = useState("");
 
   // Filters
@@ -94,21 +95,31 @@ export function Schedules({
     return days;
   }, [calYear, calMonth]);
 
-  // Map plans to day numbers for the current month
+  // Map plans to EVERY day in their range (start..end) that falls in the current month
   const plansByDayNum = useMemo(() => {
     const mapping: Record<number, FamilyPlan[]> = {};
     filteredPlans.forEach(plan => {
-      const dateStr = plan.startDate.slice(0, 10);
-      if (dateStr.startsWith(calMonthPrefix)) {
-        const dayNum = parseInt(dateStr.slice(8, 10), 10);
-        if (!isNaN(dayNum)) {
+      const startStr = plan.startDate.slice(0, 10);
+      const endStr = (plan.endDate || plan.startDate).slice(0, 10);
+      const start = new Date(`${startStr}T00:00:00`);
+      const endParsed = new Date(`${endStr}T00:00:00`);
+      if (isNaN(start.getTime())) return;
+      const last = isNaN(endParsed.getTime()) || endParsed < start ? start : endParsed;
+
+      const cur = new Date(start);
+      let guard = 0;
+      while (cur <= last && guard < 370) {
+        if (cur.getFullYear() === calYear && cur.getMonth() === calMonth) {
+          const dayNum = cur.getDate();
           if (!mapping[dayNum]) mapping[dayNum] = [];
           mapping[dayNum].push(plan);
         }
+        cur.setDate(cur.getDate() + 1);
+        guard++;
       }
     });
     return mapping;
-  }, [filteredPlans, calMonthPrefix]);
+  }, [filteredPlans, calYear, calMonth]);
 
   // Birthdays falling in the current calendar month
   const birthdaysByDayNum = useMemo(() => {
@@ -322,14 +333,16 @@ export function Schedules({
                       </div>
                     ))}
                     {dayPlans.map(plan => (
-                      <div
+                      <button
                         key={plan.id}
-                        title={`${plan.title}\n(${plan.startDate.split(" ")[1]})`}
-                        className={`text-[9px] px-1.5 py-0.5 rounded truncate font-medium flex items-center gap-1 ${badgeColorClass(plan.color)}`}
+                        type="button"
+                        onClick={() => setViewingPlan(plan)}
+                        title={`${plan.title}\n(${plan.startDate} → ${plan.endDate || plan.startDate})`}
+                        className={`w-full text-left text-[9px] px-1.5 py-0.5 rounded truncate font-medium flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity ${badgeColorClass(plan.color)}`}
                       >
                         <span className="shrink-0 text-[8px] font-mono opacity-80">{plan.startDate.split(" ")[1]}</span>
                         <span className="truncate">{plan.title}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -412,6 +425,72 @@ export function Schedules({
       )}
 
       {/* Creation Modal */}
+      {/* Event detail viewer (click an event on the calendar) */}
+      {viewingPlan && (() => {
+        const creator = users.find(u => u.id === viewingPlan.creatorId);
+        return (
+          <div
+            onClick={() => setViewingPlan(null)}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`bg-slate-900 border border-slate-800 ${borderLeftColor(viewingPlan.color)} rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4`}
+            >
+              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="space-y-1 min-w-0">
+                  <span className={`text-[10px] px-2 py-0.5 rounded-lg ${badgeColorClass(viewingPlan.color)} font-semibold`}>
+                    {viewingPlan.color === "emerald" ? "Dã ngoại / Ăn chơi" : viewingPlan.color === "rose" ? "Quan trọng" : viewingPlan.color === "amber" ? "Bài học / Công việc" : "Họp hành / Gặp mặt"}
+                  </span>
+                  <h3 className="text-md font-bold text-slate-100">{viewingPlan.title}</h3>
+                </div>
+                <button onClick={() => setViewingPlan(null)} className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg shrink-0">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                {viewingPlan.description || "Không có ghi chú thêm."}
+              </p>
+
+              <div className="space-y-2 bg-slate-950/40 border border-slate-800 rounded-xl p-3.5 text-xs font-mono">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-amber-500/80 shrink-0" />
+                  <span className="text-slate-300">Bắt đầu: <span className="text-amber-400">{viewingPlan.startDate}</span></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-indigo-400/80 shrink-0" />
+                  <span className="text-slate-300">Kết thúc: <span className="text-indigo-400">{viewingPlan.endDate || viewingPlan.startDate}</span></span>
+                </div>
+                {viewingPlan.isRecurring && (
+                  <div className="flex items-center gap-2 text-indigo-400">
+                    <Repeat className="w-3.5 h-3.5 shrink-0" />
+                    <span>Lặp lại: {viewingPlan.recurrenceType === "daily" ? "Hằng ngày" : viewingPlan.recurrenceType === "weekly" ? "Hằng tuần" : "Hằng tháng"}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500 font-sans">
+                <span className="flex items-center gap-1.5">
+                  {viewingPlan.isShared ? <Eye className="w-3.5 h-3.5 text-sky-400" /> : <Lock className="w-3.5 h-3.5 text-indigo-400" />}
+                  {viewingPlan.isShared ? "Công khai" : "Riêng tư"} • Lập bởi {creator ? creator.fullName : "Thành viên"}
+                </span>
+                {currentUser.role !== UserRole.GUEST && (
+                  <button
+                    onClick={() => { handleDeleteClick(viewingPlan.id); setViewingPlan(null); }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg font-semibold cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Xóa
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        );
+      })()}
+
       {isFormOpen && (
         <div 
           onClick={() => setIsFormOpen(false)}
