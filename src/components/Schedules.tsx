@@ -9,16 +9,19 @@ import {
   Plus, 
   Trash2, 
   Clock, 
+  Pencil,
   Repeat, 
   Lock, 
   Eye, 
   Tag, 
-  LayoutList, 
-  LayoutGrid, 
+  LayoutList,
+  LayoutGrid,
+  CalendarPlus,
   X
 } from "lucide-react";
 import { FamilyPlan, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
+import { useConfirm } from "./ConfirmDialog.js";
 
 interface SchedulesProps {
   currentUser: User;
@@ -38,7 +41,9 @@ export function Schedules({
   const [viewMode, setViewMode] = useState<"list" | "board">("board"); // 'list' = agenda, 'board' = monthly style grid
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewingPlan, setViewingPlan] = useState<FamilyPlan | null>(null);
+  const [editingPlan, setEditingPlan] = useState<FamilyPlan | null>(null);
   const [formError, setFormError] = useState("");
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Filters
   const [filterSharedOnly, setFilterSharedOnly] = useState<"all" | "shared" | "personal">("all");
@@ -52,6 +57,52 @@ export function Schedules({
   const [newRecurrenceType, setNewRecurrenceType] = useState<"none" | "daily" | "weekly" | "monthly">("none");
   const [newIsShared, setNewIsShared] = useState(true);
   const [newColor, setNewColor] = useState("sky");
+
+  const canManagePlan = (plan: FamilyPlan) => {
+    return currentUser.role === UserRole.ADMIN ||
+      (currentUser.role === UserRole.MEMBER && plan.creatorId === currentUser.id);
+  };
+
+  const resetPlanForm = () => {
+    setNewTitle("");
+    setNewDesc("");
+    setNewStartDate("");
+    setNewEndDate("");
+    setNewIsRecurring(false);
+    setNewRecurrenceType("none");
+    setNewIsShared(true);
+    setNewColor("sky");
+  };
+
+  const handleOpenCreatePlan = () => {
+    resetPlanForm();
+    setEditingPlan(null);
+    setFormError("");
+    setIsFormOpen(true);
+  };
+
+  const handleOpenEditPlan = (plan: FamilyPlan) => {
+    if (!canManagePlan(plan)) return;
+
+    setNewTitle(plan.title);
+    setNewDesc(plan.description || "");
+    setNewStartDate(plan.startDate || "");
+    setNewEndDate(plan.endDate || plan.startDate || "");
+    setNewIsRecurring(plan.isRecurring);
+    setNewRecurrenceType(plan.recurrenceType || "none");
+    setNewIsShared(plan.isShared);
+    setNewColor(plan.color || "sky");
+    setEditingPlan(plan);
+    setFormError("");
+    setViewingPlan(null);
+    setIsFormOpen(true);
+  };
+
+  const handleClosePlanForm = () => {
+    setIsFormOpen(false);
+    setEditingPlan(null);
+    setFormError("");
+  };
 
   // Filter plans according to user permission and filters
   const filteredPlans = useMemo(() => {
@@ -135,7 +186,7 @@ export function Schedules({
     return map;
   }, [users, calMonth]);
 
-  const handleCreatePlan = async (e: React.FormEvent) => {
+  const handleSavePlan = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
 
@@ -149,6 +200,7 @@ export function Schedules({
     }
 
     const payload: Partial<FamilyPlan> = {
+      id: editingPlan?.id,
       title: newTitle.trim(),
       description: newDesc.trim(),
       startDate: newStartDate.trim(),
@@ -161,25 +213,111 @@ export function Schedules({
 
     try {
       await onSavePlan(payload);
-      // Reset
-      setNewTitle("");
-      setNewDesc("");
-      setNewStartDate("");
-      setNewEndDate("");
-      setNewIsRecurring(false);
-      setNewRecurrenceType("none");
-      setNewIsShared(true);
-      setNewColor("sky");
+      resetPlanForm();
+      setEditingPlan(null);
       setIsFormOpen(false);
     } catch (err: any) {
-      setFormError(err.message || "Tạo kế hoạch thất bại");
+      setFormError(err.message || (editingPlan ? "Cập nhật sự kiện thất bại" : "Tạo kế hoạch thất bại"));
     }
   };
 
   const handleDeleteClick = async (planId: string) => {
-    if (confirm("Gia đình có chắc muốn xóa lịch sinh hoạt này khỏi hệ thống không?")) {
-      await onDeletePlan(planId);
+    const ok = await confirm({
+      title: "Xóa sự kiện khỏi lịch?",
+      message: "Sự kiện này sẽ bị xóa khỏi lịch gia đình. Bạn có chắc chắn muốn tiếp tục không?",
+      confirmLabel: "Xóa sự kiện",
+      cancelLabel: "Đóng lại",
+      tone: "danger"
+    });
+    if (!ok) return;
+
+    await onDeletePlan(planId);
+    if (viewingPlan?.id === planId) setViewingPlan(null);
+  };
+
+  // --- Add to phone calendar (.ics export) ---
+  // Works on iOS (opens Apple Calendar) and Android (offers Google Calendar)
+  // by downloading a standard iCalendar file. Times are "floating" local time
+  // so the event lands at the same wall-clock time the user entered.
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+
+  const parsePlanDate = (s: string) => {
+    const [datePart, timePart] = (s || "").trim().split(" ");
+    const [y, m, d] = datePart.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    if (!timePart) return { date: new Date(y, m - 1, d), allDay: true };
+    const [hh, mm] = timePart.split(":").map(Number);
+    return { date: new Date(y, m - 1, d, hh || 0, mm || 0), allDay: false };
+  };
+
+  const fmtICSLocal = (dt: Date) =>
+    `${dt.getFullYear()}${pad2(dt.getMonth() + 1)}${pad2(dt.getDate())}T${pad2(dt.getHours())}${pad2(dt.getMinutes())}00`;
+  const fmtICSDate = (dt: Date) =>
+    `${dt.getFullYear()}${pad2(dt.getMonth() + 1)}${pad2(dt.getDate())}`;
+
+  const escapeICS = (str: string) =>
+    (str || "")
+      .replace(/\\/g, "\\\\")
+      .replace(/;/g, "\\;")
+      .replace(/,/g, "\\,")
+      .replace(/\r?\n/g, "\\n");
+
+  const buildICS = (plan: FamilyPlan) => {
+    const start = parsePlanDate(plan.startDate);
+    if (!start) return null;
+    const endRaw = plan.endDate && plan.endDate.trim() ? plan.endDate : plan.startDate;
+    const end = parsePlanDate(endRaw) || start;
+
+    const lines: string[] = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Family Organizer//Schedules//VI",
+      "CALSCALE:GREGORIAN",
+      "BEGIN:VEVENT",
+      `UID:${plan.id}@family-organizer`,
+      `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`,
+    ];
+
+    if (start.allDay) {
+      // All-day event: DTEND is exclusive, so add one day to the last day.
+      const endBase = end.date >= start.date ? new Date(end.date) : new Date(start.date);
+      endBase.setDate(endBase.getDate() + 1);
+      lines.push(`DTSTART;VALUE=DATE:${fmtICSDate(start.date)}`);
+      lines.push(`DTEND;VALUE=DATE:${fmtICSDate(endBase)}`);
+    } else {
+      let endDt: Date;
+      if (!end.allDay && end.date > start.date) {
+        endDt = end.date;
+      } else {
+        endDt = new Date(start.date);
+        endDt.setHours(endDt.getHours() + 1); // default 1h duration
+      }
+      lines.push(`DTSTART:${fmtICSLocal(start.date)}`);
+      lines.push(`DTEND:${fmtICSLocal(endDt)}`);
     }
+
+    lines.push(`SUMMARY:${escapeICS(plan.title)}`);
+    if (plan.description) lines.push(`DESCRIPTION:${escapeICS(plan.description)}`);
+    if (plan.isRecurring && plan.recurrenceType && plan.recurrenceType !== "none") {
+      const freq = plan.recurrenceType === "daily" ? "DAILY" : plan.recurrenceType === "weekly" ? "WEEKLY" : "MONTHLY";
+      lines.push(`RRULE:FREQ=${freq}`);
+    }
+    lines.push("END:VEVENT", "END:VCALENDAR");
+    return lines.join("\r\n");
+  };
+
+  const handleAddToCalendar = (plan: FamilyPlan) => {
+    const ics = buildICS(plan);
+    if (!ics) return;
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(plan.title || "su-kien").replace(/[^a-z0-9]/gi, "_").slice(0, 40) || "su-kien"}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // Color schemas
@@ -261,10 +399,7 @@ export function Schedules({
           {/* New register event button */}
           <button 
             disabled={currentUser.role === UserRole.GUEST}
-            onClick={() => {
-              setFormError("");
-              setIsFormOpen(true);
-            }}
+            onClick={handleOpenCreatePlan}
             className="bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-slate-950 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all shadow-md shadow-sky-500/5 cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Lên lịch sự kiện
@@ -361,6 +496,7 @@ export function Schedules({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredPlans.map(plan => {
                 const creator = users.find(u => u.id === plan.creatorId);
+                const canManage = canManagePlan(plan);
                 const sDate = plan.startDate.split(" ");
                 const eDate = plan.endDate.split(" ");
                 return (
@@ -402,19 +538,40 @@ export function Schedules({
                       )}
                     </div>
 
+                    {/* Add to phone calendar (.ics — works on iOS & Android) */}
+                    <button
+                      type="button"
+                      onClick={() => handleAddToCalendar(plan)}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg font-semibold text-[11px] transition-all cursor-pointer"
+                    >
+                      <CalendarPlus className="w-3.5 h-3.5" /> Thêm vào lịch điện thoại
+                    </button>
+
                     {/* Creator mark */}
                     <div className="text-[10px] text-slate-500 pt-1 text-right flex items-center justify-end gap-1 font-sans">
                       <span>Lập bởi: {creator ? creator.fullName : "Thành viên"}</span>
                     </div>
 
-                    {/* Trash capability */}
-                    {currentUser.role !== UserRole.GUEST && (
-                      <button 
-                        onClick={() => handleDeleteClick(plan.id)}
-                        className="absolute right-3.5 top-3.5 p-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:text-rose-400 text-slate-500 rounded-lg opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    {/* Owner/Admin actions */}
+                    {canManage && (
+                      <div className="absolute right-3.5 top-3.5 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          aria-label={`Sửa sự kiện ${plan.title}`}
+                          onClick={() => handleOpenEditPlan(plan)}
+                          className="p-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:text-amber-400 text-slate-500 rounded-lg cursor-pointer"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Xóa sự kiện ${plan.title}`}
+                          onClick={() => handleDeleteClick(plan.id)}
+                          className="p-1.5 bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:text-rose-400 text-slate-500 rounded-lg cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
@@ -428,6 +585,7 @@ export function Schedules({
       {/* Event detail viewer (click an event on the calendar) */}
       {viewingPlan && (() => {
         const creator = users.find(u => u.id === viewingPlan.creatorId);
+        const canManage = canManagePlan(viewingPlan);
         return (
           <div
             onClick={() => setViewingPlan(null)}
@@ -446,7 +604,12 @@ export function Schedules({
                   </span>
                   <h3 className="text-md font-bold text-slate-100">{viewingPlan.title}</h3>
                 </div>
-                <button onClick={() => setViewingPlan(null)} className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg shrink-0">
+                <button
+                  type="button"
+                  aria-label="Đóng chi tiết sự kiện"
+                  onClick={() => setViewingPlan(null)}
+                  className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg shrink-0"
+                >
                   <X className="w-4 h-4" />
                 </button>
               </div>
@@ -472,19 +635,47 @@ export function Schedules({
                 )}
               </div>
 
-              <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500 font-sans">
+              {/* Add to the phone's native calendar (.ics — works on iOS & Android) */}
+              <button
+                type="button"
+                onClick={() => handleAddToCalendar(viewingPlan)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md shadow-sky-500/10"
+              >
+                <CalendarPlus className="w-4 h-4" /> Thêm vào lịch điện thoại
+              </button>
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 text-[11px] text-slate-500 font-sans">
                 <span className="flex items-center gap-1.5">
                   {viewingPlan.isShared ? <Eye className="w-3.5 h-3.5 text-sky-400" /> : <Lock className="w-3.5 h-3.5 text-indigo-400" />}
                   {viewingPlan.isShared ? "Công khai" : "Riêng tư"} • Lập bởi {creator ? creator.fullName : "Thành viên"}
                 </span>
-                {currentUser.role !== UserRole.GUEST && (
+                <div className="flex items-center justify-end gap-2 shrink-0">
                   <button
-                    onClick={() => { handleDeleteClick(viewingPlan.id); setViewingPlan(null); }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg font-semibold cursor-pointer"
+                    type="button"
+                    onClick={() => setViewingPlan(null)}
+                    className="px-3 py-1.5 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800 rounded-lg font-semibold cursor-pointer"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Xóa
+                    Đóng lại
                   </button>
-                )}
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditPlan(viewingPlan)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg font-semibold cursor-pointer"
+                    >
+                      <Pencil className="w-3.5 h-3.5" /> Sửa
+                    </button>
+                  )}
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteClick(viewingPlan.id)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-lg font-semibold cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Xóa
+                    </button>
+                  )}
+                </div>
               </div>
             </motion.div>
           </div>
@@ -493,9 +684,9 @@ export function Schedules({
 
       {isFormOpen && (
         <div 
-          onClick={() => setIsFormOpen(false)}
+          onClick={handleClosePlanForm}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
-          id="plan-create-modal"
+          id={editingPlan ? "plan-edit-modal" : "plan-create-modal"}
         >
           <motion.div 
             initial={{ opacity: 0, scale: 0.95 }}
@@ -505,17 +696,19 @@ export function Schedules({
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
-                <CalendarIcon className="w-5 h-5 text-sky-400" /> Đăng ký lịch trình sinh hoạt
+                <CalendarIcon className="w-5 h-5 text-sky-400" /> {editingPlan ? "Chỉnh sửa sự kiện" : "Đăng ký lịch trình sinh hoạt"}
               </h3>
               <button 
-                onClick={() => setIsFormOpen(false)}
+                type="button"
+                aria-label="Đóng form lịch trình"
+                onClick={handleClosePlanForm}
                 className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreatePlan} className="space-y-4 text-xs">
+            <form onSubmit={handleSavePlan} className="space-y-4 text-xs">
               {formError && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl font-medium">
                   {formError}
@@ -574,7 +767,7 @@ export function Schedules({
                     onChange={(e) => setNewIsRecurring(e.target.value === "true")}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
                   >
-                    <option value="false font-mono">Chỉ xảy ra một lần</option>
+                    <option value="false">Chỉ xảy ra một lần</option>
                     <option value="true">Sự kiện có lặp lại</option>
                   </select>
                 </div>
@@ -604,7 +797,7 @@ export function Schedules({
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
                   >
                     <option value="true">Công khai cả nhà cùng thấy</option>
-                    <option value="false font-mono">Riêng tư cá nhân</option>
+                    <option value="false">Riêng tư cá nhân</option>
                   </select>
                 </div>
 
@@ -627,7 +820,7 @@ export function Schedules({
               <div className="flex items-center justify-end gap-2.5 pt-3">
                 <button 
                   type="button" 
-                  onClick={() => setIsFormOpen(false)}
+                  onClick={handleClosePlanForm}
                   className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl transition-all cursor-pointer font-bold"
                 >
                   Đóng lại
@@ -636,13 +829,14 @@ export function Schedules({
                   type="submit" 
                   className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl font-bold transition-all cursor-pointer"
                 >
-                  Lưu kế hoạch
+                  {editingPlan ? "Lưu thay đổi" : "Lưu kế hoạch"}
                 </button>
               </div>
             </form>
           </motion.div>
         </div>
       )}
+      {ConfirmDialog}
     </div>
   );
 }
