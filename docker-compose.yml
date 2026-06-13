@@ -7,6 +7,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Git metadata baked into the image so the "version" UI shows the real commit.
+        # Compose passes these from the host environment at build time.
+        # CI sets them explicitly; local builds read them from the shell below.
+        GIT_SHA: ${GIT_SHA:-}
+        APP_VERSION: ${APP_VERSION:-}
+        BUILD_TIME: ${BUILD_TIME:-}
     container_name: family_organizer_app
     restart: unless-stopped
     ports:
