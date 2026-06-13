@@ -1049,6 +1049,36 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    const pwaAssets: Record<string, { file: string; type: string; cacheControl: string }> = {
+      "/manifest.webmanifest": {
+        file: "manifest.webmanifest",
+        type: "application/manifest+json",
+        cacheControl: "no-cache"
+      },
+      "/sw.js": {
+        file: "sw.js",
+        type: "application/javascript; charset=utf-8",
+        cacheControl: "no-cache, no-store, must-revalidate"
+      },
+      "/pwa-icon.svg": {
+        file: "pwa-icon.svg",
+        type: "image/svg+xml; charset=utf-8",
+        cacheControl: "public, max-age=86400"
+      }
+    };
+
+    Object.entries(pwaAssets).forEach(([route, asset]) => {
+      app.get(route, (_req, res) => {
+        res.setHeader("Content-Type", asset.type);
+        res.setHeader("Cache-Control", asset.cacheControl);
+        res.sendFile(path.join(distPath, asset.file), err => {
+          if (err && !res.headersSent) {
+            res.status(404).send(`${asset.file} not found. Rebuild the Docker image with the public/ directory included.`);
+          }
+        });
+      });
+    });
+
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
