@@ -1363,6 +1363,7 @@ export default function App() {
                   budgets={budgets}
                   recurringBills={recurringBills}
                   assets={assets}
+                  widgets={widgets}
                   onSaveTransaction={handleSaveTransaction}
                   onDeleteTransaction={handleDeleteTransaction}
                   onSaveBudget={handleSaveBudget}
