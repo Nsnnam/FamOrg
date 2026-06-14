@@ -224,16 +224,21 @@ export function Assets({
       let usdVndRate = 25000;
       let anyOk = false;
 
-      // 1. Lấy giá vàng từ /api/widgets/overview — endpoint đã hoạt động ở trang Tổng quan,
-      //    dùng vang.today (giá SJC VND/lượng). Đồng thời lấy tỷ giá USD/VND từ đây luôn.
-      try {
-        const res = await fetch("/api/widgets/overview");
-        if (res.ok) {
-          const overview = await res.json() as any;
+      // Chạy song song: (A) server overview cho giá SJC + tỷ giá, (B) CoinGecko cho crypto + PAXG
+      // PAXG = token vàng 1:1 với 1 troy oz thực, dùng làm fallback khi server chưa có cache vàng
+      const cgIds = [...Object.values(SYMBOL_TO_CG), "paxg"].join(",");
+      const [overviewRes, cgRes] = await Promise.allSettled([
+        fetch("/api/widgets/overview"),
+        fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgIds}&vs_currencies=usd,vnd`)
+      ]);
+
+      // (A) Giá SJC từ server (vang.today)
+      if (overviewRes.status === "fulfilled" && overviewRes.value.ok) {
+        try {
+          const overview = await overviewRes.value.json() as any;
           if (overview?.fx?.usdVnd) usdVndRate = overview.fx.usdVnd;
           const g = overview?.gold;
           if (g) {
-            // g.sell hoặc g.vndPerTael = giá VND/lượng; g.usdPerOz = giá thế giới USD/oz
             const pricePerLuongVnd: number | null =
               g.sell ?? g.vndPerTael ??
               (g.usdPerOz ? Math.round((g.usdPerOz / 31.1035) * 37.5 * usdVndRate) : null);
@@ -241,26 +246,37 @@ export function Assets({
               const pgVnd = pricePerLuongVnd / 37.5;
               const pgUsd = pgVnd / usdVndRate;
               gold = {
-                pricePerGramVnd: pgVnd,  pricePerGramUsd: pgUsd,
-                pricePerChiVnd:  pgVnd * 3.75,  pricePerChiUsd:  pgUsd * 3.75,
+                pricePerGramVnd: pgVnd, pricePerGramUsd: pgUsd,
+                pricePerChiVnd: pgVnd * 3.75, pricePerChiUsd: pgUsd * 3.75,
                 pricePerLuongVnd: pricePerLuongVnd, pricePerLuongUsd: pgUsd * 37.5,
                 source: g.source ?? "vang.today"
               };
             }
           }
-        }
-      } catch (err) {
-        console.warn("[market-prices] overview fetch failed:", err);
+        } catch {}
       }
 
-      // 2. Lấy giá crypto trực tiếp từ CoinGecko (CORS OK, không cần key)
-      try {
-        const ids = Object.values(SYMBOL_TO_CG).join(",");
-        const cgRes = await fetch(
-          `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,vnd`
-        );
-        if (cgRes.ok) {
-          const cgData = await cgRes.json() as Record<string, { usd?: number; vnd?: number }>;
+      // (B) Crypto + PAXG từ CoinGecko
+      if (cgRes.status === "fulfilled" && cgRes.value.ok) {
+        try {
+          const cgData = await cgRes.value.json() as Record<string, { usd?: number; vnd?: number }>;
+
+          // PAXG fallback nếu server chưa có giá vàng (1 PAXG = 1 troy oz = 31.1035g)
+          if (!gold && cgData["paxg"]) {
+            const xauUsd = cgData["paxg"].usd ?? 0;
+            const xauVnd = cgData["paxg"].vnd ?? xauUsd * usdVndRate;
+            if (xauUsd > 0) {
+              const pgUsd = xauUsd / 31.1035;
+              const pgVnd = xauVnd / 31.1035;
+              gold = {
+                pricePerGramUsd: pgUsd, pricePerGramVnd: pgVnd,
+                pricePerChiUsd: pgUsd * 3.75, pricePerChiVnd: pgVnd * 3.75,
+                pricePerLuongUsd: pgUsd * 37.5, pricePerLuongVnd: pgVnd * 37.5,
+                source: "Vàng thế giới"
+              };
+            }
+          }
+
           for (const [symbol, id] of Object.entries(SYMBOL_TO_CG)) {
             if (cgData[id]) {
               const usdPrice = cgData[id].usd ?? 0;
@@ -268,9 +284,7 @@ export function Assets({
             }
           }
           anyOk = true;
-        }
-      } catch (err) {
-        console.warn("[market-prices] CoinGecko failed:", err);
+        } catch {}
       }
 
       if (!anyOk && gold) anyOk = true;
@@ -576,8 +590,8 @@ export function Assets({
             </span>
             {marketPrices.gold ? (
               <span className="text-amber-400/80">
-                Vàng ≈ {formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ
-                {marketPrices.gold.source?.includes("PAXG") && (
+                {marketPrices.gold.source?.includes("SJC") ? "SJC" : "Vàng"} ≈ {formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ
+                {!marketPrices.gold.source?.includes("SJC") && (
                   <span className="text-slate-600"> (thế giới)</span>
                 )}
               </span>
