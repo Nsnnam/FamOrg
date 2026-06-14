@@ -17,15 +17,17 @@ import {
   LayoutList,
   LayoutGrid,
   CalendarPlus,
+  Cake,
   ChevronLeft,
   ChevronRight,
   X
 } from "lucide-react";
-import { FamilyPlan, User, UserRole, isLimitedViewer } from "../types.js";
+import { FamilyPlan, User, UserRole, isLimitedViewer, FAMILY_RELATION_LABELS } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { DateTimePicker24 } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { Avatar } from "./Avatar.js";
 
 interface SchedulesProps {
   currentUser: User;
@@ -45,6 +47,7 @@ export function Schedules({
   const [viewMode, setViewMode] = useState<"list" | "board">("board"); // 'list' = agenda, 'board' = monthly style grid
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewingPlan, setViewingPlan] = useState<FamilyPlan | null>(null);
+  const [viewingBirthday, setViewingBirthday] = useState<{ user: User; day: number } | null>(null);
   const [editingPlan, setEditingPlan] = useState<FamilyPlan | null>(null);
   const [formError, setFormError] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
@@ -111,10 +114,13 @@ export function Schedules({
   // Escape-to-close + scroll lock + focus trap for the detail & form modals
   const viewingRef = React.useRef<HTMLDivElement | null>(null);
   const formRef = React.useRef<HTMLDivElement | null>(null);
+  const birthdayRef = React.useRef<HTMLDivElement | null>(null);
   const closeViewing = useCallback(() => setViewingPlan(null), []);
   const closeForm = useCallback(() => { setIsFormOpen(false); setEditingPlan(null); setFormError(""); }, []);
+  const closeBirthday = useCallback(() => setViewingBirthday(null), []);
   useModalA11y(!!viewingPlan, closeViewing, viewingRef);
   useModalA11y(isFormOpen, closeForm, formRef);
+  useModalA11y(!!viewingBirthday, closeBirthday, birthdayRef);
 
   // Filter plans according to user permission and filters
   const filteredPlans = useMemo(() => {
@@ -372,6 +378,31 @@ export function Schedules({
     }
   };
 
+  // Decide how a plan should render in ONE calendar cell.
+  // For multi-day events: start time hugs the opening edge (first day), end time
+  // hugs the closing edge (last day), and chevrons (‹ tiếp tục ›) bridge the days
+  // in between — instead of wrongly repeating the first day's start time everywhere.
+  const getDayBadgeMeta = (plan: FamilyPlan, dayNum: number) => {
+    const startTime = (plan.startDate.split(" ")[1] || "").slice(0, 5);
+    const endTime = ((plan.endDate || "").split(" ")[1] || "").slice(0, 5);
+    const toDate = (s: string) => {
+      const d = new Date(`${(s || "").slice(0, 10)}T00:00:00`);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const start = toDate(plan.startDate);
+    if (!start) return { startTime, endTime: "", contFrom: false, contTo: false };
+    const endParsed = toDate(plan.endDate || plan.startDate);
+    const end = endParsed && endParsed >= start ? endParsed : start;
+    const isMultiDay = end.getTime() !== start.getTime();
+    if (!isMultiDay) return { startTime, endTime: "", contFrom: false, contTo: false };
+
+    const isCell = (d: Date) =>
+      d.getFullYear() === calYear && d.getMonth() === calMonth && d.getDate() === dayNum;
+    if (isCell(start)) return { startTime, endTime: "", contFrom: false, contTo: true };  // first day → start time
+    if (isCell(end)) return { startTime: "", endTime, contFrom: true, contTo: false };    // last day → end time
+    return { startTime: "", endTime: "", contFrom: true, contTo: true };                  // a day in between
+  };
+
   return (
     <div className="space-y-6" id="schedules-module">
       
@@ -532,28 +563,39 @@ export function Schedules({
 
                   {/* Event + birthday badges */}
                   <div className="space-y-1 overflow-y-auto max-h-[80%] pr-0.5 scrollbar-none">
-                    {dayBirthdays.map(b => (
-                      <div
-                        key={`bd-${b.id}`}
-                        title={`🎂 Sinh nhật ${b.name}`}
-                        className="text-[9px] px-1.5 py-0.5 rounded truncate font-medium flex items-center gap-1 bg-pink-500/10 text-pink-400 border border-pink-500/20"
-                      >
-                        <span className="shrink-0">🎂</span>
-                        <span className="truncate">{b.name}</span>
-                      </div>
-                    ))}
-                    {dayPlans.map(plan => (
-                      <button
-                        key={plan.id}
-                        type="button"
-                        onClick={() => setViewingPlan(plan)}
-                        title={`${plan.title}\n(${plan.startDate} → ${plan.endDate || plan.startDate})`}
-                        className={`w-full text-left text-[9px] px-1.5 py-0.5 rounded truncate font-medium flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity ${badgeColorClass(plan.color)}`}
-                      >
-                        <span className="shrink-0 text-[8px] font-mono opacity-80">{plan.startDate.split(" ")[1]}</span>
-                        <span className="truncate">{plan.title}</span>
-                      </button>
-                    ))}
+                    {dayBirthdays.map(b => {
+                      const bUser = users.find(u => u.id === b.id);
+                      return (
+                        <button
+                          key={`bd-${b.id}`}
+                          type="button"
+                          onClick={() => bUser && setViewingBirthday({ user: bUser, day: day.dayNum })}
+                          title={`🎂 Sinh nhật ${b.name} — bấm để xem chi tiết`}
+                          className="w-full text-left text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity bg-pink-500/10 text-pink-400 border border-pink-500/20"
+                        >
+                          <span className="shrink-0">🎂</span>
+                          <span className="truncate min-w-0 flex-1">{b.name}</span>
+                        </button>
+                      );
+                    })}
+                    {dayPlans.map(plan => {
+                      const meta = getDayBadgeMeta(plan, day.dayNum);
+                      return (
+                        <button
+                          key={plan.id}
+                          type="button"
+                          onClick={() => setViewingPlan(plan)}
+                          title={`${plan.title}\n(${plan.startDate} → ${plan.endDate || plan.startDate})`}
+                          className={`w-full text-left text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${badgeColorClass(plan.color)}`}
+                        >
+                          {meta.contFrom && <ChevronLeft className="w-2.5 h-2.5 shrink-0 opacity-60" />}
+                          {meta.startTime && <span className="shrink-0 text-[8px] font-mono opacity-80">{meta.startTime}</span>}
+                          <span className="truncate min-w-0 flex-1">{plan.title}</span>
+                          {meta.endTime && <span className="shrink-0 text-[8px] font-mono opacity-80">{meta.endTime}</span>}
+                          {meta.contTo && <ChevronRight className="w-2.5 h-2.5 shrink-0 opacity-60" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -756,6 +798,93 @@ export function Schedules({
                   )}
                 </div>
               </div>
+            </motion.div>
+          </div>
+        );
+      })()}
+
+      {/* Birthday detail viewer (click a birthday badge on the calendar) */}
+      {viewingBirthday && (() => {
+        const u = viewingBirthday.user;
+        const dobParsed = u.dateOfBirth ? new Date(`${u.dateOfBirth.slice(0, 10)}T00:00:00`) : null;
+        const dob = dobParsed && !isNaN(dobParsed.getTime()) ? dobParsed : null;
+        const birthYear = dob ? dob.getFullYear() : null;
+        const hasRealYear = !!birthYear && birthYear > 1900;
+        const turningAge = hasRealYear ? calYear - (birthYear as number) : null;
+        const bdDate = new Date(calYear, calMonth, viewingBirthday.day);
+        const weekday = bdDate.toLocaleDateString("vi-VN", { weekday: "long" });
+        const dateLabel = bdDate.toLocaleDateString("vi-VN", { day: "numeric", month: "long" });
+        return (
+          <div
+            onClick={() => setViewingBirthday(null)}
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              ref={birthdayRef}
+              tabIndex={-1}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              className="bg-slate-900 border border-slate-800 border-l-4 border-l-pink-500 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto outline-none"
+            >
+              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Avatar user={u} className="w-11 h-11 rounded-xl text-base" extraClass="shrink-0" />
+                  <div className="min-w-0 space-y-1">
+                    <span className="text-[10px] px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-400 border border-pink-500/20 font-semibold inline-flex items-center gap-1">
+                      <Cake className="w-3 h-3" /> Sinh nhật
+                    </span>
+                    <h3 className="text-md font-bold text-slate-100 truncate">{u.fullName}</h3>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Đóng chi tiết sinh nhật"
+                  onClick={() => setViewingBirthday(null)}
+                  className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2.5 bg-slate-950/40 border border-slate-800 rounded-xl p-3.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                  <span className="text-slate-300 capitalize">{weekday}, ngày {dateLabel}</span>
+                </div>
+                {turningAge !== null && turningAge > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Cake className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                    <span className="text-slate-300">Tròn <span className="text-pink-400 font-bold">{turningAge} tuổi</span></span>
+                  </div>
+                )}
+                {u.familyRelation && (
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-3.5 h-3.5 text-pink-400/70 shrink-0" />
+                    <span className="text-slate-300">Quan hệ: {FAMILY_RELATION_LABELS[u.familyRelation]}</span>
+                  </div>
+                )}
+                {dob && hasRealYear && (
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-pink-400/70 shrink-0" />
+                    <span className="text-slate-400 font-mono">Ngày sinh: {pad2(dob.getDate())}/{pad2(dob.getMonth() + 1)}/{dob.getFullYear()}</span>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-400 text-center leading-relaxed">
+                🎉 Đừng quên gửi lời chúc mừng đến <span className="text-pink-400 font-semibold">{u.fullName}</span> nhé!
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setViewingBirthday(null)}
+                className="w-full px-4 py-2 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-slate-100 border border-slate-800 rounded-xl font-semibold cursor-pointer transition-all"
+              >
+                Đóng lại
+              </button>
             </motion.div>
           </div>
         );
