@@ -200,29 +200,86 @@ export function Assets({
   const [formSerialNo, setFormSerialNo] = useState("");
 
   const [marketPrices, setMarketPrices] = useState<MarketPrices | null>(null);
-  const [marketPricesStatus, setMarketPricesStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [marketPricesStatus, setMarketPricesStatus] = useState<"loading" | "ok" | "partial" | "error">("loading");
 
   useEffect(() => {
     let cancelled = false;
+
+    // CoinGecko symbol → ID map (fetched directly from browser — CORS OK, no key needed)
+    const SYMBOL_TO_CG: Record<string, string> = {
+      BTC: "bitcoin", ETH: "ethereum", USDT: "tether", USDC: "usd-coin",
+      BNB: "binancecoin", SOL: "solana", XRP: "ripple", ADA: "cardano",
+      DOGE: "dogecoin", TON: "the-open-network", TRX: "tron", LINK: "chainlink",
+      MATIC: "matic-network", DOT: "polkadot", AVAX: "avalanche-2", LTC: "litecoin",
+      SHIB: "shiba-inu", UNI: "uniswap", ATOM: "cosmos", NEAR: "near",
+      OP: "optimism", ARB: "arbitrum", SUI: "sui", PEPE: "pepe",
+      FIL: "filecoin", APT: "aptos", INJ: "injective-protocol",
+      WIF: "dogwifcoin", RENDER: "render-token"
+    };
+
     const load = async () => {
+      setMarketPricesStatus("loading");
+      let gold: MarketPrices["gold"] = null;
+      let crypto: MarketPrices["crypto"] = {};
+      let usdVndRate = 25000;
+      let anyOk = false;
+
+      // 1. Try own server endpoint first (handles gold + caching)
       try {
         const res = await fetch("/api/market-prices");
-        if (!cancelled) {
-          if (res.ok) {
-            setMarketPrices(await res.json() as MarketPrices);
-            setMarketPricesStatus("ok");
-          } else {
-            console.error("[market-prices] HTTP", res.status, await res.text().catch(() => ""));
-            setMarketPricesStatus("error");
-          }
+        if (res.ok) {
+          const data = await res.json() as MarketPrices;
+          gold = data.gold;
+          crypto = data.crypto ?? {};
+          usdVndRate = data.usdVndRate ?? 25000;
+          anyOk = true;
+        } else {
+          console.warn("[market-prices] server returned", res.status, "— falling back to direct fetch");
         }
       } catch (err) {
-        if (!cancelled) {
-          console.error("[market-prices] fetch failed:", err);
+        console.warn("[market-prices] server unreachable:", err);
+      }
+
+      // 2. Fallback: fetch crypto directly from CoinGecko (CORS-enabled, always works from browser)
+      if (Object.keys(crypto).length === 0) {
+        try {
+          const ids = Object.values(SYMBOL_TO_CG).join(",");
+          const cgRes = await fetch(
+            `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,vnd`
+          );
+          if (cgRes.ok) {
+            const cgData = await cgRes.json() as Record<string, { usd?: number; vnd?: number }>;
+            // Also get USD/VND rate from exchange API (CORS-enabled)
+            try {
+              const fxRes = await fetch("https://open.er-api.com/v6/latest/USD");
+              if (fxRes.ok) {
+                const fx = await fxRes.json() as any;
+                if (typeof fx?.rates?.VND === "number") usdVndRate = fx.rates.VND;
+              }
+            } catch {}
+            for (const [symbol, id] of Object.entries(SYMBOL_TO_CG)) {
+              if (cgData[id]) {
+                const usdPrice = cgData[id].usd ?? 0;
+                crypto[symbol] = { usd: usdPrice, vnd: cgData[id].vnd ?? usdPrice * usdVndRate };
+              }
+            }
+            anyOk = true;
+          }
+        } catch (err) {
+          console.warn("[market-prices] CoinGecko fallback failed:", err);
+        }
+      }
+
+      if (!cancelled) {
+        if (anyOk) {
+          setMarketPrices({ gold, crypto, usdVndRate, lastUpdated: new Date().toISOString() });
+          setMarketPricesStatus(gold ? "ok" : "partial");
+        } else {
           setMarketPricesStatus("error");
         }
       }
     };
+
     load();
     const id = setInterval(load, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(id); };
@@ -502,20 +559,22 @@ export function Assets({
         )}
         {marketPricesStatus === "error" && (
           <span className="flex items-center gap-1.5 text-rose-400/70">
-            <TrendingUp className="size-3" /> Không lấy được giá thị trường — kiểm tra server đã restart chưa
+            <TrendingUp className="size-3" /> Không lấy được giá thị trường
           </span>
         )}
-        {marketPricesStatus === "ok" && marketPrices && (
+        {(marketPricesStatus === "ok" || marketPricesStatus === "partial") && marketPrices && (
           <>
             <span className="flex items-center gap-1.5 text-slate-500">
               <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
               <TrendingUp className="size-3 text-emerald-400" />
-              <span className="text-emerald-400">Giá thị trường live</span>
+              <span className="text-emerald-400">Giá live</span>
             </span>
-            {marketPrices.gold && (
+            {marketPrices.gold ? (
               <span className="text-amber-400/80">
                 Vàng ≈ {formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ
               </span>
+            ) : (
+              <span className="text-slate-600">Vàng: chưa có giá</span>
             )}
             {marketPrices.crypto["BTC"] && (
               <span className="text-sky-400/80">BTC ≈ ${Math.round(marketPrices.crypto["BTC"].usd).toLocaleString("en-US")}</span>
