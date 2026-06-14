@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { 
   FileText, 
   Plus, 
@@ -21,6 +21,7 @@ import {
 import { Note, User, UserRole, isLimitedViewer } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 interface NotesProps {
   currentUser: User;
@@ -124,6 +125,14 @@ export function Notes({
   const [formTagsStr, setFormTagsStr] = useState("");
   const [formIsPinned, setFormIsPinned] = useState(false);
   const [formIsShared, setFormIsShared] = useState(true);
+
+  // Escape-to-close + scroll lock + focus trap for the editor & reader modals
+  const editorRef = React.useRef<HTMLDivElement | null>(null);
+  const readerRef = React.useRef<HTMLDivElement | null>(null);
+  const closeEditor = useCallback(() => setIsEditorOpen(false), []);
+  const closeReader = useCallback(() => setReadingNote(null), []);
+  useModalA11y(isEditorOpen, closeEditor, editorRef);
+  useModalA11y(!!readingNote, closeReader, readerRef);
 
   // Compute tags pool
   const tagsPool = useMemo(() => {
@@ -442,11 +451,15 @@ export function Notes({
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="note-editor-modal"
         >
-          <motion.div 
+          <motion.div
+            ref={editorRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none"
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-800 shrink-0">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
@@ -560,11 +573,15 @@ export function Notes({
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="note-reader-modal"
         >
-          <motion.div 
+          <motion.div
+            ref={readerRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto outline-none"
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="space-y-0.5">

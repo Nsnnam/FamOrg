@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
-import { 
+import React, { useState, useMemo, useCallback, useRef } from "react";
+import {
   TrendingUp, 
   TrendingDown, 
   Wallet, 
@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { Assets } from "./Assets.js";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 interface FinanceProps {
   currentUser: User;
@@ -139,6 +140,17 @@ export function Finance({
   const [editFrequency, setEditFrequency] = useState<RecurringBill["frequency"]>("monthly");
   const [editDueDate, setEditDueDate] = useState("");
   const [editError, setEditError] = useState("");
+
+  // Escape-to-close + scroll lock + focus trap for the form, receipt viewer & bill editor
+  const formRef = useRef<HTMLDivElement | null>(null);
+  const receiptRef = useRef<HTMLDivElement | null>(null);
+  const billEditorRef = useRef<HTMLDivElement | null>(null);
+  const closeForm = useCallback(() => setIsFormOpen(false), []);
+  const closeReceipt = useCallback(() => setSelectedReceipt(null), []);
+  const closeBillEditor = useCallback(() => setEditingBill(null), []);
+  useModalA11y(isFormOpen, closeForm, formRef);
+  useModalA11y(!!selectedReceipt, closeReceipt, receiptRef);
+  useModalA11y(!!editingBill, closeBillEditor, billEditorRef);
 
   // Money input formatting: show grouped thousands (1.000.000), store as number.
   const formatMoneyInput = (n: number) => (n > 0 ? n.toLocaleString("vi-VN") : "");
@@ -854,11 +866,15 @@ export function Finance({
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="finance-create-modal"
         >
-          <motion.div 
+          <motion.div
+            ref={formRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none"
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-800 shrink-0">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
@@ -1033,9 +1049,9 @@ export function Finance({
           className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-center justify-center z-50 p-4 cursor-pointer"
           id="receipt-preview-modal"
         >
-          <div className="relative max-w-full max-h-[85vh] p-1.5 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-            <img 
-              src={selectedReceipt} 
+          <div ref={receiptRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Xem hóa đơn" className="relative max-w-full max-h-[85vh] p-1.5 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl outline-none">
+            <img
+              src={selectedReceipt}
               alt="Hóa đơn thanh toán" 
               className="max-w-full max-h-[80vh] object-contain rounded-xl"
               referrerPolicy="no-referrer"
@@ -1055,8 +1071,8 @@ export function Finance({
 
       {/* Edit recurring bill modal */}
       {editingBill && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 shadow-2xl">
+        <div onClick={() => setEditingBill(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div ref={billEditorRef} tabIndex={-1} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 shadow-2xl outline-none">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-bold text-slate-100">Chỉnh sửa hóa đơn định kỳ</h3>
               <button onClick={() => setEditingBill(null)} className="text-slate-500 hover:text-slate-300 cursor-pointer">

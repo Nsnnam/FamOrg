@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback, useRef } from "react";
 import {
   Calendar,
   Car,
@@ -31,6 +31,7 @@ import { AssetPhoto, AssetType, FamilyAsset, User, UserRole } from "../types.js"
 import { useConfirm } from "./ConfirmDialog.js";
 import { optimizeImageFile } from "../utils/image.js";
 import { uploadDataUrl } from "../utils/uploadImage.js";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
@@ -312,12 +313,22 @@ export function Assets({
     setIsFormOpen(true);
   };
 
-  const closeForm = () => {
+  const closeForm = useCallback(() => {
     if (imageProcessing) return;
     setIsFormOpen(false);
     setEditingAsset(null);
     setFormError("");
-  };
+  }, [imageProcessing]);
+
+  // Escape-to-close + scroll lock + focus trap for the form, photo viewer & gold-purity info
+  const formRef = useRef<HTMLDivElement | null>(null);
+  const photoRef = useRef<HTMLDivElement | null>(null);
+  const goldInfoRef = useRef<HTMLDivElement | null>(null);
+  const closePhoto = useCallback(() => setSelectedPhoto(null), []);
+  const closeGoldInfo = useCallback(() => setShowGoldPurityInfo(false), []);
+  useModalA11y(isFormOpen, closeForm, formRef);
+  useModalA11y(!!selectedPhoto, closePhoto, photoRef);
+  useModalA11y(showGoldPurityInfo, closeGoldInfo, goldInfoRef);
 
   const canManageAsset = (asset: FamilyAsset) => {
     return currentUser.role === UserRole.ADMIN || asset.createdById === currentUser.id;
@@ -775,10 +786,14 @@ export function Assets({
       {isFormOpen && (
         <div onClick={closeForm} className="fixed inset-0 bg-slate-950/85 flex items-center justify-center z-50 p-4" id="asset-form-modal">
           <motion.div
+            ref={formRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none"
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
               <h3 className="text-md font-bold text-slate-100">{editingAsset ? "Chỉnh sửa tài sản" : "Thêm tài sản gia đình"}</h3>
@@ -1000,7 +1015,7 @@ export function Assets({
 
       {selectedPhoto && (
         <div onClick={() => setSelectedPhoto(null)} className="fixed inset-0 bg-slate-950/90 flex items-center justify-center z-50 p-4" id="asset-photo-viewer">
-          <div onClick={(e) => e.stopPropagation()} className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+          <div ref={photoRef} tabIndex={-1} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Xem ảnh tài sản" className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col outline-none">
             <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-slate-100 truncate">{selectedPhoto.asset.name}</p>
@@ -1019,7 +1034,7 @@ export function Assets({
 
       {showGoldPurityInfo && (
         <div onClick={() => setShowGoldPurityInfo(false)} className="fixed inset-0 bg-slate-950/90 flex items-center justify-center z-50 p-4" id="gold-purity-info">
-          <div onClick={(e) => e.stopPropagation()} className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+          <div ref={goldInfoRef} tabIndex={-1} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-hidden shadow-2xl flex flex-col outline-none">
             <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
               <p className="text-sm font-bold text-slate-100 flex items-center gap-1.5"><Gem className="size-4 text-amber-400" /> Bảng quy ước tuổi vàng</p>
               <button type="button" onClick={() => setShowGoldPurityInfo(false)} aria-label="Đóng" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center shrink-0">

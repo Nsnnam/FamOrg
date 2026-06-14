@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { 
   Plus, 
   Trash2, 
@@ -26,6 +26,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { DateTimePicker24 } from "./DateTimePicker24.js";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 interface TasksProps {
   currentUser: User;
@@ -182,6 +183,14 @@ export function Tasks({
     setIsNewTaskOpen(false);
     setEditingTaskId(null);
   };
+
+  // Escape-to-close + scroll lock + focus trap for the two modals
+  const detailRef = React.useRef<HTMLDivElement | null>(null);
+  const formRef = React.useRef<HTMLDivElement | null>(null);
+  const closeDetail = useCallback(() => setSelectedTask(null), []);
+  const closeForm = useCallback(() => { setIsNewTaskOpen(false); setEditingTaskId(null); }, []);
+  useModalA11y(!!selectedTask, closeDetail, detailRef);
+  useModalA11y(isNewTaskOpen, closeForm, formRef);
 
   // Save Task Form Handler (create or edit)
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -813,159 +822,6 @@ export function Tasks({
               })}
             </div>
           </div>
-
-          {false && (
-          <div className="hidden" id="tasks-list">
-          <AnimatePresence>
-            {filteredTasks.map((task) => {
-              const assignee = users.find(u => u.id === task.assigneeId);
-              const creator = users.find(u => u.id === task.creatorId);
-
-              return (
-                <motion.div 
-                  key={task.id}
-                  layoutId={`task-card-${task.id}`}
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className={`bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-4.5 flex flex-col justify-between space-y-4 hover:shadow-lg transition-all relative group ${savingId === task.id ? "opacity-60 pointer-events-none" : ""}`}
-                >
-                  <div className="space-y-3">
-                    {/* Header line */}
-                    <div className="flex items-start justify-between">
-                      {/* Priority Tag */}
-                      <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 border rounded-lg ${priorityColor(task.priority)}`}>
-                        {task.priority === "high" ? "Khẩn cấp" : task.priority === "medium" ? "Trung bình" : "Hàng ngày"}
-                      </span>
-                      {/* Shared icon */}
-                      {task.isShared ? (
-                        <span className="flex items-center gap-1 text-[11px] text-sky-400/90 font-medium">
-                          <Share2 className="w-3.5 h-3.5" /> Chung
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-indigo-400/80 font-medium">Cá nhân</span>
-                      )}
-                    </div>
-
-                    {/* Title */}
-                    <h3 
-                      onClick={() => setSelectedTask(task)} 
-                      className={`text-sm font-bold text-slate-100 hover:text-sky-400 transition-colors cursor-pointer line-clamp-1 ${task.status === TaskStatus.COMPLETED ? "line-through text-slate-500" : ""}`}
-                    >
-                      {task.title}
-                    </h3>
-
-                    {/* Creator label */}
-                    <p className="text-[10px] text-slate-500 flex items-center gap-1">
-                      <UserIcon className="w-3 h-3 text-slate-500" /> Tạo bởi {creator ? creator.fullName : "ẩn danh"}
-                    </p>
-
-                    {/* Description */}
-                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                      {task.description || "Không có miêu tả công việc."}
-                    </p>
-
-                    {/* Tags */}
-                    {task.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {task.tags.map((tag, i) => (
-                          <span key={i} className="text-[10px] px-1.5 py-0.5 bg-slate-950 text-slate-400 border border-slate-800 rounded">
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {((task.rewardPoints || 0) > 0 || (task.recurrenceType && task.recurrenceType !== "none")) && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {(task.rewardPoints || 0) > 0 && (
-                          <span className="text-[10px] px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-lg font-bold">
-                            +{task.rewardPoints} điểm
-                          </span>
-                        )}
-                        {task.recurrenceType && task.recurrenceType !== "none" && (
-                          <span className="text-[10px] px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg font-bold">
-                            Lặp {task.recurrenceType === "daily" ? "ngày" : task.recurrenceType === "weekly" ? "tuần" : "tháng"}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Footer Line with Assignee, Deadline & Status controls */}
-                  <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs gap-2">
-                    {/* Assignee pill */}
-                    <div className="flex items-center gap-1.5 truncate max-w-[45%]">
-                      {assignee ? (
-                        <>
-                          <div className={`w-5 h-5 rounded-full ${assignee.avatarColor} text-slate-950 font-bold text-[9px] flex items-center justify-center shrink-0`}>
-                            {assignee.fullName.charAt(0)}
-                          </div>
-                          <span className="text-slate-400 truncate text-[11px]">{assignee.fullName.split(" ")[0]}</span>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
-                            <UserIcon className="w-3 h-3 text-slate-500" />
-                          </div>
-                          <span className="text-slate-500 text-[11px] italic">Chưa giao</span>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Date deadline */}
-                    <span className="text-slate-500 text-[10px] flex items-center gap-1 shrink-0 font-mono">
-                      <Calendar className="w-3 h-3 text-amber-500/70" />
-                      {task.dueDate.split(" ")[0]}
-                    </span>
-
-                    {/* Status change selector */}
-                    <select
-                      value={task.status}
-                      onChange={(e) => handleUpdateStatus(task, e.target.value as TaskStatus)}
-                      className={`text-[10px] font-semibold border rounded-lg px-2 py-1 focus:outline-none cursor-pointer ${statusColor(task.status)}`}
-                    >
-                      <option value="todo">Chưa làm</option>
-                      <option value="in_progress">Đang làm</option>
-                      <option value="completed">Đã xong</option>
-                      <option value="overdue">Quá hạn</option>
-                    </select>
-                  </div>
-                  
-                  {/* Delete / Edit / View Actions buttons in hover mode */}
-                  <div className="absolute right-3 top-3 opacity-0 group-hover:opacity-100 transition-all flex gap-1.5">
-                    <button
-                      onClick={() => setSelectedTask(task)}
-                      className="bg-slate-950 hover:bg-slate-800 p-1.5 border border-slate-800 rounded-lg text-slate-400 hover:text-sky-400"
-                      title="Xem chi tiết & bình luận"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                    </button>
-                    {canEditTask(task) && (
-                      <button
-                        onClick={() => handleOpenEditTask(task)}
-                        className="bg-slate-950 hover:bg-slate-800 p-1.5 border border-slate-800 rounded-lg text-slate-400 hover:text-amber-400"
-                        title="Sửa / giao lại công việc"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {canDeleteTask(task) && (
-                      <button
-                        onClick={() => handleDeleteClick(task.id)}
-                        className="bg-slate-950 hover:bg-slate-800 p-1.5 border border-slate-800 rounded-lg text-slate-400 hover:text-rose-400"
-                        title="Xóa công việc"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-          </div>
-          )}
         </>
       )}
 
@@ -976,9 +832,13 @@ export function Tasks({
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="task-details-modal"
         >
-          <div 
+          <div
+            ref={detailRef}
+            tabIndex={-1}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] outline-none"
           >
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950">
@@ -1090,7 +950,7 @@ export function Tasks({
                     onClick={handlePostComment}
                     className="bg-sky-500 hover:bg-sky-400 text-slate-950 px-3 py-2 rounded-xl text-xs font-bold shrink-0 cursor-pointer"
                   >
-                    Gửi bát
+                    Gửi
                   </button>
                 </div>
               </div>
@@ -1126,10 +986,14 @@ export function Tasks({
           id="task-create-modal"
         >
           <motion.div
+            ref={formRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none"
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-800 shrink-0">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
@@ -1216,7 +1080,7 @@ export function Tasks({
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
                   >
                     <option value="true">Chung (Cả gia đình đều xem được)</option>
-                    <option value="false font-mono">Riêng tư (Chỉ Admin & người phân công thấy)</option>
+                    <option value="false">Riêng tư (Chỉ Admin & người phân công thấy)</option>
                   </select>
                 </div>
               </div>

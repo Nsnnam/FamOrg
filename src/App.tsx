@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { 
   Home, 
   CheckSquare, 
@@ -54,9 +54,23 @@ import { Shopping } from "./components/Shopping.js";
 import { Medication } from "./components/Medication.js";
 import { Assistant } from "./components/Assistant.js";
 import { Settings } from "./components/Settings.js";
+import { useModalA11y } from "./hooks/useModalA11y.js";
 import { motion, AnimatePresence } from "motion/react";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
+
+// Notification timestamps: show a relative day prefix so older items aren't
+// ambiguous (a bare "14:30" could be today or last week).
+const formatNotifTime = (iso: string): string => {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const time = d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
+  if (dayDiff === 0) return `Hôm nay ${time}`;
+  if (dayDiff === 1) return `Hôm qua ${time}`;
+  return `${d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })} ${time}`;
+};
 
 export default function App() {
   // Authentication & session status
@@ -77,6 +91,9 @@ export default function App() {
     } else {
       document.documentElement.classList.remove("dark");
     }
+    // Keep the browser/PWA chrome color in sync with the active theme
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#0d121f" : "#f8fafc");
   }, [theme]);
 
   useEffect(() => {
@@ -185,6 +202,13 @@ export default function App() {
 
   // Server-Sent Events (SSE) reference
   const sseRef = useRef<EventSource | null>(null);
+
+  // Notification popover wrapper (for click-away dismissal)
+  const notifRef = useRef<HTMLDivElement | null>(null);
+
+  // Dialog containers (focus trap)
+  const switchModalRef = useRef<HTMLDivElement | null>(null);
+  const mobileMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Authentication persistence check
   useEffect(() => {
@@ -1013,6 +1037,24 @@ export default function App() {
     fetchNotifications();
   };
 
+  // Escape-to-close + background scroll lock for overlay surfaces
+  const closeSwitchModal = useCallback(() => setSwitchTargetId(null), []);
+  const closeMobileMenu = useCallback(() => setMobileMenuOpen(false), []);
+  useModalA11y(!!switchTargetId, closeSwitchModal, switchModalRef);
+  useModalA11y(mobileMenuOpen, closeMobileMenu, mobileMenuRef);
+
+  // Dismiss the notification popover when clicking outside of it
+  useEffect(() => {
+    if (!notifOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [notifOpen]);
+
   // Compute unread alert notifications
   const unreadNotifs = notifications.filter(n => !n.isRead);
 
@@ -1135,7 +1177,7 @@ export default function App() {
             onClick={handleLogout}
             className="w-full text-slate-400 hover:text-rose-400 flex items-center gap-3 px-3 py-2.5 hover:bg-rose-500/5 rounded-xl text-xs font-bold transition-all cursor-pointer"
           >
-            <LogOut className="w-4.5 h-4.5" /> Thống kê Đăng xuất
+            <LogOut className="w-4.5 h-4.5" /> Đăng xuất
           </button>
         </div>
       </aside>
@@ -1156,16 +1198,16 @@ export default function App() {
             </button>
 
             {/* SSE replication indicators */}
-            <div className="hidden sm:flex items-center gap-2 bg-slate-950 p-2 border border-slate-850 rounded-xl font-mono text-[10px] text-slate-400">
+            <div className="hidden sm:flex items-center gap-2 bg-slate-950 p-2 border border-slate-850 rounded-xl text-[10px] text-slate-400">
               {isOnline ? (
                 <>
                   <Wifi className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                  <span>Realtime Sync: <span className="text-emerald-400 font-bold">ONLINE</span></span>
+                  <span>Đồng bộ: <span className="text-emerald-400 font-bold">Đang kết nối</span></span>
                 </>
               ) : (
                 <>
                   <AlertCircle className="w-3.5 h-3.5 text-rose-400 animate-bounce" />
-                  <span>Realtime Sync: <span className="text-rose-400 font-bold">OFFLINE</span></span>
+                  <span>Đồng bộ: <span className="text-rose-400 font-bold">Mất kết nối</span></span>
                 </>
               )}
             </div>
@@ -1176,7 +1218,7 @@ export default function App() {
             
             {/* Quick Demo Role selection panel block */}
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-850 text-[10px] font-sans">
-              <span className="text-slate-500 px-1 text-[9px] uppercase font-mono font-bold hidden md:inline">Nhân vật:</span>
+              <span className="text-slate-500 px-1 text-[9px] uppercase font-mono font-bold hidden md:inline">Tài khoản:</span>
               <select
                 value={currentUser.id}
                 onChange={(e) => {
@@ -1209,8 +1251,8 @@ export default function App() {
             </button>
 
             {/* Notifications Alert Bells list */}
-            <div className="relative">
-              <button 
+            <div className="relative" ref={notifRef}>
+              <button
                 onClick={() => { setNotifOpen(!notifOpen); fetchNotifications(); }}
                 className="p-2.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 bg-slate-950 border border-slate-850 rounded-xl outline-none leading-none relative cursor-pointer group"
               >
@@ -1249,7 +1291,7 @@ export default function App() {
                         >
                           <p className="font-bold text-slate-300 pr-4">{n.title}</p>
                           <p className="text-slate-450 mt-0.5 leading-relaxed font-sans">{n.content}</p>
-                          <span className="text-[9px] text-slate-500/80 font-mono mt-1 block">{new Date(n.createdAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}</span>
+                          <span className="text-[9px] text-slate-500/80 font-mono mt-1 block">{formatNotifTime(n.createdAt)}</span>
                           
                           {!n.isRead && (
                             <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-sky-500" />
@@ -1406,11 +1448,16 @@ export default function App() {
           onClick={() => setMobileMenuOpen(false)}
           className="fixed inset-0 bg-slate-950/90 z-40 lg:hidden flex justify-start backdrop-blur-sm"
         >
-          <motion.div 
+          <motion.div
+            ref={mobileMenuRef}
+            tabIndex={-1}
             initial={{ x: -100 }}
             animate={{ x: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-72 h-full bg-slate-900 border-r border-slate-800 px-5 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col justify-between overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu điều hướng"
+            className="w-72 h-full bg-slate-900 border-r border-slate-800 px-5 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col justify-between overflow-hidden outline-none"
           >
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
               <div className="flex items-center justify-between border-b border-slate-850 pb-4">
@@ -1475,7 +1522,7 @@ export default function App() {
                 onClick={handleLogout}
                 className="w-full text-slate-400 hover:text-rose-400 flex items-center gap-3 px-3 py-3 hover:bg-rose-500/5 rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
-                <LogOut className="w-4.5 h-4.5" /> Thống kê Đăng xuất
+                <LogOut className="w-4.5 h-4.5" /> Đăng xuất
               </button>
             </div>
           </motion.div>
@@ -1494,10 +1541,14 @@ export default function App() {
             className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           >
             <motion.div
+              ref={switchModalRef}
+              tabIndex={-1}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto outline-none"
             >
               <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
                 <Avatar user={target} className="w-10 h-10 rounded-xl text-base" extraClass="shrink-0" />

@@ -6,6 +6,7 @@
 import React, { useCallback, useRef, useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { motion } from "motion/react";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 interface ConfirmOptions {
   title: string;
@@ -28,6 +29,7 @@ interface ConfirmOptions {
 export function useConfirm() {
   const [options, setOptions] = useState<ConfirmOptions | null>(null);
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
   const confirm = useCallback((opts: ConfirmOptions) => {
     setOptions(opts);
@@ -42,6 +44,9 @@ export function useConfirm() {
     setOptions(null);
   }, []);
 
+  const cancel = useCallback(() => close(false), [close]);
+  useModalA11y(!!options, cancel, dialogRef);
+
   const isDanger = options?.tone !== "default";
 
   const ConfirmDialog = options ? (
@@ -51,10 +56,14 @@ export function useConfirm() {
       id="confirm-dialog"
     >
       <motion.div
+        ref={dialogRef}
+        tabIndex={-1}
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4"
+        role="dialog"
+        aria-modal="true"
+        className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 outline-none"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">

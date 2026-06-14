@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, Bot, CheckCircle2, Loader2, Mic, MicOff, Send, ShoppingCart, X } from "lucide-react";
 import { User } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 interface AssistantProps {
   currentUser: User;
@@ -54,6 +55,10 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
       }
     };
   }, []);
+
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const closePanel = useCallback(() => setOpen(false), []);
+  useModalA11y(open, closePanel, panelRef);
 
   const updateAction = (actionId: string, patch: Partial<AssistantAction>) => {
     setMessages(prev => prev.map(msg => {
@@ -203,10 +208,15 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
         {open && (
           <div className="fixed inset-0 z-50 flex items-end justify-end p-4 bg-slate-950/60 backdrop-blur-xs">
             <motion.div
+              ref={panelRef}
+              tabIndex={-1}
               initial={{ opacity: 0, y: 16, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.98 }}
-              className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Trợ lý AI"
+              className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden outline-none"
             >
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
