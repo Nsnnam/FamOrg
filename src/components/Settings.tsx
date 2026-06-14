@@ -540,7 +540,7 @@ export function Settings({
                 <div className="space-y-2 text-xs">
                   <label className={`inline-block bg-slate-800 hover:bg-slate-700 text-sky-400 font-semibold px-3 py-1.5 rounded-lg transition-all ${avatarProcessing ? "opacity-60 cursor-wait pointer-events-none" : "cursor-pointer"}`}>
                     {avatarProcessing ? "Đang tối ưu ảnh..." : "Tải ảnh lên"}
-                    <input type="file" accept="image/*" onChange={handleAvatarFile} disabled={avatarProcessing} className="hidden" />
+                    <input type="file" accept="image/*,.heic,.heif" onChange={handleAvatarFile} disabled={avatarProcessing} className="hidden" />
                   </label>
                   {profAvatarImage && (
                     <button
