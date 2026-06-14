@@ -224,51 +224,56 @@ export function Assets({
       let usdVndRate = 25000;
       let anyOk = false;
 
-      // 1. Try own server endpoint first (handles gold + caching)
+      // 1. Lấy giá vàng từ /api/widgets/overview — endpoint đã hoạt động ở trang Tổng quan,
+      //    dùng vang.today (giá SJC VND/lượng). Đồng thời lấy tỷ giá USD/VND từ đây luôn.
       try {
-        const res = await fetch("/api/market-prices");
+        const res = await fetch("/api/widgets/overview");
         if (res.ok) {
-          const data = await res.json() as MarketPrices;
-          gold = data.gold;
-          crypto = data.crypto ?? {};
-          usdVndRate = data.usdVndRate ?? 25000;
-          anyOk = true;
-        } else {
-          console.warn("[market-prices] server returned", res.status, "— falling back to direct fetch");
+          const overview = await res.json() as any;
+          if (overview?.fx?.usdVnd) usdVndRate = overview.fx.usdVnd;
+          const g = overview?.gold;
+          if (g) {
+            // g.sell hoặc g.vndPerTael = giá VND/lượng; g.usdPerOz = giá thế giới USD/oz
+            const pricePerLuongVnd: number | null =
+              g.sell ?? g.vndPerTael ??
+              (g.usdPerOz ? Math.round((g.usdPerOz / 31.1035) * 37.5 * usdVndRate) : null);
+            if (pricePerLuongVnd && pricePerLuongVnd > 0) {
+              const pgVnd = pricePerLuongVnd / 37.5;
+              const pgUsd = pgVnd / usdVndRate;
+              gold = {
+                pricePerGramVnd: pgVnd,  pricePerGramUsd: pgUsd,
+                pricePerChiVnd:  pgVnd * 3.75,  pricePerChiUsd:  pgUsd * 3.75,
+                pricePerLuongVnd: pricePerLuongVnd, pricePerLuongUsd: pgUsd * 37.5,
+                source: g.source ?? "vang.today"
+              };
+            }
+          }
         }
       } catch (err) {
-        console.warn("[market-prices] server unreachable:", err);
+        console.warn("[market-prices] overview fetch failed:", err);
       }
 
-      // 2. Fallback: fetch crypto directly from CoinGecko (CORS-enabled, always works from browser)
-      if (Object.keys(crypto).length === 0) {
-        try {
-          const ids = Object.values(SYMBOL_TO_CG).join(",");
-          const cgRes = await fetch(
-            `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,vnd`
-          );
-          if (cgRes.ok) {
-            const cgData = await cgRes.json() as Record<string, { usd?: number; vnd?: number }>;
-            // Also get USD/VND rate from exchange API (CORS-enabled)
-            try {
-              const fxRes = await fetch("https://open.er-api.com/v6/latest/USD");
-              if (fxRes.ok) {
-                const fx = await fxRes.json() as any;
-                if (typeof fx?.rates?.VND === "number") usdVndRate = fx.rates.VND;
-              }
-            } catch {}
-            for (const [symbol, id] of Object.entries(SYMBOL_TO_CG)) {
-              if (cgData[id]) {
-                const usdPrice = cgData[id].usd ?? 0;
-                crypto[symbol] = { usd: usdPrice, vnd: cgData[id].vnd ?? usdPrice * usdVndRate };
-              }
+      // 2. Lấy giá crypto trực tiếp từ CoinGecko (CORS OK, không cần key)
+      try {
+        const ids = Object.values(SYMBOL_TO_CG).join(",");
+        const cgRes = await fetch(
+          `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,vnd`
+        );
+        if (cgRes.ok) {
+          const cgData = await cgRes.json() as Record<string, { usd?: number; vnd?: number }>;
+          for (const [symbol, id] of Object.entries(SYMBOL_TO_CG)) {
+            if (cgData[id]) {
+              const usdPrice = cgData[id].usd ?? 0;
+              crypto[symbol] = { usd: usdPrice, vnd: cgData[id].vnd ?? usdPrice * usdVndRate };
             }
-            anyOk = true;
           }
-        } catch (err) {
-          console.warn("[market-prices] CoinGecko fallback failed:", err);
+          anyOk = true;
         }
+      } catch (err) {
+        console.warn("[market-prices] CoinGecko failed:", err);
       }
+
+      if (!anyOk && gold) anyOk = true;
 
       if (!cancelled) {
         if (anyOk) {
@@ -572,6 +577,9 @@ export function Assets({
             {marketPrices.gold ? (
               <span className="text-amber-400/80">
                 Vàng ≈ {formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ
+                {marketPrices.gold.source?.includes("PAXG") && (
+                  <span className="text-slate-600"> (thế giới)</span>
+                )}
               </span>
             ) : (
               <span className="text-slate-600">Vàng: chưa có giá</span>
