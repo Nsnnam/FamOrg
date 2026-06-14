@@ -1429,6 +1429,28 @@ export class FamilyDB {
     if (db.pushSubscriptions.length !== before) this.writeRaw(db);
   }
 
+  // Manual person-to-person nudge: targeted in-app notification + push.
+  // Excludes the sender's own devices (so a "cả nhà" broadcast doesn't buzz them).
+  public static sendManualNotification(fromName: string, fromUserId: string, toUserId: string, message: string): void {
+    const db = this.readRaw();
+    const isBroadcast = toUserId === "all";
+    const notif: Notification = {
+      id: `notif_msg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      userId: toUserId,
+      title: isBroadcast ? `📣 ${fromName} nhắn cả nhà` : `📣 ${fromName} nhắc bạn`,
+      content: message,
+      type: "system",
+      isRead: false,
+      createdAt: new Date().toISOString()
+    };
+    db.notifications.unshift(notif);
+    if (db.notifications.length > 200) {
+      db.notifications = db.notifications.slice(0, 200);
+    }
+    void dispatchPush(db, notif, (dead) => this.removePushSubscriptionsByEndpoints(dead), fromUserId);
+    this.writeRaw(db);
+  }
+
   // Internal notification builder
   private static addNotificationInternal(db: FamilyOrganizerDB, userId: string, title: string, content: string) {
     const newNotif: Notification = {

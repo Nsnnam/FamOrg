@@ -20,6 +20,7 @@ import {
 import { Task, FamilyPlan, Note, FinancialTransaction, User, TaskStatus } from "../types.js";
 import { motion } from "motion/react";
 import { Avatar } from "./Avatar.js";
+import { QuickNudge } from "./QuickNudge.js";
 
 interface DashboardProps {
   currentUser: User;
@@ -215,6 +216,9 @@ export function Dashboard({
           <span>{new Date().toLocaleDateString("vi-VN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
         </div>
       </motion.div>
+
+      {/* Quick nudge: send a notification (+ push) to a family member or everyone */}
+      <QuickNudge currentUser={currentUser} users={users} />
 
       {/* Weather + Markets widgets — always rendered (skeleton while loading) to avoid layout shift */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">

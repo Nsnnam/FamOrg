@@ -1149,6 +1149,50 @@ app.post("/api/notifications/read-all", requireAuth, (req: AuthRequest, res: Res
   res.json({ success: true });
 });
 
+// Manual nudge: a member sends a notification (+ push) to one person or "all".
+// Gentle anti-spam: at most 1 send per 3s per sender.
+const NUDGE_COOLDOWN_MS = 3000;
+const lastNudgeAt = new Map<string, number>();
+
+app.post("/api/notifications/send", requireAuth, (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  if (session.role === UserRole.GUEST) {
+    res.status(403).json({ error: "Tài khoản Khách không gửi được lời nhắc." });
+    return;
+  }
+  const { toUserId, message } = req.body || {};
+  const msg = typeof message === "string" ? message.trim() : "";
+  if (!toUserId || typeof toUserId !== "string") {
+    res.status(400).json({ error: "Vui lòng chọn người nhận." });
+    return;
+  }
+  if (!msg) {
+    res.status(400).json({ error: "Nội dung lời nhắc không được để trống." });
+    return;
+  }
+  if (msg.length > 300) {
+    res.status(400).json({ error: "Nội dung quá dài (tối đa 300 ký tự)." });
+    return;
+  }
+  if (toUserId !== "all" && !FamilyDB.getUsers().some(u => u.id === toUserId)) {
+    res.status(400).json({ error: "Không tìm thấy người nhận." });
+    return;
+  }
+  const now = Date.now();
+  if (now - (lastNudgeAt.get(session.userId) || 0) < NUDGE_COOLDOWN_MS) {
+    res.status(429).json({ error: "Bạn gửi hơi nhanh, chờ vài giây rồi thử lại nhé." });
+    return;
+  }
+  lastNudgeAt.set(session.userId, now);
+  try {
+    FamilyDB.sendManualNotification(session.fullName, session.userId, toUserId, msg);
+    broadcastSyncEvent("NOTIFICATIONS_UPDATE");
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Gửi lời nhắc thất bại." });
+  }
+});
+
 // --- WEB PUSH (system notifications + app-icon badge) ---
 
 // Public: the client needs the VAPID public key to create a push subscription.
