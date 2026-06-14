@@ -722,86 +722,86 @@ const CRYPTO_ID_MAP: Record<string, string> = {
   STX: "blockstack", RENDER: "render-token", WIF: "dogwifcoin"
 };
 
-let _marketCache: MarketPriceCacheData = {
-  gold: null, crypto: {}, usdVndRate: 25000,
-  lastUpdated: new Date(0).toISOString(), cacheUntil: 0
+// Cache for extended crypto list (30+ coins). Gold + FX are reused from the
+// dashboard's cachedFetch("gold") / cachedFetch("fx") — same vang.today source.
+let _cryptoCache: { data: Record<string, { usd: number; vnd: number }>; until: number } = {
+  data: {}, until: 0
 };
 
-async function fetchMarketPrices(): Promise<MarketPriceCacheData> {
+async function fetchExtendedCrypto(): Promise<Record<string, { usd: number; vnd: number }>> {
   const now = Date.now();
-  if (now < _marketCache.cacheUntil) return _marketCache;
-
-  let vndRate = _marketCache.usdVndRate;
-  let goldData: MarketPriceCacheData["gold"] = _marketCache.gold;
-  const cryptoData: Record<string, { usd: number; vnd: number }> = { ..._marketCache.crypto };
-  let success = false;
+  if (now < _cryptoCache.until) return _cryptoCache.data;
 
   try {
-    // 1. USD → VND exchange rate
-    const fxRes = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(8000) });
-    if (fxRes.ok) {
-      const fx = await fxRes.json() as any;
-      if (typeof fx?.rates?.VND === "number") vndRate = fx.rates.VND;
-    }
-
-    // 2. Gold spot price in USD per troy oz via metals.live (no key required)
-    const goldRes = await fetch("https://api.metals.live/v1/spot/gold", { signal: AbortSignal.timeout(8000) });
-    if (goldRes.ok) {
-      const goldJson = await goldRes.json() as any;
-      const pricePerOz: number | undefined = Array.isArray(goldJson)
-        ? goldJson[0]?.price
-        : (goldJson?.price ?? goldJson?.XAU);
-      if (typeof pricePerOz === "number" && pricePerOz > 0) {
-        const pricePerGramUsd = pricePerOz / 31.1035;
-        goldData = { pricePerGramUsd, pricePerGramVnd: pricePerGramUsd * vndRate, source: "metals.live" };
-      }
-    }
-
-    // 3. Crypto prices from CoinGecko free API (no key required)
     const ids = Object.values(CRYPTO_ID_MAP).join(",");
-    const cgRes = await fetch(
+    const res = await fetch(
       `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,vnd`,
       { signal: AbortSignal.timeout(12000) }
     );
-    if (cgRes.ok) {
-      const cgData = await cgRes.json() as any;
+    if (res.ok) {
+      const raw = await res.json() as any;
+      const result: Record<string, { usd: number; vnd: number }> = {};
       for (const [symbol, id] of Object.entries(CRYPTO_ID_MAP)) {
-        if (cgData[id]) {
-          const usdPrice = cgData[id].usd ?? 0;
-          cryptoData[symbol] = { usd: usdPrice, vnd: cgData[id].vnd ?? usdPrice * vndRate };
+        if (raw[id]) {
+          const usdPrice = raw[id].usd ?? 0;
+          result[symbol] = { usd: usdPrice, vnd: raw[id].vnd ?? usdPrice * 25000 };
         }
       }
+      _cryptoCache = { data: result, until: now + 5 * 60 * 1000 };
+      return result;
     }
-
-    success = true;
   } catch (err) {
-    console.warn("[market-prices] refresh failed:", (err as Error).message);
+    console.warn("[market-prices] crypto fetch failed:", (err as Error).message);
   }
-
-  _marketCache = {
-    gold: goldData, crypto: cryptoData, usdVndRate: vndRate,
-    lastUpdated: success ? new Date().toISOString() : _marketCache.lastUpdated,
-    cacheUntil: now + (success ? 5 : 1) * 60 * 1000
-  };
-  return _marketCache;
+  // On error keep stale data, retry in 1 min
+  _cryptoCache.until = now + 60 * 1000;
+  return _cryptoCache.data;
 }
 
 app.get("/api/market-prices", requireAuth, async (_req: AuthRequest, res: Response) => {
   try {
-    const p = await fetchMarketPrices();
+    // Reuse the same cached data as the dashboard (vang.today for SJC gold, open.er-api for FX).
+    // cachedFetch / fetchGold / fetchFx are async function declarations — hoisted, safe to call here.
+    const [fx, goldRaw, cryptoData] = await Promise.all([
+      cachedFetch("fx", 30 * 60 * 1000, fetchFx),
+      cachedFetch("gold", 30 * 60 * 1000, () => fetchGold(null)),
+      fetchExtendedCrypto()
+    ]);
+
+    const usdVndRate: number = fx?.usdVnd ?? 25000;
+
+    // Convert SJC/vang.today gold result into per-unit prices the Assets module needs.
+    // goldRaw.sell   = SJC VND/lượng (primary path)
+    // goldRaw.vndPerTael = estimated VND/lượng from world price (fallback path)
+    // goldRaw.usdPerOz   = world price in USD/troy oz (fallback path, no VND available)
+    let gold: { pricePerGramUsd: number; pricePerGramVnd: number; source: string } | null = null;
+    if (goldRaw) {
+      const pricePerLuongVnd: number | null =
+        goldRaw.sell ?? goldRaw.vndPerTael ??
+        (goldRaw.usdPerOz ? Math.round((goldRaw.usdPerOz / 31.1035) * 37.5 * usdVndRate) : null);
+      if (pricePerLuongVnd && pricePerLuongVnd > 0) {
+        const pricePerLuongUsd = pricePerLuongVnd / usdVndRate;
+        gold = {
+          pricePerGramVnd: pricePerLuongVnd / 37.5,
+          pricePerGramUsd: pricePerLuongUsd / 37.5,
+          source: goldRaw.source ?? "vang.today"
+        };
+      }
+    }
+
     res.json({
-      gold: p.gold ? {
-        pricePerGramUsd: p.gold.pricePerGramUsd,
-        pricePerGramVnd: p.gold.pricePerGramVnd,
-        pricePerChiUsd: p.gold.pricePerGramUsd * 3.75,
-        pricePerChiVnd: p.gold.pricePerGramVnd * 3.75,
-        pricePerLuongUsd: p.gold.pricePerGramUsd * 37.5,
-        pricePerLuongVnd: p.gold.pricePerGramVnd * 37.5,
-        source: p.gold.source
+      gold: gold ? {
+        pricePerGramUsd: gold.pricePerGramUsd,
+        pricePerGramVnd: gold.pricePerGramVnd,
+        pricePerChiUsd: gold.pricePerGramUsd * 3.75,
+        pricePerChiVnd: gold.pricePerGramVnd * 3.75,
+        pricePerLuongUsd: gold.pricePerGramUsd * 37.5,
+        pricePerLuongVnd: gold.pricePerGramVnd * 37.5,
+        source: gold.source
       } : null,
-      crypto: p.crypto,
-      usdVndRate: p.usdVndRate,
-      lastUpdated: p.lastUpdated
+      crypto: cryptoData,
+      usdVndRate,
+      lastUpdated: new Date().toISOString()
     });
   } catch (err: any) {
     res.status(500).json({ error: "Không thể lấy giá thị trường." });
