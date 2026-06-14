@@ -52,6 +52,7 @@ import { useConfirm } from "./ConfirmDialog.js";
 import { Avatar } from "./Avatar.js";
 import { optimizeImageFile } from "../utils/image.js";
 import { uploadDataUrl } from "../utils/uploadImage.js";
+import { PushNotificationsCard } from "./PushNotificationsCard.js";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
 
@@ -523,6 +524,7 @@ export function Settings({
       {/* Render sub-tab content */}
       {activeTab === "profile" && (
         <div className="space-y-6" id="settings-tab-profile">
+          <PushNotificationsCard />
           <form onSubmit={handleSaveProfile} className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             {/* Avatar personalization */}

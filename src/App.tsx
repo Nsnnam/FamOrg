@@ -120,6 +120,48 @@ export default function App() {
     });
   }, []);
 
+  // Push notifications: clear the app-icon badge when the app is opened/focused,
+  // and deep-link to the right tab when a push notification is tapped.
+  useEffect(() => {
+    const KNOWN_TABS = ["dashboard", "tasks", "plans", "notes", "shopping", "medications", "finance", "settings"];
+    const clearBadge = () => { try { (navigator as any).clearAppBadge?.(); } catch (e) { /* ignore */ } };
+
+    clearBadge();
+    const onVisible = () => { if (document.visibilityState === "visible") clearBadge(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", clearBadge);
+
+    // Cold open from a notification → ?notif_tab=... in the URL.
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get("notif_tab");
+      if (t && KNOWN_TABS.includes(t)) {
+        setActiveTab(t);
+        params.delete("notif_tab");
+        const qs = params.toString();
+        window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+      }
+    } catch (e) { /* ignore */ }
+
+    // Warm tap (app already open) → service worker posts a navigation message.
+    let onMsg: ((e: MessageEvent) => void) | null = null;
+    if ("serviceWorker" in navigator) {
+      onMsg = (e: MessageEvent) => {
+        const d = e.data;
+        if (d && d.type === "NOTIF_NAV" && typeof d.tab === "string" && KNOWN_TABS.includes(d.tab)) {
+          setActiveTab(d.tab);
+        }
+      };
+      navigator.serviceWorker.addEventListener("message", onMsg);
+    }
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", clearBadge);
+      if (onMsg) navigator.serviceWorker.removeEventListener("message", onMsg);
+    };
+  }, []);
+
   // PWA install prompt capture + live network status
   useEffect(() => {
     const goOnline = () => setNetworkOnline(true);
