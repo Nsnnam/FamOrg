@@ -36,8 +36,11 @@ Hệ thống quản lý gia đình thời gian thực — lịch trình, nhiệm
 
 ### 🏠 Tài Sản Gia Đình (Assets)
 
-- Quản lý: Nhà đất, Xe cộ, Cổ phiếu, Tiết kiệm và các tài sản khác.
-- Theo dõi giá trị, trạng thái và tài liệu liên quan.
+- Quản lý đa dạng: **Crypto, Vàng** (miếng/nhẫn/trang sức), **Sổ đất/BĐS, Xe cộ, Cổ phiếu** và tài sản khác.
+- **Giá thị trường trực tiếp**: widget BTC, ETH, Vàng SJC, tỷ giá USD/VND cập nhật tự động.
+- **Định giá tự động**: crypto theo giá coin live; vàng theo trọng lượng × giá 9999 × **hệ số tuổi vàng** (9999/24K → 10K), kèm bảng quy ước tham khảo.
+- **Lời/lỗ**: nhập giá mua ban đầu để tự tính % và số tiền lời/lỗ so với giá trị hiện tại.
+- Đính kèm ảnh tài sản, phân theo chủ sở hữu, tổng hợp giá trị theo từng loại (tách riêng VND/USD).
 
 ### 🛒 Mua Sắm & Trợ Lý AI
 
@@ -173,6 +176,15 @@ npm run dev
 ```bash
 npm run build
 npm start
+```
+
+### Kiểm thử (Tests)
+
+Logic định giá tài sản (tuổi vàng, lời/lỗ, giá live) có unit test bằng **Vitest**:
+
+```bash
+npm test          # chạy một lần
+npm run test:watch # theo dõi liên tục khi sửa code
 ```
 
 ---

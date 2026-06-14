@@ -12,3 +12,7 @@ data/
 *.db
 *.db-wal
 *.db-shm
+# Added by code-review-graph (local dev tooling — machine-specific paths)
+.code-review-graph/
+.mcp.json
+.claude/
