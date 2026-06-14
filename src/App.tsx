@@ -1093,7 +1093,7 @@ export default function App() {
 
       {/* PWA: offline banner */}
       {!networkOnline && (
-        <div className="fixed top-0 inset-x-0 z-[70] bg-amber-500 text-slate-950 text-[11px] font-bold text-center py-1.5 px-3 shadow-md">
+        <div className="fixed top-0 inset-x-0 z-[70] bg-amber-500 text-slate-950 text-[11px] font-bold text-center pb-1.5 px-3 pt-[calc(env(safe-area-inset-top)_+_0.375rem)] shadow-md">
           Đang offline — dữ liệu hiển thị là bản gần nhất, thao tác mới sẽ chờ có mạng.
         </div>
       )}
@@ -1186,7 +1186,7 @@ export default function App() {
       <div className="flex-1 h-screen min-h-0 flex flex-col min-w-0 pr-0 overflow-hidden">
         
         {/* TOP COMPONENT APP BAR HEADER */}
-        <header className="shrink-0 sticky top-0 border-b border-slate-850 bg-slate-900/80 backdrop-blur-md px-5 py-3.5 flex items-center justify-between z-30">
+        <header className="shrink-0 sticky top-0 border-b border-slate-850 bg-slate-900/80 backdrop-blur-md px-5 pb-3.5 pt-[calc(env(safe-area-inset-top)_+_0.875rem)] flex items-center justify-between z-30">
           
           <div className="flex items-center gap-2 min-w-0">
             {/* Mobile menu trigger */}
@@ -1457,7 +1457,7 @@ export default function App() {
             role="dialog"
             aria-modal="true"
             aria-label="Menu điều hướng"
-            className="w-72 h-full bg-slate-900 border-r border-slate-800 px-5 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col justify-between overflow-hidden outline-none"
+            className="w-72 h-full bg-slate-900 border-r border-slate-800 px-5 pt-[calc(env(safe-area-inset-top)_+_1.25rem)] pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col justify-between overflow-hidden outline-none"
           >
             <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
               <div className="flex items-center justify-between border-b border-slate-850 pb-4">
