@@ -200,102 +200,52 @@ export function Assets({
   const [formSerialNo, setFormSerialNo] = useState("");
 
   const [marketPrices, setMarketPrices] = useState<MarketPrices | null>(null);
-  const [marketPricesStatus, setMarketPricesStatus] = useState<"loading" | "ok" | "partial" | "error">("loading");
+  const [marketPricesStatus, setMarketPricesStatus] = useState<"loading" | "ok" | "error">("loading");
 
   useEffect(() => {
     let cancelled = false;
 
-    // CoinGecko symbol → ID map (fetched directly from browser — CORS OK, no key needed)
-    const SYMBOL_TO_CG: Record<string, string> = {
-      BTC: "bitcoin", ETH: "ethereum", USDT: "tether", USDC: "usd-coin",
-      BNB: "binancecoin", SOL: "solana", XRP: "ripple", ADA: "cardano",
-      DOGE: "dogecoin", TON: "the-open-network", TRX: "tron", LINK: "chainlink",
-      MATIC: "matic-network", DOT: "polkadot", AVAX: "avalanche-2", LTC: "litecoin",
-      SHIB: "shiba-inu", UNI: "uniswap", ATOM: "cosmos", NEAR: "near",
-      OP: "optimism", ARB: "arbitrum", SUI: "sui", PEPE: "pepe",
-      FIL: "filecoin", APT: "aptos", INJ: "injective-protocol",
-      WIF: "dogwifcoin", RENDER: "render-token"
-    };
-
     const load = async () => {
       setMarketPricesStatus("loading");
-      let gold: MarketPrices["gold"] = null;
-      let crypto: MarketPrices["crypto"] = {};
-      let usdVndRate = 25000;
-      let anyOk = false;
+      try {
+        const res = await fetch("/api/widgets/overview");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const ov = await res.json() as any;
 
-      // Chạy song song: (A) server overview cho giá SJC + tỷ giá, (B) CoinGecko cho crypto + PAXG
-      // PAXG = token vàng 1:1 với 1 troy oz thực, dùng làm fallback khi server chưa có cache vàng
-      const cgIds = [...Object.values(SYMBOL_TO_CG), "paxg"].join(",");
-      const [overviewRes, cgRes] = await Promise.allSettled([
-        fetch("/api/widgets/overview"),
-        fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${cgIds}&vs_currencies=usd,vnd`)
-      ]);
+        const usdVndRate: number = ov?.fx?.usdVnd ?? 25000;
 
-      // (A) Giá SJC từ server (vang.today)
-      if (overviewRes.status === "fulfilled" && overviewRes.value.ok) {
-        try {
-          const overview = await overviewRes.value.json() as any;
-          if (overview?.fx?.usdVnd) usdVndRate = overview.fx.usdVnd;
-          const g = overview?.gold;
-          if (g) {
-            const pricePerLuongVnd: number | null =
-              g.sell ?? g.vndPerTael ??
-              (g.usdPerOz ? Math.round((g.usdPerOz / 31.1035) * 37.5 * usdVndRate) : null);
-            if (pricePerLuongVnd && pricePerLuongVnd > 0) {
-              const pgVnd = pricePerLuongVnd / 37.5;
-              const pgUsd = pgVnd / usdVndRate;
-              gold = {
-                pricePerGramVnd: pgVnd, pricePerGramUsd: pgUsd,
-                pricePerChiVnd: pgVnd * 3.75, pricePerChiUsd: pgUsd * 3.75,
-                pricePerLuongVnd: pricePerLuongVnd, pricePerLuongUsd: pgUsd * 37.5,
-                source: g.source ?? "vang.today"
-              };
-            }
+        // Vàng SJC — giống hệt widget trang Tổng quan
+        let gold: MarketPrices["gold"] = null;
+        const g = ov?.gold;
+        if (g) {
+          const pricePerLuongVnd: number | null =
+            g.sell ?? g.vndPerTael ??
+            (g.usdPerOz ? Math.round((g.usdPerOz / 31.1035) * 37.5 * usdVndRate) : null);
+          if (pricePerLuongVnd && pricePerLuongVnd > 0) {
+            const pgVnd = pricePerLuongVnd / 37.5;
+            const pgUsd = pgVnd / usdVndRate;
+            gold = {
+              pricePerGramVnd: pgVnd, pricePerGramUsd: pgUsd,
+              pricePerChiVnd: pgVnd * 3.75, pricePerChiUsd: pgUsd * 3.75,
+              pricePerLuongVnd, pricePerLuongUsd: pgUsd * 37.5,
+              source: g.source ?? "vang.today"
+            };
           }
-        } catch {}
-      }
-
-      // (B) Crypto + PAXG từ CoinGecko
-      if (cgRes.status === "fulfilled" && cgRes.value.ok) {
-        try {
-          const cgData = await cgRes.value.json() as Record<string, { usd?: number; vnd?: number }>;
-
-          // PAXG fallback nếu server chưa có giá vàng (1 PAXG = 1 troy oz = 31.1035g)
-          if (!gold && cgData["paxg"]) {
-            const xauUsd = cgData["paxg"].usd ?? 0;
-            const xauVnd = cgData["paxg"].vnd ?? xauUsd * usdVndRate;
-            if (xauUsd > 0) {
-              const pgUsd = xauUsd / 31.1035;
-              const pgVnd = xauVnd / 31.1035;
-              gold = {
-                pricePerGramUsd: pgUsd, pricePerGramVnd: pgVnd,
-                pricePerChiUsd: pgUsd * 3.75, pricePerChiVnd: pgVnd * 3.75,
-                pricePerLuongUsd: pgUsd * 37.5, pricePerLuongVnd: pgVnd * 37.5,
-                source: "Vàng thế giới"
-              };
-            }
-          }
-
-          for (const [symbol, id] of Object.entries(SYMBOL_TO_CG)) {
-            if (cgData[id]) {
-              const usdPrice = cgData[id].usd ?? 0;
-              crypto[symbol] = { usd: usdPrice, vnd: cgData[id].vnd ?? usdPrice * usdVndRate };
-            }
-          }
-          anyOk = true;
-        } catch {}
-      }
-
-      if (!anyOk && gold) anyOk = true;
-
-      if (!cancelled) {
-        if (anyOk) {
-          setMarketPrices({ gold, crypto, usdVndRate, lastUpdated: new Date().toISOString() });
-          setMarketPricesStatus(gold ? "ok" : "partial");
-        } else {
-          setMarketPricesStatus("error");
         }
+
+        // BTC + ETH — giống hệt widget trang Tổng quan
+        const crypto: MarketPrices["crypto"] = {};
+        const c = ov?.crypto;
+        if (c?.bitcoin) crypto["BTC"] = { usd: c.bitcoin.usd ?? 0, vnd: c.bitcoin.vnd ?? (c.bitcoin.usd ?? 0) * usdVndRate };
+        if (c?.ethereum) crypto["ETH"] = { usd: c.ethereum.usd ?? 0, vnd: c.ethereum.vnd ?? (c.ethereum.usd ?? 0) * usdVndRate };
+
+        if (!cancelled) {
+          setMarketPrices({ gold, crypto, usdVndRate, lastUpdated: new Date().toISOString() });
+          setMarketPricesStatus("ok");
+        }
+      } catch (err) {
+        console.error("[market-prices]", err);
+        if (!cancelled) setMarketPricesStatus("error");
       }
     };
 
@@ -581,28 +531,26 @@ export function Assets({
             <TrendingUp className="size-3" /> Không lấy được giá thị trường
           </span>
         )}
-        {(marketPricesStatus === "ok" || marketPricesStatus === "partial") && marketPrices && (
+        {marketPricesStatus === "ok" && marketPrices && (
           <>
             <span className="flex items-center gap-1.5 text-slate-500">
               <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
               <TrendingUp className="size-3 text-emerald-400" />
-              <span className="text-emerald-400">Giá live</span>
+              <span className="text-emerald-400">Live</span>
             </span>
-            {marketPrices.gold ? (
-              <span className="text-amber-400/80">
-                {marketPrices.gold.source?.includes("SJC") ? "SJC" : "Vàng"} ≈ {formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ
-                {!marketPrices.gold.source?.includes("SJC") && (
-                  <span className="text-slate-600"> (thế giới)</span>
-                )}
+            {marketPrices.gold && (
+              <span className="text-amber-400/80 tabular-nums">
+                {marketPrices.gold.source?.includes("SJC") ? "SJC" : "Vàng"} {formatMoney(Math.round(marketPrices.gold.pricePerLuongVnd))}/lượng
               </span>
-            ) : (
-              <span className="text-slate-600">Vàng: chưa có giá</span>
             )}
             {marketPrices.crypto["BTC"] && (
-              <span className="text-sky-400/80">BTC ≈ ${Math.round(marketPrices.crypto["BTC"].usd).toLocaleString("en-US")}</span>
+              <span className="text-sky-400/80 tabular-nums">BTC ${Math.round(marketPrices.crypto["BTC"].usd).toLocaleString("en-US")}</span>
             )}
             {marketPrices.crypto["ETH"] && (
-              <span className="text-sky-400/60">ETH ≈ ${Math.round(marketPrices.crypto["ETH"].usd).toLocaleString("en-US")}</span>
+              <span className="text-sky-400/60 tabular-nums">ETH ${Math.round(marketPrices.crypto["ETH"].usd).toLocaleString("en-US")}</span>
+            )}
+            {marketPrices.usdVndRate > 0 && (
+              <span className="text-slate-400 tabular-nums">USD/VND {Math.round(marketPrices.usdVndRate).toLocaleString("vi-VN")}</span>
             )}
             <span className="text-slate-600">· {new Date(marketPrices.lastUpdated).toLocaleTimeString("vi-VN")}</span>
           </>
