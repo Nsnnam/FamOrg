@@ -11,6 +11,7 @@ import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret } from "./server/db.js";
 import { UserRole, isLimitedViewer } from "./src/types.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
+import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
 
 // Accepted permission roles for write validation
 const VALID_ROLES = new Set<string>([UserRole.ADMIN, UserRole.MEMBER, UserRole.CHILD, UserRole.GUEST]);
@@ -61,7 +62,7 @@ function validateAssetPhotosPayload(photos: unknown) {
 }
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // --- VERSION / UPDATE CONFIG ---
 // APP_VERSION/GIT_SHA/BUILD_TIME are baked into the image at build time (see Dockerfile + CI).
@@ -1146,6 +1147,57 @@ app.post("/api/notifications/read-all", requireAuth, (req: AuthRequest, res: Res
   const userId = req.userSession!.userId;
   FamilyDB.markAllNotificationsRead(userId);
   res.json({ success: true });
+});
+
+// --- WEB PUSH (system notifications + app-icon badge) ---
+
+// Public: the client needs the VAPID public key to create a push subscription.
+app.get("/api/push/vapid-public-key", (_req: Request, res: Response) => {
+  res.json({ publicKey: getVapidPublicKey(), enabled: isPushConfigured() });
+});
+
+// Save (upsert) this device's push subscription for the logged-in user.
+app.post("/api/push/subscribe", requireAuth, (req: AuthRequest, res: Response) => {
+  const userId = req.userSession!.userId;
+  const { subscription } = req.body || {};
+  if (!subscription || typeof subscription.endpoint !== "string" || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+    res.status(400).json({ error: "Dữ liệu đăng ký thông báo không hợp lệ." });
+    return;
+  }
+  try {
+    FamilyDB.addPushSubscription(userId, subscription, req.headers["user-agent"]);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Lưu đăng ký thất bại." });
+  }
+});
+
+// Forget this device's subscription (called when the user turns notifications off).
+app.post("/api/push/unsubscribe", requireAuth, (req: AuthRequest, res: Response) => {
+  const { endpoint } = req.body || {};
+  if (typeof endpoint === "string" && endpoint) {
+    FamilyDB.removePushSubscriptionByEndpoint(endpoint);
+  }
+  res.json({ success: true });
+});
+
+// Send a one-off test notification to the current user's devices.
+app.post("/api/push/test", requireAuth, async (req: AuthRequest, res: Response) => {
+  const userId = req.userSession!.userId;
+  if (!isPushConfigured()) {
+    res.status(503).json({ error: "Máy chủ chưa cấu hình thông báo đẩy (VAPID)." });
+    return;
+  }
+  try {
+    const sent = await sendTestPush(
+      FamilyDB.getPushSubscriptions(),
+      userId,
+      (dead) => FamilyDB.removePushSubscriptionsByEndpoints(dead)
+    );
+    res.json({ sent });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Gửi thông báo thử thất bại." });
+  }
 });
 
 // --- LOGS & BACKUPS (ADMIN ONLY) ---

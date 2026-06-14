@@ -319,6 +319,21 @@ export interface ShoppingItem {
   updatedAt: string;
 }
 
+// A Web Push subscription tied to one user's device/browser. Used to deliver
+// system notifications + app-icon badge even when the PWA is closed.
+export interface PushSubscriptionRecord {
+  id: string;
+  userId: string;
+  endpoint: string; // unique per device; used as the dedupe / removal key
+  subscription: {
+    endpoint: string;
+    expirationTime?: number | null;
+    keys: { p256dh: string; auth: string };
+  };
+  userAgent?: string;
+  createdAt: string;
+}
+
 // Database schema container
 export interface FamilyOrganizerDB {
   users: (User & { passwordHash: string })[];
@@ -333,6 +348,7 @@ export interface FamilyOrganizerDB {
   medications: MedicationReminder[];
   shoppingItems: ShoppingItem[];
   notifications: Notification[];
+  pushSubscriptions: PushSubscriptionRecord[];
   activityLogs: {
     id: string;
     userId: string;

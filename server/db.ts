@@ -21,10 +21,12 @@ import {
   FamilyAsset,
   MedicationReminder,
   ShoppingItem,
-  Notification
+  Notification,
+  PushSubscriptionRecord
 } from "../src/types.js";
 import { sqliteIsEmpty, sqliteLoad, sqliteSave, sqliteCheckpoint } from "./sqlite.js";
 import { deleteMediaByUrl } from "./media.js";
+import { dispatchPush } from "./push.js";
 
 // Whitelist of valid asset types (mirrors AssetType in src/types.ts).
 const VALID_ASSET_TYPES = new Set<string>([
@@ -125,6 +127,7 @@ const initialDBState = (): FamilyOrganizerDB => {
     medications: [],
     shoppingItems: [],
     notifications: [],
+    pushSubscriptions: [],
     activityLogs: [],
     backups: []
   };
@@ -144,6 +147,7 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.medications = db.medications || [];
   db.shoppingItems = db.shoppingItems || [];
   db.notifications = db.notifications || [];
+  db.pushSubscriptions = db.pushSubscriptions || [];
   db.activityLogs = db.activityLogs || [];
   db.backups = db.backups || [];
   db.tasks = db.tasks.map((task: any) => ({
@@ -497,7 +501,7 @@ export class FamilyDB {
 
       const age = year - dob.getFullYear();
       const when = diffDays === 0 ? "hôm nay 🎉" : `trong ${diffDays} ngày nữa`;
-      db.notifications.unshift({
+      const bdayNotif: Notification = {
         id: notifId,
         userId: "all",
         title: "🎂 Sắp đến sinh nhật!",
@@ -505,7 +509,9 @@ export class FamilyDB {
         type: "system",
         isRead: false,
         createdAt: new Date().toISOString()
-      });
+      };
+      db.notifications.unshift(bdayNotif);
+      void dispatchPush(db, bdayNotif, (dead) => this.removePushSubscriptionsByEndpoints(dead));
       modified = true;
     });
 
@@ -1304,7 +1310,9 @@ export class FamilyDB {
 
     const ensure = (id: string, userId: string, title: string, content: string, type: Notification["type"]) => {
       if (db.notifications.some(n => n.id === id)) return;
-      db.notifications.unshift({ id, userId, title, content, type, isRead: false, createdAt: new Date().toISOString() });
+      const notif: Notification = { id, userId, title, content, type, isRead: false, createdAt: new Date().toISOString() };
+      db.notifications.unshift(notif);
+      void dispatchPush(db, notif, (dead) => this.removePushSubscriptionsByEndpoints(dead));
       modified = true;
     };
     const parse = (s: string): number | null => {
@@ -1377,6 +1385,50 @@ export class FamilyDB {
     if (modified) this.writeRaw(db);
   }
 
+  // ---- Web Push subscriptions (one per device/browser) ----
+  public static getPushSubscriptions(): PushSubscriptionRecord[] {
+    return this.readRaw().pushSubscriptions;
+  }
+
+  // Upsert by endpoint so re-subscribing the same device never duplicates.
+  public static addPushSubscription(
+    userId: string,
+    subscription: PushSubscriptionRecord["subscription"],
+    userAgent?: string
+  ): void {
+    const endpoint = subscription?.endpoint;
+    if (!endpoint) throw new Error("Đăng ký thông báo không hợp lệ (thiếu endpoint).");
+    const db = this.readRaw();
+    db.pushSubscriptions = db.pushSubscriptions.filter(s => s.endpoint !== endpoint);
+    db.pushSubscriptions.unshift({
+      id: `push_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      userId,
+      endpoint,
+      subscription,
+      userAgent: userAgent ? userAgent.slice(0, 200) : undefined,
+      createdAt: new Date().toISOString()
+    });
+    this.writeRaw(db);
+  }
+
+  public static removePushSubscriptionByEndpoint(endpoint: string): void {
+    if (!endpoint) return;
+    const db = this.readRaw();
+    const before = db.pushSubscriptions.length;
+    db.pushSubscriptions = db.pushSubscriptions.filter(s => s.endpoint !== endpoint);
+    if (db.pushSubscriptions.length !== before) this.writeRaw(db);
+  }
+
+  // Bulk-remove expired/dead subscriptions reported by the push service (404/410).
+  public static removePushSubscriptionsByEndpoints(endpoints: string[]): void {
+    if (!endpoints || endpoints.length === 0) return;
+    const db = this.readRaw();
+    const dead = new Set(endpoints);
+    const before = db.pushSubscriptions.length;
+    db.pushSubscriptions = db.pushSubscriptions.filter(s => !dead.has(s.endpoint));
+    if (db.pushSubscriptions.length !== before) this.writeRaw(db);
+  }
+
   // Internal notification builder
   private static addNotificationInternal(db: FamilyOrganizerDB, userId: string, title: string, content: string) {
     const newNotif: Notification = {
@@ -1393,6 +1445,8 @@ export class FamilyDB {
     if (db.notifications.length > 200) {
       db.notifications = db.notifications.slice(0, 200);
     }
+    // Deliver as a system push notification too (no-op if push unconfigured).
+    void dispatchPush(db, newNotif, (dead) => this.removePushSubscriptionsByEndpoints(dead));
   }
 
   // Read notification status mark
