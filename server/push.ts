@@ -70,11 +70,14 @@ async function sendOne(sub: PushSubscriptionRecord, payload: string): Promise<"o
 export async function dispatchPush(
   db: FamilyOrganizerDB,
   notif: Notification,
-  onDead?: (deadEndpoints: string[]) => void
+  onDead?: (deadEndpoints: string[]) => void,
+  excludeUserId?: string
 ): Promise<number> {
   if (!configured) return 0;
   const subs = db.pushSubscriptions || [];
-  const targets = subs.filter(s => notif.userId === "all" || s.userId === notif.userId);
+  const targets = subs.filter(s =>
+    (notif.userId === "all" || s.userId === notif.userId) && s.userId !== excludeUserId
+  );
   if (targets.length === 0) return 0;
 
   const tab = tabForNotification(notif);
