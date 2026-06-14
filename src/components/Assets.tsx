@@ -351,7 +351,7 @@ export function Assets({
     e.currentTarget.value = "";
     if (files.length === 0) return;
     if (formPhotos.length + files.length > MAX_ASSET_PHOTOS) {
-      setFormError(`Mỗi tài sản chỉ nên lưu tối đa ${MAX_ASSET_PHOTOS} ảnh.`);
+      setFormError(`Mỗi tài sản chỉ lưu được tối đa ${MAX_ASSET_PHOTOS} ảnh.`);
       return;
     }
 
@@ -978,11 +978,11 @@ export function Assets({
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
                       <p className="text-xs font-bold text-slate-200 flex items-center gap-1.5"><ImageIcon className="size-4 text-sky-400" /> Ảnh tài sản</p>
-                      <p className="text-[10px] text-slate-500">Ảnh sẽ được tự thu nhỏ để xem rõ nhưng không làm DB quá nặng.</p>
+                      <p className="text-[10px] text-slate-500">Ảnh sẽ tự thu nhỏ cho nhẹ máy mà vẫn xem rõ.</p>
                     </div>
                     <label className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-800 text-sky-400 hover:bg-slate-700 ${imageProcessing ? "opacity-60 cursor-wait pointer-events-none" : "cursor-pointer"}`}>
                       <Upload className="size-4" /> {imageProcessing ? "Đang tối ưu..." : "Chụp / tải ảnh"}
-                      <input type="file" accept="image/*" multiple onChange={handlePhotoFiles} disabled={imageProcessing} className="hidden" />
+                      <input type="file" accept="image/*,.heic,.heif" multiple onChange={handlePhotoFiles} disabled={imageProcessing} className="hidden" />
                     </label>
                   </div>
                   {formPhotos.length > 0 && (

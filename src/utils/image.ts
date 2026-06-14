@@ -30,14 +30,14 @@ function blobToDataUrl(blob: Blob) {
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("Khong doc duoc du lieu anh da toi uu."));
+      else reject(new Error("Không đọc được dữ liệu ảnh sau khi tối ưu."));
     };
-    reader.onerror = () => reject(new Error("Khong doc duoc du lieu anh da toi uu."));
+    reader.onerror = () => reject(new Error("Không đọc được dữ liệu ảnh sau khi tối ưu."));
     reader.readAsDataURL(blob);
   });
 }
 
-function loadImageFromFile(file: File) {
+function loadImageFromFile(file: Blob) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const image = new Image();
@@ -47,10 +47,31 @@ function loadImageFromFile(file: File) {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("Khong doc duoc tep anh nay."));
+      reject(new Error('Không đọc được tệp ảnh này. Ảnh iPhone (HEIC) thường không mở được trên máy tính — hãy chọn ảnh JPG/PNG hoặc đổi Máy ảnh sang "Tương thích nhất".'));
     };
     image.src = url;
   });
+}
+
+/** True for Apple HEIC/HEIF photos, detected by MIME type or file extension (some browsers leave the type empty). */
+function looksLikeHeic(file: File): boolean {
+  return /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
+}
+
+/**
+ * Browsers (especially on desktop) can't decode HEIC/HEIF via <img>/canvas. Convert those
+ * to JPEG with heic2any first; everything else is returned untouched. The library is loaded
+ * lazily so it stays out of the main bundle until someone actually uploads an iPhone photo.
+ */
+async function ensureBrowserReadable(file: File): Promise<Blob> {
+  if (!looksLikeHeic(file)) return file;
+  try {
+    const heic2any = (await import("heic2any")).default;
+    const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.92 });
+    return Array.isArray(converted) ? converted[0] : converted;
+  } catch {
+    throw new Error('Không chuyển đổi được ảnh iPhone (HEIC). Hãy đổi Máy ảnh sang "Tương thích nhất" rồi chụp lại, hoặc chọn ảnh JPG/PNG.');
+  }
 }
 
 export async function optimizeImageFile(file: File, options: OptimizeImageOptions = {}): Promise<OptimizedImage> {
@@ -60,18 +81,19 @@ export async function optimizeImageFile(file: File, options: OptimizeImageOption
   const qualities = options.qualities ?? DEFAULT_QUALITIES;
   const preferTypes = options.preferTypes ?? ["image/webp", "image/jpeg"];
 
-  if (!file.type.startsWith("image/")) {
-    throw new Error("Vui long chon dung tep hinh anh.");
+  if (!file.type.startsWith("image/") && !looksLikeHeic(file)) {
+    throw new Error("Vui lòng chọn đúng tệp hình ảnh.");
   }
   if (file.size > maxSourceBytes) {
-    throw new Error(`Anh goc qua lon. Vui long chon anh duoi ${Math.round(maxSourceBytes / 1024 / 1024)}MB.`);
+    throw new Error(`Ảnh gốc quá lớn. Vui lòng chọn ảnh dưới ${Math.round(maxSourceBytes / 1024 / 1024)}MB.`);
   }
 
-  const image = await loadImageFromFile(file);
+  const readable = await ensureBrowserReadable(file);
+  const image = await loadImageFromFile(readable);
   const sourceWidth = image.naturalWidth || image.width;
   const sourceHeight = image.naturalHeight || image.height;
   if (!sourceWidth || !sourceHeight) {
-    throw new Error("Khong xac dinh duoc kich thuoc anh.");
+    throw new Error("Không xác định được kích thước ảnh.");
   }
 
   let best: Blob | null = null;
@@ -86,7 +108,7 @@ export async function optimizeImageFile(file: File, options: OptimizeImageOption
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Trinh duyet khong ho tro xu ly anh.");
+    if (!ctx) throw new Error("Trình duyệt không hỗ trợ xử lý ảnh.");
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
@@ -121,7 +143,7 @@ export async function optimizeImageFile(file: File, options: OptimizeImageOption
     }
   }
 
-  if (!best) throw new Error("Khong the toi uu anh nay.");
+  if (!best) throw new Error("Không tối ưu được ảnh này.");
   return {
     dataUrl: await blobToDataUrl(best),
     width: bestWidth,

@@ -255,7 +255,7 @@ export function Finance({
     setFormError("");
 
     if (formAmount <= 0) {
-      setFormError("Số tiền phát sinh phải lớn hơn 0đ!");
+      setFormError("Số tiền phải lớn hơn 0đ!");
       return;
     }
     if (!formDesc.trim()) {
@@ -999,7 +999,7 @@ export function Finance({
                 <label className="text-slate-400 block font-semibold mb-1">Đính kèm ảnh chụp hóa đơn (tự tối ưu trước khi lưu)</label>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/*,.heic,.heif"
                   onChange={handleFileChange}
                   disabled={receiptProcessing}
                   className="w-full text-slate-400 font-mono text-[10px] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-slate-800 file:text-sky-400 file:cursor-pointer hover:file:bg-slate-755 disabled:opacity-50"
