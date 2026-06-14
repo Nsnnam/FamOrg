@@ -33,6 +33,11 @@ services:
       # (gitignored, never baked into the image). Used by the AI assistant.
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - APP_URL=${APP_URL:-}
+      # Web Push (VAPID) — thông báo đẩy PWA (banner + badge). Đặt 3 biến này
+      # trong ./.env trên Pi; để trống thì tính năng tự tắt, app vẫn chạy.
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
       # Self-update: the app's "Cập nhật ngay" button calls Watchtower's HTTP API.
       - WATCHTOWER_URL=http://watchtower:8080
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
