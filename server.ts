@@ -700,6 +700,114 @@ app.delete("/api/finance/assets/:id", requireAuth, requireRole([UserRole.ADMIN, 
   }
 });
 
+// --- MARKET PRICES API ---
+
+interface MarketPriceCacheData {
+  gold: { pricePerGramUsd: number; pricePerGramVnd: number; source: string } | null;
+  crypto: Record<string, { usd: number; vnd: number }>;
+  usdVndRate: number;
+  lastUpdated: string;
+  cacheUntil: number;
+}
+
+// CoinGecko ID map for common crypto symbols
+const CRYPTO_ID_MAP: Record<string, string> = {
+  BTC: "bitcoin", ETH: "ethereum", USDT: "tether", USDC: "usd-coin",
+  BNB: "binancecoin", SOL: "solana", XRP: "ripple", ADA: "cardano",
+  DOGE: "dogecoin", TON: "the-open-network", TRX: "tron", LINK: "chainlink",
+  MATIC: "matic-network", DOT: "polkadot", AVAX: "avalanche-2", LTC: "litecoin",
+  SHIB: "shiba-inu", UNI: "uniswap", ATOM: "cosmos", NEAR: "near",
+  OP: "optimism", ARB: "arbitrum", SUI: "sui", PEPE: "pepe",
+  FIL: "filecoin", APT: "aptos", INJ: "injective-protocol", SEI: "sei-network",
+  STX: "blockstack", RENDER: "render-token", WIF: "dogwifcoin"
+};
+
+let _marketCache: MarketPriceCacheData = {
+  gold: null, crypto: {}, usdVndRate: 25000,
+  lastUpdated: new Date(0).toISOString(), cacheUntil: 0
+};
+
+async function fetchMarketPrices(): Promise<MarketPriceCacheData> {
+  const now = Date.now();
+  if (now < _marketCache.cacheUntil) return _marketCache;
+
+  let vndRate = _marketCache.usdVndRate;
+  let goldData: MarketPriceCacheData["gold"] = _marketCache.gold;
+  const cryptoData: Record<string, { usd: number; vnd: number }> = { ..._marketCache.crypto };
+  let success = false;
+
+  try {
+    // 1. USD → VND exchange rate
+    const fxRes = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(8000) });
+    if (fxRes.ok) {
+      const fx = await fxRes.json() as any;
+      if (typeof fx?.rates?.VND === "number") vndRate = fx.rates.VND;
+    }
+
+    // 2. Gold spot price in USD per troy oz via metals.live (no key required)
+    const goldRes = await fetch("https://api.metals.live/v1/spot/gold", { signal: AbortSignal.timeout(8000) });
+    if (goldRes.ok) {
+      const goldJson = await goldRes.json() as any;
+      const pricePerOz: number | undefined = Array.isArray(goldJson)
+        ? goldJson[0]?.price
+        : (goldJson?.price ?? goldJson?.XAU);
+      if (typeof pricePerOz === "number" && pricePerOz > 0) {
+        const pricePerGramUsd = pricePerOz / 31.1035;
+        goldData = { pricePerGramUsd, pricePerGramVnd: pricePerGramUsd * vndRate, source: "metals.live" };
+      }
+    }
+
+    // 3. Crypto prices from CoinGecko free API (no key required)
+    const ids = Object.values(CRYPTO_ID_MAP).join(",");
+    const cgRes = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd,vnd`,
+      { signal: AbortSignal.timeout(12000) }
+    );
+    if (cgRes.ok) {
+      const cgData = await cgRes.json() as any;
+      for (const [symbol, id] of Object.entries(CRYPTO_ID_MAP)) {
+        if (cgData[id]) {
+          const usdPrice = cgData[id].usd ?? 0;
+          cryptoData[symbol] = { usd: usdPrice, vnd: cgData[id].vnd ?? usdPrice * vndRate };
+        }
+      }
+    }
+
+    success = true;
+  } catch (err) {
+    console.warn("[market-prices] refresh failed:", (err as Error).message);
+  }
+
+  _marketCache = {
+    gold: goldData, crypto: cryptoData, usdVndRate: vndRate,
+    lastUpdated: success ? new Date().toISOString() : _marketCache.lastUpdated,
+    cacheUntil: now + (success ? 5 : 1) * 60 * 1000
+  };
+  return _marketCache;
+}
+
+app.get("/api/market-prices", requireAuth, async (_req: AuthRequest, res: Response) => {
+  try {
+    const p = await fetchMarketPrices();
+    res.json({
+      gold: p.gold ? {
+        pricePerGramUsd: p.gold.pricePerGramUsd,
+        pricePerGramVnd: p.gold.pricePerGramVnd,
+        pricePerChiUsd: p.gold.pricePerGramUsd * 3.75,
+        pricePerChiVnd: p.gold.pricePerGramVnd * 3.75,
+        pricePerLuongUsd: p.gold.pricePerGramUsd * 37.5,
+        pricePerLuongVnd: p.gold.pricePerGramVnd * 37.5,
+        source: p.gold.source
+      } : null,
+      crypto: p.crypto,
+      usdVndRate: p.usdVndRate,
+      lastUpdated: p.lastUpdated
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Không thể lấy giá thị trường." });
+  }
+});
+
 // --- MEDICATION API ENDPOINTS ---
 
 app.get("/api/medications", requireAuth, (req: AuthRequest, res: Response) => {
