@@ -35,6 +35,7 @@ interface FinanceProps {
   budgets: BudgetLimit[];
   recurringBills: RecurringBill[];
   assets: FamilyAsset[];
+  widgets?: any;
   onSaveTransaction: (tx: Partial<FinancialTransaction>) => Promise<any>;
   onDeleteTransaction: (id: string) => Promise<any>;
   onSaveBudget: (budget: Partial<BudgetLimit>) => Promise<any>;
@@ -86,6 +87,7 @@ export function Finance({
   budgets,
   recurringBills,
   assets,
+  widgets,
   onSaveTransaction,
   onDeleteTransaction,
   onSaveBudget,
@@ -414,6 +416,7 @@ export function Finance({
           currentUser={currentUser}
           users={users}
           assets={assets}
+          widgets={widgets}
           onSaveAsset={onSaveAsset}
           onDeleteAsset={onDeleteAsset}
         />

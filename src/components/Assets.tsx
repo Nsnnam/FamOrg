@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Calendar,
   Car,
   Coins,
   Gem,
   Image as ImageIcon,
+  Info,
   Landmark,
   LineChart,
   MapPin,
@@ -18,6 +19,7 @@ import {
   RefreshCw,
   Search,
   Trash2,
+  TrendingDown,
   TrendingUp,
   Upload,
   User as UserIcon,
@@ -34,6 +36,7 @@ interface AssetsProps {
   currentUser: User;
   users: User[];
   assets: FamilyAsset[];
+  widgets?: any;
   onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
   onDeleteAsset: (id: string) => Promise<any>;
 }
@@ -106,16 +109,67 @@ interface MarketPrices {
   lastUpdated: string;
 }
 
-function parsePurity(purity?: string): number {
+/**
+ * Bảng quy ước hệ số giá theo tuổi vàng — tham chiếu giá vàng SJC 9999 (miếng).
+ *
+ * Vàng tuổi thấp khi quy đổi/bán lại chỉ thu về xấp xỉ (hàm lượng vàng × giá vàng ròng),
+ * đã trừ hao tuổi vàng và chênh lệch thu mua của tiệm. Đây là ước lượng TƯƠNG ĐỐI, rút ra
+ * từ khảo sát thị trường (06/2026, vàng 9999 ~14.7tr/chỉ):
+ *   - 18K bán ~11tr/chỉ  → ~0.72 giá 9999  (hàm lượng lý thuyết 75%)
+ *   - 14K bán ~8.3tr/chỉ → ~0.53 giá 9999  (hàm lượng lý thuyết 58.5%)
+ *   - 10K bán ~5.8tr/chỉ → ~0.38 giá 9999  (hàm lượng lý thuyết 41.6%)
+ * Vàng tuổi cao (≥98%) gần như theo đúng hàm lượng; tuổi thấp bị trừ thêm hao công.
+ */
+const GOLD_PURITY_OPTIONS: { value: string; label: string; content: string; factor: number }[] = [
+  { value: "9999", label: "Vàng 9999 / 24K (vàng ròng)", content: "99.99%", factor: 1.0 },
+  { value: "999",  label: "Vàng 999 / 23.5K",            content: "99.9%",  factor: 0.98 },
+  { value: "980",  label: "Vàng 980 / 23K (vàng ta)",    content: "98%",    factor: 0.95 },
+  { value: "950",  label: "Vàng 950 / 22.8K",            content: "95%",    factor: 0.92 },
+  { value: "750",  label: "Vàng 750 / 18K",              content: "75%",    factor: 0.72 },
+  { value: "680",  label: "Vàng 680 / 16K",              content: "68%",    factor: 0.64 },
+  { value: "610",  label: "Vàng 610 / 14.6K",            content: "61%",    factor: 0.56 },
+  { value: "585",  label: "Vàng 585 / 14K",              content: "58.5%",  factor: 0.53 },
+  { value: "416",  label: "Vàng 416 / 10K",              content: "41.6%",  factor: 0.38 }
+];
+
+// Chuẩn hoá chuỗi tuổi vàng người dùng nhập về một mã trong GOLD_PURITY_OPTIONS.
+// Hỗ trợ cả cách ghi Karat ("18k") lẫn phần nghìn ("750").
+function normalizeGoldPurity(purity?: string): string {
+  if (!purity) return "";
+  const p = purity.trim().toLowerCase().replace(/\s/g, "");
+  if (GOLD_PURITY_OPTIONS.some(o => o.value === p)) return p;
+  const karatMap: Record<string, string> = {
+    "24k": "9999", "23.5k": "999", "23k": "980", "22k": "950",
+    "18k": "750", "16k": "680", "14.6k": "610", "14k": "585", "10k": "416"
+  };
+  if (karatMap[p]) return karatMap[p];
+  if (p === "99.99" || p === "24") return "9999";
+  if (p === "583") return "585";
+  if (p === "417") return "416";
+  return "";
+}
+
+// Hệ số nhân với giá vàng SJC 9999 để ước lượng giá trị theo tuổi vàng.
+function goldPurityFactor(purity?: string): number {
   if (!purity) return 1;
-  const p = purity.trim().toLowerCase();
-  if (p === "9999" || p === "24k") return 0.9999;
-  if (p === "999" || p === "23.5k") return 0.999;
-  if (p.startsWith("22")) return 22 / 24;
-  if (p.startsWith("18")) return 18 / 24;
-  if (p.startsWith("14")) return 14 / 24;
-  if (p.startsWith("10")) return 10 / 24;
+  const code = normalizeGoldPurity(purity);
+  const opt = GOLD_PURITY_OPTIONS.find(o => o.value === code);
+  if (opt) return opt.factor;
+  // Tự suy theo hàm lượng nếu nhập số lạ: Karat (…k) hoặc phần nghìn.
+  const p = purity.trim().toLowerCase().replace(/\s/g, "");
+  const km = p.match(/^(\d{1,2}(?:\.\d+)?)k$/);
+  if (km) return Math.min(1, Number(km[1]) / 24);
+  const n = Number(p);
+  if (n > 24 && n <= 1000) return Math.min(1, n / 1000);
+  if (n > 0 && n <= 24) return n / 24;
   return 1;
+}
+
+// Nhãn hiển thị tuổi vàng (đẹp hơn mã thô như "750"); fallback giữ nguyên giá trị đã lưu.
+function goldPurityLabel(purity?: string): string {
+  if (!purity) return "—";
+  const opt = GOLD_PURITY_OPTIONS.find(o => o.value === normalizeGoldPurity(purity));
+  return opt ? opt.label : purity;
 }
 
 function getEffectiveValue(
@@ -125,7 +179,9 @@ function getEffectiveValue(
   if (Number(asset.estimatedValue) > 0) return { value: Number(asset.estimatedValue), source: "manual" };
 
   if (marketPrices) {
-    if (isGoldType(asset.type) && asset.weight && asset.weight > 0) {
+    // Trọng lượng vàng = quantity (dữ liệu cũ có thể nằm ở field weight riêng).
+    const goldWeight = (asset.weight && asset.weight > 0) ? asset.weight : Number(asset.quantity || 0);
+    if (isGoldType(asset.type) && goldWeight > 0) {
       const gold = marketPrices.gold;
       if (gold) {
         const wu = (asset.weightUnit || asset.unit || "chỉ").toLowerCase().trim();
@@ -134,7 +190,7 @@ function getEffectiveValue(
         if (wu === "lượng") pricePerUnit = isUsd ? gold.pricePerLuongUsd : gold.pricePerLuongVnd;
         else if (wu === "gram" || wu === "g") pricePerUnit = isUsd ? gold.pricePerGramUsd : gold.pricePerGramVnd;
         else pricePerUnit = isUsd ? gold.pricePerChiUsd : gold.pricePerChiVnd;
-        const v = Math.round(asset.weight * pricePerUnit * parsePurity(asset.goldPurity));
+        const v = Math.round(goldWeight * pricePerUnit * goldPurityFactor(asset.goldPurity));
         if (v > 0) return { value: v, source: "live" };
       }
     }
@@ -160,6 +216,7 @@ export function Assets({
   currentUser,
   users,
   assets,
+  widgets,
   onSaveAsset,
   onDeleteAsset
 }: AssetsProps) {
@@ -172,6 +229,7 @@ export function Assets({
   const [selectedPhoto, setSelectedPhoto] = useState<{ asset: FamilyAsset; photo: AssetPhoto } | null>(null);
   const [formError, setFormError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
+  const [showGoldPurityInfo, setShowGoldPurityInfo] = useState(false);
 
   const [formType, setFormType] = useState<AssetType>("gold_bar");
   const [formName, setFormName] = useState("");
@@ -194,80 +252,58 @@ export function Assets({
   const [formCertificateNo, setFormCertificateNo] = useState("");
   const [formParcelNo, setFormParcelNo] = useState("");
   const [formGoldPurity, setFormGoldPurity] = useState("");
-  const [formWeight, setFormWeight] = useState<number>(0);
-  const [formWeightUnit, setFormWeightUnit] = useState("chỉ");
   const [formBrand, setFormBrand] = useState("");
   const [formSerialNo, setFormSerialNo] = useState("");
 
-  const [marketPrices, setMarketPrices] = useState<MarketPrices | null>(null);
-  const [marketPricesStatus, setMarketPricesStatus] = useState<"loading" | "ok" | "error">("loading");
+  const widgetsOverview = widgets ?? null;
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      setMarketPricesStatus("loading");
-      try {
-        const res = await fetch("/api/widgets/overview");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const ov = await res.json() as any;
-
-        const usdVndRate: number = ov?.fx?.usdVnd ?? 25000;
-
-        // Vàng SJC — giống hệt widget trang Tổng quan
-        let gold: MarketPrices["gold"] = null;
-        const g = ov?.gold;
-        if (g) {
-          const pricePerLuongVnd: number | null =
-            g.sell ?? g.vndPerTael ??
-            (g.usdPerOz ? Math.round((g.usdPerOz / 31.1035) * 37.5 * usdVndRate) : null);
-          if (pricePerLuongVnd && pricePerLuongVnd > 0) {
-            const pgVnd = pricePerLuongVnd / 37.5;
-            const pgUsd = pgVnd / usdVndRate;
-            gold = {
-              pricePerGramVnd: pgVnd, pricePerGramUsd: pgUsd,
-              pricePerChiVnd: pgVnd * 3.75, pricePerChiUsd: pgUsd * 3.75,
-              pricePerLuongVnd, pricePerLuongUsd: pgUsd * 37.5,
-              source: g.source ?? "vang.today"
-            };
-          }
-        }
-
-        // BTC + ETH — giống hệt widget trang Tổng quan
-        const crypto: MarketPrices["crypto"] = {};
-        const c = ov?.crypto;
-        if (c?.bitcoin) crypto["BTC"] = { usd: c.bitcoin.usd ?? 0, vnd: c.bitcoin.vnd ?? (c.bitcoin.usd ?? 0) * usdVndRate };
-        if (c?.ethereum) crypto["ETH"] = { usd: c.ethereum.usd ?? 0, vnd: c.ethereum.vnd ?? (c.ethereum.usd ?? 0) * usdVndRate };
-
-        if (!cancelled) {
-          setMarketPrices({ gold, crypto, usdVndRate, lastUpdated: new Date().toISOString() });
-          setMarketPricesStatus("ok");
-        }
-      } catch (err) {
-        console.error("[market-prices]", err);
-        if (!cancelled) setMarketPricesStatus("error");
+  const marketPrices = useMemo<MarketPrices | null>(() => {
+    const ov = widgetsOverview;
+    if (!ov) return null;
+    const usdVndRate: number = ov?.fx?.usdVnd ?? 25000;
+    let gold: MarketPrices["gold"] = null;
+    const g = ov?.gold;
+    if (g) {
+      const pricePerLuongVnd: number | null =
+        g.sell ?? g.vndPerTael ??
+        (g.usdPerOz ? Math.round((g.usdPerOz / 31.1035) * 37.5 * usdVndRate) : null);
+      if (pricePerLuongVnd && pricePerLuongVnd > 0) {
+        const pgVnd = pricePerLuongVnd / 37.5;
+        const pgUsd = pgVnd / usdVndRate;
+        gold = {
+          pricePerGramVnd: pgVnd, pricePerGramUsd: pgUsd,
+          pricePerChiVnd: pgVnd * 3.75, pricePerChiUsd: pgUsd * 3.75,
+          pricePerLuongVnd, pricePerLuongUsd: pgUsd * 37.5,
+          source: g.source ?? "vang.today"
+        };
       }
-    };
+    }
+    const crypto: MarketPrices["crypto"] = {};
+    const c = ov?.crypto;
+    if (c?.bitcoin) crypto["BTC"] = { usd: c.bitcoin.usd ?? 0, vnd: c.bitcoin.vnd ?? (c.bitcoin.usd ?? 0) * usdVndRate };
+    if (c?.ethereum) crypto["ETH"] = { usd: c.ethereum.usd ?? 0, vnd: c.ethereum.vnd ?? (c.ethereum.usd ?? 0) * usdVndRate };
+    return { gold, crypto, usdVndRate, lastUpdated: new Date().toISOString() };
+  }, [widgetsOverview]);
 
-    load();
-    const id = setInterval(load, 5 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  const marketPricesStatus: "loading" | "ok" = widgetsOverview ? "ok" : "loading";
 
   // Live auto-value preview inside the form (recalculates as user types weight/quantity/symbol)
   const formAutoValue = useMemo(() => {
     if (!marketPrices) return null;
-    if (isGoldType(formType) && formWeight > 0) {
+    // Với vàng, "Số lượng/Đơn vị" chính là trọng lượng/đơn vị vàng.
+    if (isGoldType(formType) && formQuantity > 0) {
       const gold = marketPrices.gold;
       if (!gold) return null;
-      const wu = formWeightUnit.toLowerCase().trim();
+      const wu = formUnit.toLowerCase().trim();
       const isUsd = formCurrency === "USD";
       let ppu: number;
       if (wu === "lượng") ppu = isUsd ? gold.pricePerLuongUsd : gold.pricePerLuongVnd;
       else if (wu === "gram" || wu === "g") ppu = isUsd ? gold.pricePerGramUsd : gold.pricePerGramVnd;
       else ppu = isUsd ? gold.pricePerChiUsd : gold.pricePerChiVnd;
-      const v = Math.round(formWeight * ppu * parsePurity(formGoldPurity));
-      return v > 0 ? { value: v, label: `${formWeight} ${formWeightUnit} × giá thị trường` } : null;
+      const factor = goldPurityFactor(formGoldPurity);
+      const v = Math.round(formQuantity * ppu * factor);
+      const purityNote = factor < 1 ? ` × ${Math.round(factor * 100)}% tuổi vàng` : "";
+      return v > 0 ? { value: v, label: `${formQuantity} ${formUnit} × giá 9999${purityNote}` } : null;
     }
     if (formType === "crypto" && formSymbol && formQuantity > 0) {
       const coin = marketPrices.crypto[formSymbol.toUpperCase()];
@@ -277,7 +313,7 @@ export function Assets({
       return v > 0 ? { value: v, label: `${formQuantity} ${formSymbol} × $${coin.usd.toLocaleString("en-US")}` } : null;
     }
     return null;
-  }, [marketPrices, formType, formWeight, formWeightUnit, formGoldPurity, formCurrency, formSymbol, formQuantity]);
+  }, [marketPrices, formType, formGoldPurity, formCurrency, formSymbol, formQuantity, formUnit]);
 
   const filteredAssets = useMemo(() => {
     const text = searchTerm.trim().toLowerCase();
@@ -341,8 +377,6 @@ export function Assets({
     setFormCertificateNo("");
     setFormParcelNo("");
     setFormGoldPurity("");
-    setFormWeight(0);
-    setFormWeightUnit("chỉ");
     setFormBrand("");
     setFormSerialNo("");
   };
@@ -359,8 +393,14 @@ export function Assets({
     setFormType(asset.type);
     setFormName(asset.name);
     setFormOwnerId(asset.ownerId || "");
-    setFormQuantity(Number(asset.quantity || 1));
-    setFormUnit(asset.unit || defaultUnitForType(asset.type));
+    // Với vàng, gộp trọng lượng cũ (field weight) vào ô Số lượng/Đơn vị.
+    if (isGoldType(asset.type)) {
+      setFormQuantity(Number(asset.weight || asset.quantity || 1));
+      setFormUnit(asset.weightUnit || asset.unit || "chỉ");
+    } else {
+      setFormQuantity(Number(asset.quantity || 1));
+      setFormUnit(asset.unit || defaultUnitForType(asset.type));
+    }
     setFormEstimatedValue(Number(asset.estimatedValue || 0));
     setFormPurchaseValue(Number(asset.purchaseValue || 0));
     setFormCurrency(asset.currency || "VND");
@@ -377,8 +417,6 @@ export function Assets({
     setFormCertificateNo(asset.certificateNo || "");
     setFormParcelNo(asset.parcelNo || "");
     setFormGoldPurity(asset.goldPurity || "");
-    setFormWeight(Number(asset.weight || 0));
-    setFormWeightUnit(asset.weightUnit || "chỉ");
     setFormBrand(asset.brand || "");
     setFormSerialNo(asset.serialNo || "");
     setFormError("");
@@ -399,7 +437,6 @@ export function Assets({
   const handleTypeChange = (type: AssetType) => {
     setFormType(type);
     setFormUnit(defaultUnitForType(type));
-    if (isGoldType(type)) setFormWeightUnit("chỉ");
   };
 
   const handlePhotoFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -493,8 +530,9 @@ export function Assets({
         certificateNo: formCertificateNo.trim(),
         parcelNo: formParcelNo.trim(),
         goldPurity: formGoldPurity.trim(),
-        weight: Number(formWeight) || undefined,
-        weightUnit: formWeightUnit.trim(),
+        // Vàng: trọng lượng lưu từ Số lượng/Đơn vị (gộp, tránh nhập 2 lần).
+        weight: isGoldType(formType) ? (Number(formQuantity) || undefined) : undefined,
+        weightUnit: isGoldType(formType) ? formUnit.trim() : "",
         brand: formBrand.trim(),
         serialNo: formSerialNo.trim()
       });
@@ -518,43 +556,104 @@ export function Assets({
     await onDeleteAsset(asset.id);
   };
 
+  const fmtUsd = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
+  const fmtVnd = (n: number) => Math.round(n).toLocaleString("vi-VN") + "đ";
+  const changeBadge = (pct: number | null | undefined) => {
+    if (pct === null || pct === undefined || isNaN(pct)) return null;
+    const up = pct >= 0;
+    return (
+      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${up ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
+        {up ? "▲" : "▼"} {Math.abs(pct).toFixed(2)}%
+      </span>
+    );
+  };
+  const PriceSkeleton = () => (
+    <>
+      <span className="inline-block bg-slate-700/40 rounded-md animate-pulse align-middle h-5 w-24" />
+      <span className="inline-block bg-slate-700/40 rounded-md animate-pulse align-middle h-2.5 w-20 mt-1" />
+    </>
+  );
+
   return (
     <div className="space-y-5" id="assets-module">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-[10px]">
-        {marketPricesStatus === "loading" && (
-          <span className="flex items-center gap-1.5 text-slate-500">
-            <RefreshCw className="size-3 animate-spin" /> Đang tải giá thị trường...
-          </span>
-        )}
-        {marketPricesStatus === "error" && (
-          <span className="flex items-center gap-1.5 text-rose-400/70">
-            <TrendingUp className="size-3" /> Không lấy được giá thị trường
-          </span>
-        )}
-        {marketPricesStatus === "ok" && marketPrices && (
-          <>
-            <span className="flex items-center gap-1.5 text-slate-500">
-              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
-              <TrendingUp className="size-3 text-emerald-400" />
-              <span className="text-emerald-400">Live</span>
-            </span>
-            {marketPrices.gold && (
-              <span className="text-amber-400/80 tabular-nums">
-                {marketPrices.gold.source?.includes("SJC") ? "SJC" : "Vàng"} {formatMoney(Math.round(marketPrices.gold.pricePerLuongVnd))}/lượng
+      {/* Market price widgets — BTC, ETH, Vàng, USD */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Bitcoin */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[88px]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-400">₿ Bitcoin</span>
+            {widgetsOverview?.crypto?.bitcoin ? changeBadge(widgetsOverview.crypto.bitcoin.usd_24h_change) : null}
+          </div>
+          <div className="mt-2 flex flex-col gap-0.5">
+            {marketPrices?.crypto["BTC"] ? (
+              <>
+                <p className="text-base font-extrabold text-slate-100 tabular-nums">{fmtUsd(marketPrices.crypto["BTC"].usd)}</p>
+                <p className="text-[10px] text-slate-500 font-mono tabular-nums">{fmtVnd(marketPrices.crypto["BTC"].vnd)}</p>
+              </>
+            ) : <PriceSkeleton />}
+          </div>
+        </div>
+
+        {/* Ethereum */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[88px]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-400">Ξ Ethereum</span>
+            {widgetsOverview?.crypto?.ethereum ? changeBadge(widgetsOverview.crypto.ethereum.usd_24h_change) : null}
+          </div>
+          <div className="mt-2 flex flex-col gap-0.5">
+            {marketPrices?.crypto["ETH"] ? (
+              <>
+                <p className="text-base font-extrabold text-slate-100 tabular-nums">{fmtUsd(marketPrices.crypto["ETH"].usd)}</p>
+                <p className="text-[10px] text-slate-500 font-mono tabular-nums">{fmtVnd(marketPrices.crypto["ETH"].vnd)}</p>
+              </>
+            ) : <PriceSkeleton />}
+          </div>
+        </div>
+
+        {/* Vàng */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[88px]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-yellow-500">🪙 {widgetsOverview?.gold?.source || "Vàng"}</span>
+            {widgetsOverview?.gold ? changeBadge(widgetsOverview.gold.changePct) : null}
+          </div>
+          <div className="mt-2 flex flex-col gap-0.5">
+            {marketPrices?.gold ? (
+              <>
+                <p className="text-base font-extrabold text-slate-100 tabular-nums">{fmtVnd(Math.round(marketPrices.gold.pricePerLuongVnd))}</p>
+                <p className="text-[10px] text-slate-500">
+                  {widgetsOverview?.gold?.buy ? `Mua ${fmtVnd(widgetsOverview.gold.buy)} • ` : ""}Bán /lượng
+                </p>
+              </>
+            ) : <PriceSkeleton />}
+          </div>
+        </div>
+
+        {/* USD/VND */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[88px]">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-emerald-400">💵 USD/VND</span>
+            {marketPricesStatus === "ok" && (
+              <span className="flex items-center gap-1 text-[9px] text-emerald-400/70">
+                <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                Live
               </span>
             )}
-            {marketPrices.crypto["BTC"] && (
-              <span className="text-sky-400/80 tabular-nums">BTC ${Math.round(marketPrices.crypto["BTC"].usd).toLocaleString("en-US")}</span>
+            {marketPricesStatus === "loading" && (
+              <RefreshCw className="size-3 text-slate-500 animate-spin" />
             )}
-            {marketPrices.crypto["ETH"] && (
-              <span className="text-sky-400/60 tabular-nums">ETH ${Math.round(marketPrices.crypto["ETH"].usd).toLocaleString("en-US")}</span>
-            )}
-            {marketPrices.usdVndRate > 0 && (
-              <span className="text-slate-400 tabular-nums">USD/VND {Math.round(marketPrices.usdVndRate).toLocaleString("vi-VN")}</span>
-            )}
-            <span className="text-slate-600">· {new Date(marketPrices.lastUpdated).toLocaleTimeString("vi-VN")}</span>
-          </>
-        )}
+          </div>
+          <div className="mt-2 flex flex-col gap-0.5">
+            {marketPrices?.usdVndRate ? (
+              <>
+                <p className="text-base font-extrabold text-slate-100 tabular-nums">{fmtVnd(marketPrices.usdVndRate)}</p>
+                <p className="text-[10px] text-slate-500">
+                  Tỷ giá 1 USD
+                  {marketPrices.lastUpdated ? ` · ${new Date(marketPrices.lastUpdated).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })}` : ""}
+                </p>
+              </>
+            ) : <PriceSkeleton />}
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -674,22 +773,44 @@ export function Assets({
                     </div>
                     {(() => {
                       const ev = getEffectiveValue(asset, marketPrices);
+                      // Lời/lỗ: chỉ tính khi có giá mua ban đầu và giá hiện tại không phải chính giá mua đó.
+                      const purchase = Number(asset.purchaseValue || 0);
+                      const showPL = purchase > 0 && ev.value > 0 && ev.source !== "purchase";
+                      const diff = ev.value - purchase;
+                      const pct = purchase > 0 ? (diff / purchase) * 100 : 0;
+                      const up = diff >= 0;
                       return (
-                        <div className="mt-2 flex items-center gap-2 flex-wrap">
-                          <p className="text-lg font-extrabold text-slate-100 tabular-nums">
-                            {ev.source === "live" ? "≈ " : ""}{formatMoney(ev.value, asset.currency)}
-                          </p>
-                          {ev.source === "live" && (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />LIVE
-                            </span>
+                        <>
+                          <div className="mt-2 flex items-center gap-2 flex-wrap">
+                            <p className="text-lg font-extrabold text-slate-100 tabular-nums">
+                              {ev.source === "live" ? "≈ " : ""}{formatMoney(ev.value, asset.currency)}
+                            </p>
+                            {ev.source === "live" && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                                <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />LIVE
+                              </span>
+                            )}
+                            {ev.source === "purchase" && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-800 border border-slate-700 text-slate-400">
+                                giá mua
+                              </span>
+                            )}
+                            {showPL && (
+                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${up ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-rose-500/10 border-rose-500/20 text-rose-400"}`}>
+                                {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                                {up ? "+" : "−"}{Math.abs(pct).toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                          {showPL && (
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Vốn {formatMoney(purchase, asset.currency)} ·{" "}
+                              <span className={up ? "text-emerald-400" : "text-rose-400"}>
+                                {up ? "Lời" : "Lỗ"} {formatMoney(Math.abs(diff), asset.currency)}
+                              </span>
+                            </p>
                           )}
-                          {ev.source === "purchase" && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-800 border border-slate-700 text-slate-400">
-                              giá mua
-                            </span>
-                          )}
-                        </div>
+                        </>
                       );
                     })()}
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
@@ -716,7 +837,7 @@ export function Assets({
                   {isGoldType(asset.type) && (
                     <>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Trọng lượng: <span className="text-amber-400 font-bold tabular-nums">{asset.weight ? `${asset.weight} ${asset.weightUnit || asset.unit}` : "—"}</span></p>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Tuổi vàng: <span className="text-slate-200">{asset.goldPurity || "—"}</span></p>
+                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Tuổi vàng: <span className="text-slate-200">{goldPurityLabel(asset.goldPurity)}</span></p>
                     </>
                   )}
                   {asset.type === "vehicle" && (
@@ -806,14 +927,26 @@ export function Assets({
                       ))}
                     </select>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-slate-400 block font-semibold">Số lượng</label>
-                    <input type="number" min="0" step="0.000001" value={formQuantity || ""} onChange={(e) => setFormQuantity(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-slate-400 block font-semibold">Đơn vị</label>
-                    <input value={formUnit} onChange={(e) => setFormUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
-                  </div>
+                  {formType !== "land" && (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-slate-400 block font-semibold">{isGoldType(formType) ? "Trọng lượng" : "Số lượng"}</label>
+                        <input type="number" min="0" step="0.000001" value={formQuantity || ""} onChange={(e) => setFormQuantity(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-slate-400 block font-semibold">Đơn vị</label>
+                        {isGoldType(formType) ? (
+                          <select value={formUnit} onChange={(e) => setFormUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
+                            <option value="chỉ">chỉ</option>
+                            <option value="lượng">lượng</option>
+                            <option value="gram">gram</option>
+                          </select>
+                        ) : (
+                          <input value={formUnit} onChange={(e) => setFormUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                        )}
+                      </div>
+                    </>
+                  )}
                   <div className="space-y-1">
                     <label className="text-slate-400 block font-semibold">Tiền tệ</label>
                     <select value={formCurrency} onChange={(e) => setFormCurrency(e.target.value as "VND" | "USD")} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
@@ -888,18 +1021,27 @@ export function Assets({
                 )}
 
                 {isGoldType(formType) && (
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
-                    <input type="number" min="0" step="0.0001" value={formWeight || ""} onChange={(e) => setFormWeight(Number(e.target.value))} placeholder="Trọng lượng" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
-                    <input value={formWeightUnit} onChange={(e) => setFormWeightUnit(e.target.value)} placeholder="chỉ/lượng/gram" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
-                    <input value={formGoldPurity} onChange={(e) => setFormGoldPurity(e.target.value)} placeholder="9999 / 24K / 18K" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
+                    <div className="flex items-center gap-1.5">
+                      <select value={normalizeGoldPurity(formGoldPurity)} onChange={(e) => setFormGoldPurity(e.target.value)} className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
+                        <option value="">— Tuổi vàng —</option>
+                        {GOLD_PURITY_OPTIONS.map(o => (
+                          <option key={o.value} value={o.value}>{o.label} ({Math.round(o.factor * 100)}%)</option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={() => setShowGoldPurityInfo(true)} aria-label="Bảng quy ước tuổi vàng" title="Bảng quy ước tuổi vàng" className="shrink-0 size-9 rounded-lg bg-slate-800 border border-slate-700 text-amber-400 hover:bg-slate-700 flex items-center justify-center cursor-pointer">
+                        <Info className="size-4" />
+                      </button>
+                    </div>
                     <input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="SJC/PNJ/DOJI" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
                     <input value={formSerialNo} onChange={(e) => setFormSerialNo(e.target.value)} placeholder="Số seri nếu có" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
                     {marketPrices?.gold && (
-                      <div className="md:col-span-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-amber-400/80">
-                        <span className="flex items-center gap-1"><TrendingUp className="size-3" /> Giá vàng quốc tế (spot):</span>
+                      <div className="md:col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-amber-400/80">
+                        <span className="flex items-center gap-1"><TrendingUp className="size-3" /> Giá vàng 9999 tham chiếu:</span>
                         <span className="font-bold">{formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ</span>
                         <span className="text-amber-400/50">· {formatMoney(Math.round(marketPrices.gold.pricePerLuongVnd))}/lượng</span>
                         <span className="text-amber-400/50">· {formatMoney(Math.round(marketPrices.gold.pricePerGramVnd))}/gram</span>
+                        <span className="text-slate-500">— giá tuổi vàng khác = giá 9999 × hệ số quy ước</span>
                       </div>
                     )}
                   </div>
@@ -977,6 +1119,47 @@ export function Assets({
             </div>
             <div className="min-h-0 flex-1 bg-slate-950 flex items-center justify-center p-3">
               <img src={selectedPhoto.photo.fullDataUrl} alt={selectedPhoto.photo.fileName} className="max-h-[72vh] max-w-full object-contain rounded-lg" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGoldPurityInfo && (
+        <div onClick={() => setShowGoldPurityInfo(false)} className="fixed inset-0 bg-slate-950/90 flex items-center justify-center z-50 p-4" id="gold-purity-info">
+          <div onClick={(e) => e.stopPropagation()} className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
+              <p className="text-sm font-bold text-slate-100 flex items-center gap-1.5"><Gem className="size-4 text-amber-400" /> Bảng quy ước tuổi vàng</p>
+              <button type="button" onClick={() => setShowGoldPurityInfo(false)} aria-label="Đóng" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center shrink-0">
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4 space-y-3">
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Giá trị vàng ước tính theo công thức: <span className="text-amber-400 font-semibold">trọng lượng × giá vàng 9999 × hệ số tuổi vàng</span>.
+                Vàng tuổi cao gần đúng hàm lượng; tuổi thấp bị trừ thêm hao công và chênh lệch thu mua nên hệ số thấp hơn hàm lượng lý thuyết một chút (sát giá bán lại thực tế).
+              </p>
+              <table className="w-full text-[11px] tabular-nums">
+                <thead>
+                  <tr className="text-slate-500 border-b border-slate-800">
+                    <th className="text-left font-semibold py-1.5">Tuổi vàng</th>
+                    <th className="text-right font-semibold py-1.5">Hàm lượng</th>
+                    <th className="text-right font-semibold py-1.5">Hệ số</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {GOLD_PURITY_OPTIONS.map(o => (
+                    <tr key={o.value} className="border-b border-slate-800/50">
+                      <td className="py-1.5 text-slate-200">{o.label}</td>
+                      <td className="py-1.5 text-right text-slate-500">{o.content}</td>
+                      <td className="py-1.5 text-right font-bold text-amber-400">{o.factor.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-[10px] text-slate-600 leading-relaxed">
+                Số liệu tham khảo thị trường (06/2026, vàng 9999 ~14.7tr/chỉ): 18K bán ~11tr, 14K ~8.3tr, 10K ~5.8tr/chỉ.
+                Đây là ước lượng tương đối — bạn có thể nhập "Giá trị ước tính" thủ công để ghi đè.
+              </p>
             </div>
           </div>
         </div>
