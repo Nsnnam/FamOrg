@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { 
   Calendar as CalendarIcon, 
   Plus, 
@@ -25,6 +25,7 @@ import { FamilyPlan, User, UserRole, isLimitedViewer } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { DateTimePicker24 } from "./DateTimePicker24.js";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 interface SchedulesProps {
   currentUser: User;
@@ -106,6 +107,14 @@ export function Schedules({
     setEditingPlan(null);
     setFormError("");
   };
+
+  // Escape-to-close + scroll lock + focus trap for the detail & form modals
+  const viewingRef = React.useRef<HTMLDivElement | null>(null);
+  const formRef = React.useRef<HTMLDivElement | null>(null);
+  const closeViewing = useCallback(() => setViewingPlan(null), []);
+  const closeForm = useCallback(() => { setIsFormOpen(false); setEditingPlan(null); setFormError(""); }, []);
+  useModalA11y(!!viewingPlan, closeViewing, viewingRef);
+  useModalA11y(isFormOpen, closeForm, formRef);
 
   // Filter plans according to user permission and filters
   const filteredPlans = useMemo(() => {
@@ -658,10 +667,14 @@ export function Schedules({
             className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           >
             <motion.div
+              ref={viewingRef}
+              tabIndex={-1}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               onClick={(e) => e.stopPropagation()}
-              className={`bg-slate-900 border border-slate-800 ${borderLeftColor(viewingPlan.color)} rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto`}
+              role="dialog"
+              aria-modal="true"
+              className={`bg-slate-900 border border-slate-800 ${borderLeftColor(viewingPlan.color)} rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto outline-none`}
             >
               <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-800">
                 <div className="space-y-1 min-w-0">
@@ -754,11 +767,15 @@ export function Schedules({
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id={editingPlan ? "plan-edit-modal" : "plan-create-modal"}
         >
-          <motion.div 
+          <motion.div
+            ref={formRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none"
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-800 shrink-0">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">

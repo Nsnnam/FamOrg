@@ -1,6 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@450;600;700&display=swap');
 @import "tailwindcss";
 
+/*
+ * THEME CONVENTION — read before adding colors.
+ * Light/dark is implemented by REMAPPING the slate + sky scales below (the value
+ * of slate-950 is light in :root and dark in .dark, etc). Only these remapped
+ * steps are theme-aware: slate 950/900/850/800/500/450/400/300/200/100 and the
+ * full sky scale. Any OTHER color (slate-600/700, bg-white, gray-*, etc.) is the
+ * raw Tailwind value and will NOT adapt to the theme — avoid them for surfaces
+ * and text. Accent tints (emerald/rose/amber/indigo) are intentionally fixed.
+ */
+
 :root {
   --slate-950: #f8fafc;  /* Main canvas bg -> light slate */
   --slate-900: #ffffff;  /* Box/card backgrounds -> pure clinical white */
@@ -87,6 +97,17 @@
 /* Global focus overlays & custom inputs to make them premium */
 input::placeholder, textarea::placeholder {
   color: var(--slate-500) !important;
+}
+
+/*
+ * Prevent iOS Safari from auto-zooming when a form control is focused.
+ * It only zooms when the control's font-size is < 16px, so bump it on small
+ * screens (the design keeps the same visual sizing via padding/leading).
+ */
+@media (max-width: 640px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
 }
 
 /* Set scrollbar style matching light/dark theme dynamics */

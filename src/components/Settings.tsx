@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Users,
   Database,
@@ -27,6 +27,7 @@ import {
   Rocket
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 // Role <select> options shared by the create + edit forms
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
@@ -152,6 +153,14 @@ export function Settings({
   const [updateCheck, setUpdateCheck] = useState<any>(null);
   const [updateBusy, setUpdateBusy] = useState<"" | "check" | "apply">("");
   const [updateMsg, setUpdateMsg] = useState("");
+
+  // Escape-to-close + scroll lock + focus trap for the edit-user & reset-password modals
+  const editTargetRef = useRef<HTMLDivElement | null>(null);
+  const resetTargetRef = useRef<HTMLDivElement | null>(null);
+  const closeEditTarget = useCallback(() => setEditTarget(null), []);
+  const closeResetTarget = useCallback(() => setResetTarget(null), []);
+  useModalA11y(!!editTarget, closeEditTarget, editTargetRef);
+  useModalA11y(!!resetTarget, closeResetTarget, resetTargetRef);
 
   useEffect(() => {
     fetch("/api/version", { headers: authHeaders() })
@@ -1017,10 +1026,14 @@ export function Settings({
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[60] p-4"
         >
           <motion.div
+            ref={editTargetRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col overflow-hidden"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none"
           >
             <div className="flex items-center gap-3 px-5 pt-5 pb-3 border-b border-slate-800 shrink-0">
               <Avatar user={{ fullName: euFullName || editTarget.fullName, avatarColor: euColor, avatarImage: editTarget.avatarImage }} className="w-10 h-10 rounded-xl text-base" extraClass="shrink-0" />
@@ -1138,10 +1151,14 @@ export function Settings({
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[60] p-4"
         >
           <motion.div
+            ref={resetTargetRef}
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto outline-none"
           >
             <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
               <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 shrink-0">

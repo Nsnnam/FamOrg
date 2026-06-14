@@ -496,7 +496,7 @@ export function Dashboard({
                   return (
                     <div 
                       key={plan.id}
-                      className={`p-3 rounded-xl flex items-center justify-between ${colorMap[plan.color] || "border-l-5 border-slate-600 bg-slate-800/10"} hover:bg-slate-800/30 transition-all`}
+                      className={`p-3 rounded-xl flex items-center justify-between ${colorMap[plan.color] || "border-l-4 border-slate-600 bg-slate-800/10"} hover:bg-slate-800/30 transition-all`}
                     >
                       <div className="space-y-0.5 max-w-[70%]">
                         <span className="text-sm font-semibold text-slate-200 block truncate">{plan.title}</span>
