@@ -48,6 +48,9 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const BACKUP_DIR = path.join(DATA_DIR, "backups");
 const SECRET_FILE = path.join(DATA_DIR, "session_secret.key");
+// App-level config the admin can edit from the UI (e.g. Gemini API key).
+// Kept in its own file — NOT in db.json — so it never ends up in data backups.
+const SETTINGS_FILE = path.join(DATA_DIR, "app_settings.json");
 
 // Legacy salt kept only to verify passwords hashed by the old scheme.
 const LEGACY_SALT = "family_organizer_salt_2026";
@@ -95,6 +98,29 @@ export function getSessionSecret(): string {
     console.error("Không ghi được session secret:", e);
   }
   return secret;
+}
+
+// --- App settings (admin-editable, stored outside the DB & backups) ---
+export function getAppSettings(): Record<string, string> {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf8")) || {};
+    }
+  } catch (e) {
+    console.error("Không đọc được app_settings.json:", e);
+  }
+  return {};
+}
+
+export function setAppSetting(key: string, value: string | null): void {
+  const settings = getAppSettings();
+  if (value === null || value === "") delete settings[key];
+  else settings[key] = value;
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), "utf8");
+  } catch (e) {
+    console.error("Không ghi được app_settings.json:", e);
+  }
 }
 
 // Initial seed data — a blank database with only a single admin account.
