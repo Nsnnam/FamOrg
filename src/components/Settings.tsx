@@ -152,8 +152,9 @@ export function Settings({
   // Version & self-update state
   const [versionInfo, setVersionInfo] = useState<any>(null);
   const [updateCheck, setUpdateCheck] = useState<any>(null);
-  const [updateBusy, setUpdateBusy] = useState<"" | "check" | "apply">("");
+  const [updateBusy, setUpdateBusy] = useState<"" | "check" | "apply" | "deploying">("");
   const [updateMsg, setUpdateMsg] = useState("");
+  const [updateDone, setUpdateDone] = useState(false);
 
   // Escape-to-close + scroll lock + focus trap for the edit-user & reset-password modals
   const editTargetRef = useRef<HTMLDivElement | null>(null);
@@ -186,18 +187,73 @@ export function Settings({
     }
   };
 
+  // Poll /api/version until the server reports a different commit (= new image is
+  // live). Tolerates the brief downtime while the container pulls & restarts.
+  const waitForNewVersion = async (fromCommit: string): Promise<boolean> => {
+    const startedAt = Date.now();
+    const TIMEOUT_MS = 4 * 60 * 1000; // give the Pi up to 4 minutes to pull + boot
+    const POLL_MS = 3000;
+    while (Date.now() - startedAt < TIMEOUT_MS) {
+      await new Promise(r => setTimeout(r, POLL_MS));
+      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+      setUpdateMsg(`Đang tải bản mới & khởi động lại máy chủ… (${elapsed}s)`);
+      try {
+        const res = await fetch("/api/version", { headers: authHeaders(), cache: "no-store" });
+        if (res.ok) {
+          const d = await res.json();
+          if (d?.commit && fromCommit && d.commit !== fromCommit) {
+            setVersionInfo(d);
+            return true;
+          }
+        }
+      } catch {
+        // server is restarting — keep waiting
+      }
+    }
+    return false;
+  };
+
+  // Pull the freshest service worker + assets, then reload into the new build.
+  const reloadIntoNewVersion = async () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          await reg.update().catch(() => {});
+          reg.waiting?.postMessage("SKIP_WAITING");
+        }
+      }
+    } catch {
+      /* ignore — reload still fetches fresh index.html (network-first) */
+    }
+    setTimeout(() => window.location.reload(), 700);
+  };
+
   const handleApplyUpdate = async () => {
+    const fromCommit: string = versionInfo?.commit || "";
+    setUpdateDone(false);
     setUpdateBusy("apply");
-    setUpdateMsg("");
+    setUpdateMsg("Đang gửi yêu cầu cập nhật…");
     try {
       const res = await fetch("/api/update", { method: "POST", headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Cập nhật thất bại.");
-      setUpdateMsg(data.message || "Đã kích hoạt cập nhật.");
+
+      setUpdateBusy("deploying");
+      setUpdateMsg("Đã yêu cầu cập nhật. Đang chờ máy chủ tải bản mới…");
+
+      const ok = await waitForNewVersion(fromCommit);
+      if (ok) {
+        setUpdateDone(true);
+        setUpdateMsg("Cập nhật xong! Đang tải lại ứng dụng…");
+        await reloadIntoNewVersion();
+      } else {
+        setUpdateBusy("");
+        setUpdateMsg("Đã kích hoạt cập nhật nhưng chờ hơi lâu. Hãy thử tải lại trang sau ít phút.");
+      }
     } catch (err: any) {
-      setUpdateMsg(err.message || "Cập nhật thất bại.");
-    } finally {
       setUpdateBusy("");
+      setUpdateMsg(err.message || "Cập nhật thất bại.");
     }
   };
 
@@ -1244,7 +1300,10 @@ export function Settings({
                     disabled={updateBusy !== ""}
                     className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                   >
-                    <Rocket className="w-4 h-4" /> {updateBusy === "apply" ? "Đang cập nhật..." : "Cập nhật ngay"}
+                    {updateBusy === "apply" || updateBusy === "deploying"
+                      ? <RefreshCw className="w-4 h-4 animate-spin" />
+                      : <Rocket className="w-4 h-4" />}
+                    {updateBusy === "apply" ? "Đang gửi yêu cầu…" : updateBusy === "deploying" ? "Đang cập nhật…" : "Cập nhật ngay"}
                   </button>
                 )}
                 {!updateCheck.canAutoUpdate && (
@@ -1266,8 +1325,19 @@ export function Settings({
         )}
 
         {updateMsg && (
-          <div className="p-3 bg-sky-500/10 border border-sky-500/20 text-sky-300 rounded-xl text-xs flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" /> {updateMsg}
+          <div className={`p-3 rounded-xl text-xs flex items-center gap-2 border ${
+            updateDone
+              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+              : updateBusy === "deploying" || updateBusy === "apply"
+                ? "bg-sky-500/10 border-sky-500/20 text-sky-300"
+                : "bg-amber-500/10 border-amber-500/20 text-amber-300"
+          }`}>
+            {updateDone
+              ? <CheckCircle className="w-4 h-4 shrink-0" />
+              : (updateBusy === "deploying" || updateBusy === "apply")
+                ? <RefreshCw className="w-4 h-4 shrink-0 animate-spin" />
+                : <AlertTriangle className="w-4 h-4 shrink-0" />}
+            {updateMsg}
           </div>
         )}
       </div>
