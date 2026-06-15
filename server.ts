@@ -239,7 +239,8 @@ app.get("/api/version", requireAuth, (_req: AuthRequest, res: Response) => {
     commit: GIT_SHA,
     shortCommit: GIT_SHA ? GIT_SHA.slice(0, 7) : "",
     buildTime: BUILD_TIME,
-    canAutoUpdate: Boolean(WATCHTOWER_URL && WATCHTOWER_TOKEN)
+    canAutoUpdate: Boolean(WATCHTOWER_URL && WATCHTOWER_TOKEN),
+    aiEnabled: Boolean(process.env.GEMINI_API_KEY || process.env.API_KEY)
   });
 });
 
@@ -961,6 +962,76 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
   } catch (err: any) {
     console.error("Assistant error:", err);
     res.status(500).json({ error: err.message || "AI assistant dang gap loi" });
+  }
+});
+
+// AI meal planner → balanced multi-day menu + consolidated grocery list.
+app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: Response) => {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  if (!apiKey) {
+    res.status(400).json({ error: "Chưa cấu hình GEMINI_API_KEY cho gợi ý AI." });
+    return;
+  }
+  const adults = Math.min(10, Math.max(0, Math.floor(Number(req.body?.adults) || 0)));
+  const children = Math.min(10, Math.max(0, Math.floor(Number(req.body?.children) || 0)));
+  const days = Math.min(7, Math.max(1, Math.floor(Number(req.body?.days) || 3)));
+  const notes = String(req.body?.notes || "").slice(0, 500);
+  if (adults + children <= 0) {
+    res.status(400).json({ error: "Cần ít nhất 1 người để lập thực đơn." });
+    return;
+  }
+
+  try {
+    const [{ GoogleGenAI }] = await Promise.all([import("@google/genai")]);
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = [
+      "Bạn là chuyên gia dinh dưỡng kiêm đầu bếp gia đình Việt Nam.",
+      `Lập thực đơn cân bằng dinh dưỡng cho gia đình ${adults} người lớn và ${children} trẻ em, trong ${days} ngày, mỗi ngày 3 bữa (Sáng/Trưa/Tối).`,
+      "Món Việt quen thuộc, đa dạng giữa các ngày, đủ nhóm chất (đạm, rau củ, tinh bột, trái cây); khẩu phần trẻ em ít hơn người lớn.",
+      notes ? `Lưu ý của gia đình (dị ứng/kiêng/ngân sách/sở thích): ${notes}` : "Không có lưu ý đặc biệt.",
+      "Sau đó GỘP toàn bộ nguyên liệu của cả thực đơn thành một danh sách đi chợ, cộng dồn số lượng theo số người, ghi số lượng ước tính dễ mua (vd '1.2 kg', '6 quả', 'vừa đủ').",
+      "Bạn PHẢI trả về DUY NHẤT một JSON hợp lệ, không bọc markdown, không thêm chữ ngoài JSON.",
+      'Schema: {"days":[{"day":1,"meals":[{"meal":"Sáng","dishes":["..."]},{"meal":"Trưa","dishes":["..."]},{"meal":"Tối","dishes":["..."]}]}],"groceries":[{"name":"tên nguyên liệu","cat":"Đạm|Rau củ|Tinh bột|Trái cây|Gia vị","quantity":"số lượng"}]}',
+      "Trường cat bắt buộc thuộc: Đạm, Rau củ, Tinh bột, Trái cây, Gia vị. Không quá 40 nguyên liệu."
+    ].join("\n\n");
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    } as any);
+
+    const parsed = parseAssistantJson(response.text || "");
+    if (!parsed || !Array.isArray(parsed.days) || !Array.isArray(parsed.groceries)) {
+      res.status(502).json({ error: "AI trả về dữ liệu không hợp lệ. Hãy thử lại." });
+      return;
+    }
+
+    const CATS = ["Đạm", "Rau củ", "Tinh bột", "Trái cây", "Gia vị"];
+    const cleanDays = parsed.days.slice(0, 14).map((d: any, i: number) => ({
+      day: Number(d?.day) || i + 1,
+      meals: Array.isArray(d?.meals)
+        ? d.meals.slice(0, 3).map((m: any) => ({
+            meal: ["Sáng", "Trưa", "Tối"].includes(String(m?.meal)) ? String(m.meal) : "Bữa",
+            dishes: Array.isArray(m?.dishes)
+              ? m.dishes.slice(0, 6).map((x: any) => String(x).slice(0, 80)).filter(Boolean)
+              : []
+          }))
+        : []
+    }));
+    const cleanGroceries = parsed.groceries
+      .slice(0, 60)
+      .map((g: any) => ({
+        name: String(g?.name || "").slice(0, 100),
+        cat: CATS.includes(String(g?.cat)) ? String(g.cat) : "Gia vị",
+        quantity: String(g?.quantity || "").slice(0, 40)
+      }))
+      .filter((g: any) => g.name);
+
+    res.json({ days: cleanDays, groceries: cleanGroceries, source: "ai" });
+  } catch (err: any) {
+    console.error("Meal-plan error:", err);
+    res.status(500).json({ error: err.message || "Không tạo được thực đơn AI." });
   }
 });
 

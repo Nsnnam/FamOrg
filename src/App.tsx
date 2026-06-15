@@ -1463,6 +1463,7 @@ export default function App() {
                   onToggleItem={handleToggleShoppingItem}
                   onDeleteItem={handleDeleteShoppingItem}
                   onClearPurchased={handleClearPurchasedShopping}
+                  authHeaders={getAuthHeader()}
                 />
               )}
 
