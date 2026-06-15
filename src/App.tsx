@@ -53,6 +53,7 @@ import { Finance } from "./components/Finance.js";
 import { Shopping } from "./components/Shopping.js";
 import { Medication } from "./components/Medication.js";
 import { Assistant } from "./components/Assistant.js";
+import { FabProvider } from "./components/FabHost.js";
 import { Settings } from "./components/Settings.js";
 import { useModalA11y } from "./hooks/useModalA11y.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -1131,6 +1132,7 @@ export default function App() {
   ];
 
   return (
+    <FabProvider>
     <div className="h-screen overflow-hidden bg-slate-950 flex text-slate-200 selection:bg-sky-200 selection:text-sky-700 font-sans relative">
 
       {/* PWA: offline banner */}
@@ -1147,16 +1149,6 @@ export default function App() {
           className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer"
         >
           <Sparkles className="w-4 h-4" /> Có bản cập nhật mới — Bấm để làm mới
-        </button>
-      )}
-
-      {/* PWA: install prompt button */}
-      {installPrompt && (
-        <button
-          onClick={handleInstallApp}
-          className="fixed bottom-20 right-5 z-[70] bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold px-4 py-2.5 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer"
-        >
-          <Home className="w-4 h-4" /> Cài app lên máy
         </button>
       )}
 
@@ -1199,6 +1191,15 @@ export default function App() {
 
         {/* Sidebar Footer details */}
         <div className="shrink-0 space-y-4 pt-4 border-t border-slate-850">
+          {/* PWA: nút cài app — đặt trên avatar, không còn nổi đè lên nút thêm nhanh */}
+          {installPrompt && (
+            <button
+              onClick={handleInstallApp}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md shadow-emerald-500/10"
+            >
+              <Home className="w-4 h-4" /> Cài app lên máy
+            </button>
+          )}
           <button
             type="button"
             onClick={() => openSettingsTab("profile")}
@@ -1544,6 +1545,15 @@ export default function App() {
 
             {/* Sidebar logout */}
             <div className="shrink-0 space-y-4 pt-4 border-t border-slate-850">
+              {/* PWA: nút cài app — đặt trên avatar, không còn nổi đè lên nút thêm nhanh */}
+              {installPrompt && (
+                <button
+                  onClick={handleInstallApp}
+                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md shadow-emerald-500/10"
+                >
+                  <Home className="w-4 h-4" /> Cài app lên máy
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => openSettingsTab("profile")}
@@ -1645,5 +1655,6 @@ export default function App() {
         );
       })()}
     </div>
+    </FabProvider>
   );
 }

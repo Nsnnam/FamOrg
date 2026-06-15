@@ -198,7 +198,7 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-30 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-full w-12 h-12 shadow-2xl shadow-sky-500/20 flex items-center justify-center"
+        className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-5 z-30 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-full w-12 h-12 shadow-2xl shadow-sky-500/20 flex items-center justify-center"
         title="AI assistant"
       >
         <Bot className="w-5 h-5" />

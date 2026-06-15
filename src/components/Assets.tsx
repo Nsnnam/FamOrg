@@ -8,6 +8,7 @@ import {
   Calendar,
   Car,
   Coins,
+  FileText,
   Gem,
   Image as ImageIcon,
   Info,
@@ -32,6 +33,7 @@ import { useConfirm } from "./ConfirmDialog.js";
 import { optimizeImageFile } from "../utils/image.js";
 import { uploadDataUrl } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { useTabFab } from "./FabHost.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
@@ -329,6 +331,13 @@ export function Assets({
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!selectedPhoto, closePhoto, photoRef);
   useModalA11y(showGoldPurityInfo, closeGoldInfo, goldInfoRef);
+
+  // Nút nổi thêm tài sản — icon trùng tab con "Tài sản gia đình", ẩn khi đang mở modal
+  useTabFab(
+    !isFormOpen && !selectedPhoto && !showGoldPurityInfo
+      ? { id: "assets", color: "emerald", title: "Thêm tài sản gia đình", icon: FileText, onClick: openCreateForm }
+      : null
+  );
 
   const canManageAsset = (asset: FamilyAsset) => {
     return currentUser.role === UserRole.ADMIN || asset.createdById === currentUser.id;

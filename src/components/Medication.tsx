@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import { Pill, Plus, Trash2, Clock, X } from "lucide-react";
 import { MedicationReminder, User, canManageMedication } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { TimeSelect24 } from "./DateTimePicker24.js";
+import { useTabFab } from "./FabHost.js";
 
 interface MedicationProps {
   currentUser: User;
@@ -34,6 +35,20 @@ export function Medication({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Ô nhập tên thuốc — nút nổi cuộn lên đây và focus để thêm nhanh
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const focusAddMed = () => {
+    nameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    nameInputRef.current?.focus();
+  };
+
+  // Nút nổi thêm nhanh — cuộn tới ô thêm lịch thuốc và focus (chỉ người có quyền)
+  useTabFab(
+    canManageMedication(currentUser.role)
+      ? { id: "medications", color: "rose", title: "Thêm lịch nhắc thuốc", icon: Pill, onClick: focusAddMed }
+      : null
+  );
 
   const sorted = useMemo(
     () => [...medications].sort((a, b) => a.name.localeCompare(b.name)),
@@ -99,7 +114,7 @@ export function Medication({
 
         {canManageMedication(currentUser.role) && (
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên thuốc" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
+            <input ref={nameInputRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên thuốc" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
             <input value={dosage} onChange={(e) => setDosage(e.target.value)} placeholder="Liều dùng" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
             <select value={patientId} onChange={(e) => setPatientId(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500">
               {users.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
@@ -185,6 +200,7 @@ export function Medication({
           </AnimatePresence>
         </div>
       )}
+
     </div>
   );
 }
