@@ -972,6 +972,18 @@ export default function App() {
     return res.json();
   };
 
+  const handleClearAllShopping = async () => {
+    const res = await fetch("/api/shopping/all", {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      throw new Error(d.error);
+    }
+    return res.json();
+  };
+
   const handleCreateUser = async (userPayload: any) => {
     const res = await fetch("/api/users", {
       method: "POST",
@@ -1464,6 +1476,7 @@ export default function App() {
                   onToggleItem={handleToggleShoppingItem}
                   onDeleteItem={handleDeleteShoppingItem}
                   onClearPurchased={handleClearPurchasedShopping}
+                  onClearAll={handleClearAllShopping}
                   authHeaders={getAuthHeader()}
                 />
               )}

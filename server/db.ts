@@ -22,8 +22,13 @@ import {
   MedicationReminder,
   ShoppingItem,
   Notification,
-  PushSubscriptionRecord
+  PushSubscriptionRecord,
+  StoredDish,
+  StoredMealPlan,
+  MealIngredient,
+  DishSlot
 } from "../src/types.js";
+import { SEED_DISHES } from "../src/utils/mealPlan.js";
 import { sqliteIsEmpty, sqliteLoad, sqliteSave, sqliteCheckpoint } from "./sqlite.js";
 import { deleteMediaByUrl } from "./media.js";
 import { dispatchPush } from "./push.js";
@@ -152,6 +157,8 @@ const initialDBState = (): FamilyOrganizerDB => {
     assets: [],
     medications: [],
     shoppingItems: [],
+    dishLibrary: [],
+    mealPlan: null,
     notifications: [],
     pushSubscriptions: [],
     activityLogs: [],
@@ -172,6 +179,8 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.assets = db.assets || [];
   db.medications = db.medications || [];
   db.shoppingItems = db.shoppingItems || [];
+  db.dishLibrary = db.dishLibrary || [];
+  db.mealPlan = db.mealPlan || null;
   db.notifications = db.notifications || [];
   db.pushSubscriptions = db.pushSubscriptions || [];
   db.activityLogs = db.activityLogs || [];
@@ -1283,6 +1292,76 @@ export class FamilyDB {
       this.logActivity(userId, username, "Dọn đồ đã mua", `Đã xóa ${removed} món đã mua khỏi danh sách đi chợ.`);
     }
     return removed;
+  }
+
+  public static clearAllShopping(userId: string, username: string): number {
+    const db = this.readRaw();
+    const removed = db.shoppingItems.length;
+    if (removed > 0) {
+      db.shoppingItems = [];
+      this.writeRaw(db);
+      this.logActivity(userId, username, "Xóa toàn bộ đi chợ", `Đã xóa tất cả ${removed} món khỏi danh sách đi chợ.`);
+    }
+    return removed;
+  }
+
+  // --- MEAL PLANNER DISH LIBRARY ---
+  // Seeded from SEED_DISHES on first use; grows as AI suggests new dishes.
+  public static getDishLibrary(): StoredDish[] {
+    const db = this.readRaw();
+    if (!db.dishLibrary || db.dishLibrary.length === 0) {
+      const now = new Date().toISOString();
+      db.dishLibrary = SEED_DISHES.map((d, i) => ({
+        id: `dish_seed_${i}`,
+        name: d.name,
+        slot: d.slot,
+        ingredients: d.ingredients,
+        source: "seed" as const,
+        createdAt: now
+      }));
+      this.writeRaw(db);
+    }
+    return db.dishLibrary;
+  }
+
+  // The single shared weekly menu shown on the shopping view.
+  public static getMealPlan(): StoredMealPlan | null {
+    return this.readRaw().mealPlan || null;
+  }
+
+  public static setMealPlan(plan: StoredMealPlan | null): void {
+    const db = this.readRaw();
+    db.mealPlan = plan;
+    this.writeRaw(db);
+  }
+
+  // Add AI-suggested dishes, skipping ones already known (same name + slot).
+  public static addDishesFromAI(
+    dishes: { name: string; slot: DishSlot; ingredients: MealIngredient[] }[]
+  ): number {
+    const db = this.readRaw();
+    if (!db.dishLibrary) db.dishLibrary = [];
+    const known = new Set(db.dishLibrary.map(d => `${d.name.trim().toLowerCase()}|${d.slot}`));
+    let added = 0;
+    const now = new Date().toISOString();
+    dishes.forEach((d, i) => {
+      const name = (d.name || "").trim();
+      if (!name) return;
+      const key = `${name.toLowerCase()}|${d.slot}`;
+      if (known.has(key)) return;
+      known.add(key);
+      db.dishLibrary.push({
+        id: `dish_ai_${Date.now()}_${i}`,
+        name,
+        slot: d.slot,
+        ingredients: Array.isArray(d.ingredients) ? d.ingredients : [],
+        source: "ai",
+        createdAt: now
+      });
+      added++;
+    });
+    if (added > 0) this.writeRaw(db);
+    return added;
   }
 
   // --- MEDICATION REMINDERS ---
