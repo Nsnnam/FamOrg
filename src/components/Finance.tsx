@@ -28,6 +28,7 @@ import { useConfirm } from "./ConfirmDialog.js";
 import { Assets } from "./Assets.js";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { useTabFab } from "./FabHost.js";
 
 interface FinanceProps {
   currentUser: User;
@@ -151,6 +152,13 @@ export function Finance({
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!selectedReceipt, closeReceipt, receiptRef);
   useModalA11y(!!editingBill, closeBillEditor, billEditorRef);
+
+  // Nút nổi thêm nhanh — chỉ hiện ở view thu chi, ẩn khi đang mở form
+  useTabFab(
+    canAccessFinance(currentUser.role) && financeView === "cashflow" && !isFormOpen
+      ? { id: "finance", color: "emerald", title: "Thêm khoản thu chi nhanh", icon: Wallet, onClick: () => { setFormError(""); setIsFormOpen(true); } }
+      : null
+  );
 
   // Money input formatting: show grouped thousands (1.000.000), store as number.
   const formatMoneyInput = (n: number) => (n > 0 ? n.toLocaleString("vi-VN") : "");
@@ -434,7 +442,21 @@ export function Finance({
         />
       ) : (
         <>
-      
+
+      {/* Primary quick-add: ngay trên cùng để vào là thêm được thu chi */}
+      {canAccessFinance(currentUser.role) && (
+        <button
+          type="button"
+          onClick={() => {
+            setFormError("");
+            setIsFormOpen(true);
+          }}
+          className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/10 cursor-pointer"
+        >
+          <Plus className="w-5 h-5" /> Đăng ghi chép tài chính
+        </button>
+      )}
+
       {/* Wallet Cards Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4" id="finance-summaries">
         
@@ -695,25 +717,14 @@ export function Finance({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-500" />
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Tìm miêu tả khoản chi, mua đồ đạc gia đình..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-xl text-slate-200 placeholder-slate-500 text-xs focus:outline-none transition-all"
             />
           </div>
-
-          <button 
-            disabled={!canAccessFinance(currentUser.role)}
-            onClick={() => {
-              setFormError("");
-              setIsFormOpen(true);
-            }}
-            className="bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-slate-950 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all self-start md:self-auto shrink-0 shadow-md shadow-emerald-500/5 cursor-pointer"
-          >
-            <Plus className="w-4 h-4" /> Đăng ghi chép tài chính
-          </button>
         </div>
 
         {/* Filters lists */}

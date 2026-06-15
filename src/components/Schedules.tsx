@@ -27,6 +27,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { DateTimePicker24 } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { useTabFab } from "./FabHost.js";
 import { Avatar } from "./Avatar.js";
 
 interface SchedulesProps {
@@ -87,6 +88,13 @@ export function Schedules({
     setFormError("");
     setIsFormOpen(true);
   };
+
+  // Nút nổi lên lịch nhanh — ẩn khi đang mở form/chi tiết hoặc tài khoản khách
+  useTabFab(
+    currentUser.role !== UserRole.GUEST && !isFormOpen && !viewingPlan && !viewingBirthday
+      ? { id: "plans", color: "sky", title: "Lên lịch sự kiện mới", icon: CalendarIcon, onClick: handleOpenCreatePlan }
+      : null
+  );
 
   const handleOpenEditPlan = (plan: FamilyPlan) => {
     if (!canManagePlan(plan)) return;
@@ -1041,6 +1049,7 @@ export function Schedules({
           </motion.div>
         </div>
       )}
+
       {ConfirmDialog}
     </div>
   );

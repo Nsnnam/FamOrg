@@ -22,6 +22,7 @@ import { Note, User, UserRole, isLimitedViewer } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { useTabFab } from "./FabHost.js";
 
 interface NotesProps {
   currentUser: User;
@@ -186,6 +187,13 @@ export function Notes({
     setFormError("");
     setIsEditorOpen(true);
   };
+
+  // Nút nổi viết nhanh — ẩn khi đang mở trình soạn hoặc tài khoản khách
+  useTabFab(
+    currentUser.role !== UserRole.GUEST && !isEditorOpen
+      ? { id: "notes", color: "sky", title: "Viết ghi chú mới", icon: FileText, onClick: handleOpenCreateForm }
+      : null
+  );
 
   // Open editor for modifying
   const handleOpenEditForm = (note: Note) => {
@@ -642,6 +650,7 @@ export function Notes({
           </motion.div>
         </div>
       )}
+
       {ConfirmDialog}
     </div>
   );

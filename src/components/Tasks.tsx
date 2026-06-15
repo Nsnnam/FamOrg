@@ -19,7 +19,8 @@ import {
   AlertCircle,
   X,
   Share2,
-  Pencil
+  Pencil,
+  CheckSquare
 } from "lucide-react";
 import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, RecurrenceType, isLimitedViewer, isAdultRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -27,6 +28,7 @@ import { Avatar } from "./Avatar.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { DateTimePicker24 } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { useTabFab } from "./FabHost.js";
 
 interface TasksProps {
   currentUser: User;
@@ -160,6 +162,13 @@ export function Tasks({
     setFormError("");
     setIsNewTaskOpen(true);
   };
+
+  // Nút nổi thêm nhanh — ẩn khi đang mở modal hoặc tài khoản khách
+  useTabFab(
+    currentUser.role !== UserRole.GUEST && !isNewTaskOpen
+      ? { id: "tasks", color: "sky", title: "Thêm công việc mới", icon: CheckSquare, onClick: handleOpenCreate }
+      : null
+  );
 
   // Open the modal in "edit" mode, pre-filled from an existing task
   const handleOpenEditTask = (task: Task) => {
@@ -1155,6 +1164,7 @@ export function Tasks({
           </motion.div>
         </div>
       )}
+
       {ConfirmDialog}
     </div>
   );

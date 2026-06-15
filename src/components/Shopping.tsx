@@ -3,11 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { ShoppingCart, Plus, Trash2, CheckCircle2, Circle, Eraser } from "lucide-react";
 import { ShoppingItem, User } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
+import { useTabFab } from "./FabHost.js";
 
 interface ShoppingProps {
   currentUser: User;
@@ -33,6 +34,16 @@ export function Shopping({
   const [quantity, setQuantity] = useState("");
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
+
+  // Ô nhập tên món — nút nổi sẽ cuộn lên đây và focus để thêm nhanh
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const focusAddItem = () => {
+    nameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    nameInputRef.current?.focus();
+  };
+
+  // Nút nổi thêm nhanh — cuộn tới ô thêm món và focus
+  useTabFab({ id: "shopping", color: "emerald", title: "Thêm món cần mua", icon: ShoppingCart, onClick: focusAddItem });
 
   const pending = useMemo(
     () => shoppingItems.filter(i => !i.isPurchased).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
@@ -123,6 +134,7 @@ export function Shopping({
         </h3>
         <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2.5">
           <input
+            ref={nameInputRef}
             type="text"
             placeholder="Tên món cần mua (vd: Sữa tươi, Rau cải...)"
             value={name}
