@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, lazy, Suspense } from "react";
 import { 
   FileText, 
   Plus, 
@@ -32,75 +32,11 @@ interface NotesProps {
   onDeleteNote: (id: string) => Promise<any>;
 }
 
-// Light markdown parser to safely render headers, bold, bullet points, checkboxes, and spacing locally
-function renderMarkdownHTML(mdText: string) {
-  if (!mdText) return <p className="text-slate-500 italic">Ghi chú trống...</p>;
-  
-  const lines = mdText.split("\n");
-  return (
-    <div className="space-y-2 font-sans text-xs text-slate-300 leading-relaxed">
-      {lines.map((line, idx) => {
-        const trimmed = line.trim();
-        
-        // Headers ###
-        if (trimmed.startsWith("### ")) {
-          return <h4 key={idx} className="text-xs font-bold text-slate-100 pt-2 border-b border-slate-800 pb-1 flex items-center gap-1.5">{trimmed.replace("### ", "")}</h4>;
-        }
-        if (trimmed.startsWith("## ")) {
-          return <h3 key={idx} className="text-sm font-bold text-sky-400 pt-3 flex items-center gap-1.5">{trimmed.replace("## ", "")}</h3>;
-        }
-        if (trimmed.startsWith("# ")) {
-          return <h2 key={idx} className="text-md font-extrabold text-slate-200 pt-3">{trimmed.replace("# ", "")}</h2>;
-        }
+// Full Markdown (GFM) renderer — lazy-loaded so react-markdown stays out of the
+// initial bundle and only loads when a note is opened or previewed.
+const MarkdownView = lazy(() => import("./Markdown.js"));
 
-        // Checklists [x] / [ ]
-        if (trimmed.startsWith("- [x] ") || trimmed.startsWith("- [X] ")) {
-          return (
-            <div key={idx} className="flex items-center gap-2 text-emerald-400 line-through">
-              <input type="checkbox" checked readOnly className="rounded bg-slate-900 border-slate-700 w-3.5 h-3.5 accent-emerald-500 pointer-events-none" />
-              <span>{trimmed.substring(6)}</span>
-            </div>
-          );
-        }
-        if (trimmed.startsWith("- [ ] ")) {
-          return (
-            <div key={idx} className="flex items-center gap-2 text-slate-400">
-              <input type="checkbox" checked={false} readOnly className="rounded bg-slate-900 border-slate-700 w-3.5 h-3.5 pointer-events-none" />
-              <span>{trimmed.substring(6)}</span>
-            </div>
-          );
-        }
-
-        // Bullet list item
-        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-          return (
-            <li key={idx} className="list-disc list-inside ml-2 text-slate-300">
-              {trimmed.substring(2)}
-            </li>
-          );
-        }
-
-        // Code codeblocks or inline `code`
-        if (trimmed.startsWith("`") && trimmed.endsWith("`")) {
-          return (
-            <code key={idx} className="bg-slate-950 px-2 py-1 font-mono text-[10px] text-yellow-400 border border-slate-800 rounded block my-1">
-              {trimmed.replace(/`/g, "")}
-            </code>
-          );
-        }
-
-        // standard paragraph
-        return trimmed === "" ? (
-          <div key={idx} className="h-2" />
-        ) : (
-          <p key={idx} className="text-slate-300 font-sans leading-relaxed">
-            {trimmed}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
+const MarkdownFallback = () => <p className="text-slate-500 text-xs">Đang hiển thị…</p>;
 
 export function Notes({
   currentUser,
@@ -126,6 +62,7 @@ export function Notes({
   const [formTagsStr, setFormTagsStr] = useState("");
   const [formIsPinned, setFormIsPinned] = useState(false);
   const [formIsShared, setFormIsShared] = useState(true);
+  const [editorPreview, setEditorPreview] = useState(false); // Soạn (false) / Xem trước (true)
 
   // Escape-to-close + scroll lock + focus trap for the editor & reader modals
   const editorRef = React.useRef<HTMLDivElement | null>(null);
@@ -183,6 +120,7 @@ export function Notes({
     setFormTagsStr("");
     setFormIsPinned(false);
     setFormIsShared(true);
+    setEditorPreview(false);
     setEditingNote(null);
     setFormError("");
     setIsEditorOpen(true);
@@ -202,6 +140,7 @@ export function Notes({
     setFormTagsStr(note.tags.join(", "));
     setFormIsPinned(note.isPinned);
     setFormIsShared(note.isShared);
+    setEditorPreview(false);
     setEditingNote(note);
     setFormError("");
     setReadingNote(null); // close the reader so the editor isn't hidden behind it
@@ -502,19 +441,43 @@ export function Notes({
                 />
               </div>
 
-              {/* Content Textarea (Markdown help) */}
+              {/* Content: trình soạn Markdown đầy đủ + xem trước trực tiếp */}
               <div className="space-y-1.5">
-                <div className="flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                  <label className="text-slate-400 block font-semibold font-sans">Nội dung (Hỗ trợ Markdown cơ bản)</label>
-                  <span>Dùng ## đề mục | - danh sách | - [ ] việc cần làm</span>
+                <div className="flex justify-between items-center gap-2">
+                  <label className="text-slate-400 font-semibold">Nội dung (Markdown đầy đủ)</label>
+                  <div className="flex bg-slate-950 border border-slate-800 rounded-lg p-0.5 text-[10px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setEditorPreview(false)}
+                      className={`px-2.5 py-1 rounded-md flex items-center gap-1 cursor-pointer transition-colors ${!editorPreview ? "bg-sky-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}
+                    >
+                      <Edit3 className="w-3 h-3" /> Soạn
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditorPreview(true)}
+                      className={`px-2.5 py-1 rounded-md flex items-center gap-1 cursor-pointer transition-colors ${editorPreview ? "bg-sky-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}
+                    >
+                      <Eye className="w-3 h-3" /> Xem trước
+                    </button>
+                  </div>
                 </div>
-                <textarea 
-                  rows={8}
-                  placeholder={`## Đề Mục Lớn\n- [ ] Việc cần hoàn thành 1\n- [x] Việc đã làm xong rồi 2\n- Danh sách ghi nhận quan trọng`}
-                  value={formContent}
-                  onChange={(e) => setFormContent(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono leading-relaxed"
-                />
+                {editorPreview ? (
+                  <div className="w-full min-h-[12rem] max-h-[40vh] overflow-y-auto bg-slate-950 border border-slate-800 rounded-lg p-3">
+                    <Suspense fallback={<MarkdownFallback />}>
+                      <MarkdownView content={formContent} />
+                    </Suspense>
+                  </div>
+                ) : (
+                  <textarea
+                    rows={10}
+                    placeholder={`# Tiêu đề\n\n**In đậm**, *in nghiêng*, ~~gạch ngang~~, [liên kết](https://...)\n\n## Danh sách\n- mục thường\n- [ ] việc cần làm\n- [x] đã xong\n\n1. có thứ tự\n\n> Trích dẫn\n\n\`code\` hoặc khối \`\`\` ... \`\`\`\n\n| Cột A | Cột B |\n| --- | --- |\n| 1 | 2 |`}
+                    value={formContent}
+                    onChange={(e) => setFormContent(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono leading-relaxed"
+                  />
+                )}
+                <p className="text-[10px] text-slate-500">Hỗ trợ Markdown đầy đủ: tiêu đề, in đậm/nghiêng, danh sách, checkbox, liên kết, trích dẫn, code, bảng…</p>
               </div>
 
               {/* Tags, Pinned and Shared row */}
@@ -606,7 +569,9 @@ export function Notes({
 
             {/* Markdown details container */}
             <div className="bg-slate-950 p-4.5 rounded-xl border border-slate-800/80 overflow-y-auto max-h-[350px]">
-              {renderMarkdownHTML(readingNote.content)}
+              <Suspense fallback={<MarkdownFallback />}>
+                <MarkdownView content={readingNote.content} />
+              </Suspense>
             </div>
 
             {/* Note info footer */}
