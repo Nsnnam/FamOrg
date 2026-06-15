@@ -27,6 +27,7 @@ const COLLECTIONS: { key: keyof FamilyOrganizerDB; table: string }[] = [
   { key: "assets", table: "assets" },
   { key: "medications", table: "medications" },
   { key: "shoppingItems", table: "shopping_items" },
+  { key: "dishLibrary", table: "dish_library" },
   { key: "notifications", table: "notifications" },
   { key: "pushSubscriptions", table: "push_subscriptions" },
   { key: "activityLogs", table: "activity_logs" },
@@ -59,8 +60,12 @@ for (const { table } of COLLECTIONS) {
     CREATE INDEX IF NOT EXISTS idx_${table}_seq ON ${table}(seq);
   `);
 }
-db.prepare("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)")
-  .run("schema_version", String(SCHEMA_VERSION));
+const getMetaStmt = db.prepare("SELECT value FROM app_meta WHERE key = ?");
+const setMetaStmt = db.prepare("INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)");
+setMetaStmt.run("schema_version", String(SCHEMA_VERSION));
+
+// Singleton (non-array) fields stored as a single JSON row in app_meta.
+const SINGLETON_KEYS: (keyof FamilyOrganizerDB)[] = ["mealPlan"];
 
 /** True when the database has never been seeded (no user accounts yet). */
 export function sqliteIsEmpty(): boolean {
@@ -74,6 +79,10 @@ export function sqliteLoad(): FamilyOrganizerDB {
   for (const { key, table } of COLLECTIONS) {
     const rows = db.prepare(`SELECT data FROM ${table} ORDER BY seq ASC`).all() as { data: string }[];
     out[key] = rows.map(r => JSON.parse(r.data));
+  }
+  for (const key of SINGLETON_KEYS) {
+    const row = getMetaStmt.get(`singleton:${key}`) as { value: string } | undefined;
+    out[key] = row && row.value ? JSON.parse(row.value) : null;
   }
   return out as FamilyOrganizerDB;
 }
@@ -96,6 +105,9 @@ export const sqliteSave = db.transaction((data: FamilyOrganizerDB) => {
       const id = item && item.id != null ? String(item.id) : `row_${i}`;
       insert.run(id, i, JSON.stringify(item));
     });
+  }
+  for (const key of SINGLETON_KEYS) {
+    setMetaStmt.run(`singleton:${key}`, JSON.stringify((data as any)[key] ?? null));
   }
 }) as unknown as (data: FamilyOrganizerDB) => void;
 

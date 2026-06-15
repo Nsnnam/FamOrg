@@ -9,7 +9,8 @@ import path from "path";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret, getAppSettings, setAppSetting } from "./server/db.js";
-import { UserRole, isLimitedViewer } from "./src/types.js";
+import { UserRole, isLimitedViewer, DishSlot, MealIngredient } from "./src/types.js";
+import { buildPlanFromLibrary } from "./src/utils/mealPlan.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
 
@@ -1024,6 +1025,45 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
 });
 
 // AI meal planner → balanced multi-day menu + consolidated grocery list.
+// The current shared weekly menu (persisted, synced across the family).
+app.get("/api/shopping/meal-plan/current", requireAuth, (_req: AuthRequest, res: Response) => {
+  res.json({ mealPlan: FamilyDB.getMealPlan() });
+});
+
+// Random balanced plan drawn from the (growing) dish library in the DB. No AI key needed.
+// With save:true it becomes the shared weekly menu shown on the shopping view.
+app.post("/api/shopping/meal-plan/random", requireAuth, (req: AuthRequest, res: Response) => {
+  const adults = Math.min(10, Math.max(0, Math.floor(Number(req.body?.adults) || 0)));
+  const children = Math.min(10, Math.max(0, Math.floor(Number(req.body?.children) || 0)));
+  const days = Math.min(7, Math.max(1, Math.floor(Number(req.body?.days) || 7)));
+  const save = req.body?.save === true;
+  if (adults + children <= 0) {
+    res.status(400).json({ error: "Cần ít nhất 1 người để lập thực đơn." });
+    return;
+  }
+  try {
+    const library = FamilyDB.getDishLibrary();
+    const plan = buildPlanFromLibrary(library, { adults, children, days });
+    if (save) {
+      const stored = {
+        days: plan.days,
+        groceries: plan.groceries,
+        source: plan.source,
+        adults,
+        children,
+        updatedAt: new Date().toISOString(),
+        updatedById: req.userSession?.userId || ""
+      };
+      FamilyDB.setMealPlan(stored);
+      broadcastSyncEvent("SHOPPING_UPDATE");
+    }
+    res.json({ ...plan, dishCount: library.length });
+  } catch (err: any) {
+    console.error("Random meal-plan error:", err);
+    res.status(500).json({ error: err.message || "Không tạo được thực đơn." });
+  }
+});
+
 app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: Response) => {
   const apiKey = getGeminiKey();
   if (!apiKey) {
@@ -1048,9 +1088,10 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
       "Món Việt quen thuộc, đa dạng giữa các ngày, đủ nhóm chất (đạm, rau củ, tinh bột, trái cây); khẩu phần trẻ em ít hơn người lớn.",
       notes ? `Lưu ý của gia đình (dị ứng/kiêng/ngân sách/sở thích): ${notes}` : "Không có lưu ý đặc biệt.",
       "Sau đó GỘP toàn bộ nguyên liệu của cả thực đơn thành một danh sách đi chợ, cộng dồn số lượng theo số người, ghi số lượng ước tính dễ mua (vd '1.2 kg', '6 quả', 'vừa đủ').",
+      "Đồng thời liệt kê các MÓN đã dùng kèm nguyên liệu chính (để lưu vào thư viện món xoay vòng sau này): mỗi món có slot là breakfast (món sáng), main (món mặn chính), side (rau/canh) hoặc fruit (trái cây).",
       "Bạn PHẢI trả về DUY NHẤT một JSON hợp lệ, không bọc markdown, không thêm chữ ngoài JSON.",
-      'Schema: {"days":[{"day":1,"meals":[{"meal":"Sáng","dishes":["..."]},{"meal":"Trưa","dishes":["..."]},{"meal":"Tối","dishes":["..."]}]}],"groceries":[{"name":"tên nguyên liệu","cat":"Đạm|Rau củ|Tinh bột|Trái cây|Gia vị","quantity":"số lượng"}]}',
-      "Trường cat bắt buộc thuộc: Đạm, Rau củ, Tinh bột, Trái cây, Gia vị. Không quá 40 nguyên liệu."
+      'Schema: {"days":[{"day":1,"meals":[{"meal":"Sáng","dishes":["..."]},{"meal":"Trưa","dishes":["..."]},{"meal":"Tối","dishes":["..."]}]}],"groceries":[{"name":"tên nguyên liệu","cat":"Đạm|Rau củ|Tinh bột|Trái cây|Gia vị","quantity":"số lượng"}],"dishes":[{"name":"tên món","slot":"breakfast|main|side|fruit","ingredients":[{"name":"nguyên liệu","cat":"Đạm|Rau củ|Tinh bột|Trái cây|Gia vị"}]}]}',
+      "Trường cat bắt buộc thuộc: Đạm, Rau củ, Tinh bột, Trái cây, Gia vị. Không quá 40 nguyên liệu và 30 món."
     ].join("\n\n");
 
     const response = await ai.models.generateContent({
@@ -1086,7 +1127,27 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
       }))
       .filter((g: any) => g.name);
 
-    res.json({ days: cleanDays, groceries: cleanGroceries, source: "ai" });
+    // Learn new dishes into the library so future random plans get more variety.
+    let learned = 0;
+    if (Array.isArray(parsed.dishes)) {
+      const SLOTS = ["breakfast", "main", "side", "fruit"];
+      const cleanDishes = parsed.dishes
+        .slice(0, 40)
+        .map((d: any) => ({
+          name: String(d?.name || "").slice(0, 80),
+          slot: (SLOTS.includes(String(d?.slot)) ? String(d.slot) : "main") as DishSlot,
+          ingredients: Array.isArray(d?.ingredients)
+            ? d.ingredients.slice(0, 12).map((ing: any): MealIngredient => ({
+                name: String(ing?.name || "").slice(0, 60),
+                cat: CATS.includes(String(ing?.cat)) ? (String(ing.cat) as MealIngredient["cat"]) : "Gia vị"
+              })).filter((ing: MealIngredient) => ing.name)
+            : []
+        }))
+        .filter((d: any) => d.name);
+      try { learned = FamilyDB.addDishesFromAI(cleanDishes); } catch (e) { console.error("Lưu món AI lỗi:", e); }
+    }
+
+    res.json({ days: cleanDays, groceries: cleanGroceries, source: "ai", learned });
   } catch (err: any) {
     console.error("Meal-plan error:", err);
     res.status(500).json({ error: err.message || "Không tạo được thực đơn AI." });
@@ -1179,6 +1240,13 @@ app.post("/api/shopping/:id/toggle", requireAuth, (req: AuthRequest, res: Respon
 app.delete("/api/shopping/purchased", requireAuth, (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   const removed = FamilyDB.clearPurchasedShopping(session.userId, session.username);
+  broadcastSyncEvent("SHOPPING_UPDATE");
+  res.json({ removed });
+});
+
+app.delete("/api/shopping/all", requireAuth, (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const removed = FamilyDB.clearAllShopping(session.userId, session.username);
   broadcastSyncEvent("SHOPPING_UPDATE");
   res.json({ removed });
 });

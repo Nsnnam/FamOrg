@@ -4,13 +4,47 @@
  */
 
 import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
-import { ShoppingCart, Plus, Trash2, CheckCircle2, Circle, Eraser, ChefHat, Sparkles, X, Loader2 } from "lucide-react";
-import { ShoppingItem, User, UserRole } from "../types.js";
+import { ShoppingCart, Plus, Trash2, CheckCircle2, Circle, Eraser, ChefHat, Sparkles, X, Loader2, Shuffle } from "lucide-react";
+import { ShoppingItem, User, UserRole, StoredMealPlan } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { useTabFab } from "./FabHost.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { generateMealPlan, FOOD_CATEGORY_ORDER, MealPlanResult, GroceryLine, FoodCategory } from "../utils/mealPlan.js";
+
+const WEEKDAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
+const dayLabel = (i: number) => (i < WEEKDAYS.length ? WEEKDAYS[i] : `Ngày ${i + 1}`);
+
+// Weekly menu table — reused by the main view and the planner modal.
+function MealTable({ days }: { days: { day: number; meals: { meal: string; dishes: string[] }[] }[] }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-800">
+      <table className="w-full text-[11px] border-collapse">
+        <thead>
+          <tr>
+            <th className="bg-slate-950 px-2 py-1.5 text-left font-bold text-slate-400 border-b border-slate-800 sticky left-0">Ngày</th>
+            <th className="bg-slate-950 px-2 py-1.5 font-bold text-amber-400 border-b border-l border-slate-800">Sáng</th>
+            <th className="bg-slate-950 px-2 py-1.5 font-bold text-emerald-400 border-b border-l border-slate-800">Trưa</th>
+            <th className="bg-slate-950 px-2 py-1.5 font-bold text-sky-400 border-b border-l border-slate-800">Tối</th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.map((d, i) => {
+            const cell = (meal: string) => d.meals.find(m => m.meal === meal)?.dishes.join(", ") || "—";
+            return (
+              <tr key={d.day} className="align-top border-t border-slate-800">
+                <td className="bg-slate-950/60 px-2 py-1.5 font-bold text-slate-300 whitespace-nowrap sticky left-0">{dayLabel(i)}</td>
+                <td className="px-2 py-1.5 text-slate-300 border-l border-slate-800">{cell("Sáng")}</td>
+                <td className="px-2 py-1.5 text-slate-300 border-l border-slate-800">{cell("Trưa")}</td>
+                <td className="px-2 py-1.5 text-slate-300 border-l border-slate-800">{cell("Tối")}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 interface ShoppingProps {
   currentUser: User;
@@ -20,6 +54,7 @@ interface ShoppingProps {
   onToggleItem: (id: string) => Promise<any>;
   onDeleteItem: (id: string) => Promise<any>;
   onClearPurchased: () => Promise<any>;
+  onClearAll: () => Promise<any>;
   authHeaders: Record<string, string>;
 }
 
@@ -31,6 +66,7 @@ export function Shopping({
   onToggleItem,
   onDeleteItem,
   onClearPurchased,
+  onClearAll,
   authHeaders
 }: ShoppingProps) {
   const { confirm, ConfirmDialog } = useConfirm();
@@ -69,18 +105,62 @@ export function Shopping({
   const [planOpen, setPlanOpen] = useState(false);
   const [planAdults, setPlanAdults] = useState(householdDefaults.adults);
   const [planChildren, setPlanChildren] = useState(householdDefaults.children);
-  const [planDays, setPlanDays] = useState(3);
+  const [planDays, setPlanDays] = useState(7);
   const [planNotes, setPlanNotes] = useState("");
   const [plan, setPlan] = useState<MealPlanResult | null>(null);
-  const [planBusy, setPlanBusy] = useState<"" | "ai" | "add">("");
+  const [planBusy, setPlanBusy] = useState<"" | "random" | "ai" | "add">("");
   const [planError, setPlanError] = useState("");
   const [aiEnabled, setAiEnabled] = useState(false);
   const [excluded, setExcluded] = useState<Set<string>>(new Set()); // nguyên liệu bỏ chọn
   const [addedCount, setAddedCount] = useState<number | null>(null);
+  const [aiLearned, setAiLearned] = useState<number | null>(null); // số món mới AI lưu vào thư viện
 
   const planRef = useRef<HTMLDivElement | null>(null);
   const closePlan = useCallback(() => setPlanOpen(false), []);
   useModalA11y(planOpen, closePlan, planRef);
+
+  // Thực đơn tuần chung (lưu trong CSDL, đồng bộ cả nhà) hiển thị ngay trên trang.
+  const [weekPlan, setWeekPlan] = useState<StoredMealPlan | null>(null);
+  const [weekBusy, setWeekBusy] = useState(false);
+  const [weekError, setWeekError] = useState("");
+
+  // Tải thực đơn tuần khi mở trang & mỗi khi danh sách đi chợ đồng bộ lại
+  // (nút "Đổi thực đơn" broadcast SHOPPING_UPDATE → App nạp lại shoppingItems).
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/shopping/meal-plan/current", { headers: authHeaders })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (alive && d) setWeekPlan(d.mealPlan || null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [shoppingItems]);
+
+  const randomizeWeek = async () => {
+    setWeekBusy(true);
+    setWeekError("");
+    try {
+      const res = await fetch("/api/shopping/meal-plan/random", {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ adults: householdDefaults.adults, children: householdDefaults.children, days: 7, save: true })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không đổi được thực đơn.");
+      setWeekPlan({
+        days: data.days,
+        groceries: data.groceries,
+        source: data.source,
+        adults: householdDefaults.adults,
+        children: householdDefaults.children,
+        updatedAt: new Date().toISOString(),
+        updatedById: currentUser.id
+      });
+    } catch (err: any) {
+      setWeekError(err.message || "Không đổi được thực đơn.");
+    } finally {
+      setWeekBusy(false);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/version", { headers: authHeaders })
@@ -97,17 +177,36 @@ export function Shopping({
     setPlanOpen(true);
   };
 
-  const buildOffline = () => {
+  // Thực đơn ngẫu nhiên từ thư viện món trong CSDL (mỗi lần bấm là một bộ khác).
+  const buildRandom = async () => {
+    setPlanBusy("random");
     setPlanError("");
     setAddedCount(null);
-    setPlan(generateMealPlan({ adults: planAdults, children: planChildren, days: planDays }));
-    setExcluded(new Set());
+    try {
+      const res = await fetch("/api/shopping/meal-plan/random", {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ adults: planAdults, children: planChildren, days: planDays })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không tạo được thực đơn.");
+      setPlan({ days: data.days, groceries: data.groceries, source: "random" });
+      setExcluded(new Set());
+    } catch (err: any) {
+      // Mất mạng/máy chủ — vẫn lập được từ bộ món mẫu sẵn trên máy.
+      setPlan(generateMealPlan({ adults: planAdults, children: planChildren, days: planDays }));
+      setExcluded(new Set());
+      setPlanError("Dùng bộ món mẫu (không kết nối được máy chủ): " + (err?.message || ""));
+    } finally {
+      setPlanBusy("");
+    }
   };
 
   const buildAI = async () => {
     setPlanBusy("ai");
     setPlanError("");
     setAddedCount(null);
+    setAiLearned(null);
     try {
       const res = await fetch("/api/shopping/meal-plan", {
         method: "POST",
@@ -117,6 +216,7 @@ export function Shopping({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Không tạo được thực đơn AI.");
       setPlan({ days: data.days, groceries: data.groceries, source: "ai" });
+      setAiLearned(typeof data.learned === "number" ? data.learned : null);
       setExcluded(new Set());
     } catch (err: any) {
       setPlanError(err.message || "Không tạo được thực đơn AI.");
@@ -200,6 +300,16 @@ export function Shopping({
       tone: "danger"
     });
     if (ok) await onClearPurchased();
+  };
+
+  const handleClearAll = async () => {
+    const ok = await confirm({
+      title: "Xóa tất cả món đi chợ?",
+      message: `Toàn bộ ${shoppingItems.length} món (cả chưa mua và đã mua) sẽ bị xóa khỏi danh sách. Không thể hoàn tác.`,
+      confirmLabel: "Xóa tất cả",
+      tone: "danger"
+    });
+    if (ok) await onClearAll();
   };
 
   const renderItem = (item: ShoppingItem, done: boolean) => {
@@ -288,10 +398,49 @@ export function Shopping({
         {error && <p className="text-rose-400 text-[11px] font-medium">{error}</p>}
       </div>
 
+      {/* Weekly menu — shared, persisted, re-randomizable from the dish library */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-4.5 space-y-3" id="shopping-weekly-menu">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+            <ChefHat className="w-5 h-5 text-emerald-400" /> Thực đơn tuần
+          </h3>
+          <button
+            type="button"
+            onClick={randomizeWeek}
+            disabled={weekBusy}
+            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors disabled:opacity-50"
+            title="Đổi thực đơn tuần ngẫu nhiên từ thư viện món"
+          >
+            {weekBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}
+            {weekBusy ? "Đang đổi…" : "Đổi thực đơn"}
+          </button>
+        </div>
+        {weekError && <p className="text-rose-400 text-[11px] font-medium">{weekError}</p>}
+        {weekPlan && weekPlan.days?.length ? (
+          <>
+            <MealTable days={weekPlan.days} />
+            <p className="text-[10px] text-slate-500">Bốc ngẫu nhiên từ thư viện món. Dùng "Gợi ý thực đơn → Tạo bằng AI" để bổ sung món mới cho phong phú.</p>
+          </>
+        ) : (
+          <div className="bg-slate-950/40 border border-dashed border-slate-800 rounded-xl py-6 text-center">
+            <p className="text-sm text-slate-500">Chưa có thực đơn tuần. Bấm <span className="text-emerald-400 font-semibold">"Đổi thực đơn"</span> để bốc ngẫu nhiên.</p>
+          </div>
+        )}
+      </div>
+
       {/* Pending items */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3" id="shopping-pending">
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cần mua ({pending.length})</h4>
+          {shoppingItems.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="text-[11px] text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors cursor-pointer"
+              title="Xóa toàn bộ danh sách đi chợ"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Xóa tất cả
+            </button>
+          )}
         </div>
         {pending.length === 0 ? (
           <div className="bg-slate-950/40 border border-dashed border-slate-800 rounded-xl py-8 text-center">
@@ -379,9 +528,10 @@ export function Shopping({
               </label>
 
               <div className="flex flex-col sm:flex-row gap-2">
-                <button type="button" onClick={buildOffline} disabled={planBusy !== ""}
+                <button type="button" onClick={buildRandom} disabled={planBusy !== ""}
                   className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-all">
-                  <ChefHat className="w-4 h-4" /> Tạo thực đơn mẫu
+                  {planBusy === "random" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Shuffle className="w-4 h-4" />}
+                  {planBusy === "random" ? "Đang lên thực đơn…" : (plan ? "Đổi thực đơn khác" : "Tạo thực đơn")}
                 </button>
                 {aiEnabled && (
                   <button type="button" onClick={buildAI} disabled={planBusy !== ""}
@@ -400,24 +550,18 @@ export function Shopping({
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${plan.source === "ai" ? "bg-violet-500/10 border-violet-500/20 text-violet-300" : "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"}`}>
-                      {plan.source === "ai" ? "✨ AI" : "Mẫu cân bằng"}
+                      {plan.source === "ai" ? "✨ AI" : plan.source === "random" ? "🎲 Ngẫu nhiên" : "Mẫu cân bằng"}
                     </span>
                     <span className="text-slate-500">{plan.days.length} ngày · {planAdults} người lớn, {planChildren} trẻ em</span>
+                    {plan.source === "ai" && aiLearned !== null && aiLearned > 0 && (
+                      <span className="text-[10px] text-violet-300/80">+{aiLearned} món mới đã lưu để xoay vòng</span>
+                    )}
                   </div>
 
-                  {/* Thực đơn theo ngày */}
-                  <div className="space-y-2">
-                    {plan.days.map(d => (
-                      <div key={d.day} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-1.5">
-                        <p className="text-[11px] font-bold text-slate-300">Ngày {d.day}</p>
-                        {d.meals.map((m, i) => (
-                          <div key={i} className="flex gap-2 text-[11px]">
-                            <span className="text-emerald-400 font-semibold w-10 shrink-0">{m.meal}</span>
-                            <span className="text-slate-400">{m.dishes.join(" · ")}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
+                  {/* Thực đơn trong tuần — dạng bảng */}
+                  <div className="space-y-1.5">
+                    <p className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Thực đơn gợi ý</p>
+                    <MealTable days={plan.days} />
                   </div>
 
                   {/* Danh sách nguyên liệu gộp, theo nhóm chất */}

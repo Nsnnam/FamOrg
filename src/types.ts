@@ -334,6 +334,36 @@ export interface PushSubscriptionRecord {
   createdAt: string;
 }
 
+// --- Meal planner dish library (grows over time from AI suggestions) ---
+export type DishSlot = "breakfast" | "main" | "side" | "fruit";
+export type FoodCategory = "Đạm" | "Rau củ" | "Tinh bột" | "Trái cây" | "Gia vị";
+export interface MealIngredient {
+  name: string;
+  cat: FoodCategory;
+  adult?: number; // per-adult amount; omitted for AI-learned dishes (name-only)
+  child?: number; // per-child amount
+  unit?: string;  // "g" = weight; otherwise a countable unit (quả, bó, củ…)
+}
+export interface StoredDish {
+  id: string;
+  name: string;
+  slot: DishSlot;
+  ingredients: MealIngredient[];
+  source: "seed" | "ai";
+  createdAt: string;
+}
+
+// The one shared weekly menu shown on the shopping view (persisted & synced).
+export interface StoredMealPlan {
+  days: { day: number; meals: { meal: string; dishes: string[] }[] }[];
+  groceries: { name: string; cat: FoodCategory; quantity: string }[];
+  source: string;
+  adults: number;
+  children: number;
+  updatedAt: string;
+  updatedById: string;
+}
+
 // Database schema container
 export interface FamilyOrganizerDB {
   users: (User & { passwordHash: string })[];
@@ -347,6 +377,8 @@ export interface FamilyOrganizerDB {
   assets: FamilyAsset[];
   medications: MedicationReminder[];
   shoppingItems: ShoppingItem[];
+  dishLibrary: StoredDish[];
+  mealPlan?: StoredMealPlan | null;
   notifications: Notification[];
   pushSubscriptions: PushSubscriptionRecord[];
   activityLogs: {
