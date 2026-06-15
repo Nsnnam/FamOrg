@@ -108,6 +108,32 @@ async function testGeminiKey(key: string): Promise<void> {
   } as any);
 }
 
+// Gemini thường trả 503 "model overloaded" / 429 khi quá tải — lỗi tạm thời.
+function isGeminiOverloaded(err: any): boolean {
+  const msg = String(err?.message || err || "");
+  return /\b(503|429)\b|overloaded|unavailable|rate.?limit|quota|try again/i.test(msg);
+}
+function geminiErrorMessage(err: any): string {
+  if (isGeminiOverloaded(err)) {
+    return "Gemini đang quá tải (503). Đã thử lại nhưng chưa được — bạn chờ một lát rồi bấm lại nhé.";
+  }
+  return err?.message || "AI đang gặp lỗi, vui lòng thử lại.";
+}
+// Gọi Gemini có tự thử lại khi bị quá tải (503/429) với backoff nhẹ.
+async function geminiGenerate(ai: any, params: any, retries = 2): Promise<any> {
+  let lastErr: any;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (err) {
+      lastErr = err;
+      if (!isGeminiOverloaded(err) || attempt === retries) throw err;
+      await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // 1s, 2s
+    }
+  }
+  throw lastErr;
+}
+
 // Body parser - supports rich receipt images in finances
 app.use(express.json({ limit: "15mb" }));
 
@@ -1003,7 +1029,7 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
       `Danh sach di cho hien tai: ${JSON.stringify(shoppingItems)}`,
       `Cau hoi: ${message}`
     ].join("\n\n");
-    const response = await ai.models.generateContent({
+    const response = await geminiGenerate(ai, {
       model: "gemini-2.5-flash",
       contents: prompt,
       config: { responseMimeType: "application/json" }
@@ -1094,7 +1120,7 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
       "Trường cat bắt buộc thuộc: Đạm, Rau củ, Tinh bột, Trái cây, Gia vị. Không quá 40 nguyên liệu và 30 món."
     ].join("\n\n");
 
-    const response = await ai.models.generateContent({
+    const response = await geminiGenerate(ai, {
       model: "gemini-2.5-flash",
       contents: prompt,
       config: { responseMimeType: "application/json" }
@@ -1162,7 +1188,7 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
     res.json({ days: cleanDays, groceries: cleanGroceries, source: "ai", learned });
   } catch (err: any) {
     console.error("Meal-plan error:", err);
-    res.status(500).json({ error: err.message || "Không tạo được thực đơn AI." });
+    res.status(isGeminiOverloaded(err) ? 503 : 500).json({ error: geminiErrorMessage(err) });
   }
 });
 
@@ -1195,7 +1221,7 @@ app.post("/api/notes/ai-draft", requireAuth, async (req: AuthRequest, res: Respo
       `Yêu cầu của người dùng: ${promptText}`
     ].join("\n\n");
 
-    const response = await ai.models.generateContent({
+    const response = await geminiGenerate(ai, {
       model: "gemini-2.5-flash",
       contents: prompt,
       config: { responseMimeType: "application/json" }
@@ -1212,7 +1238,7 @@ app.post("/api/notes/ai-draft", requireAuth, async (req: AuthRequest, res: Respo
     res.json({ title, content });
   } catch (err: any) {
     console.error("Notes AI draft error:", err);
-    res.status(500).json({ error: err?.message || "Không tạo được ghi chú bằng AI." });
+    res.status(isGeminiOverloaded(err) ? 503 : 500).json({ error: geminiErrorMessage(err) });
   }
 });
 
