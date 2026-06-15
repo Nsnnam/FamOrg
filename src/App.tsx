@@ -189,7 +189,14 @@ export default function App() {
   };
 
   const handleApplyUpdate = () => {
-    if (swWaiting) swWaiting.postMessage("SKIP_WAITING");
+    if (swWaiting) {
+      // A new service worker is ready: activate it; controllerchange reloads us.
+      swWaiting.postMessage("SKIP_WAITING");
+      window.setTimeout(() => window.location.reload(), 1500); // fallback if it doesn't fire
+    } else {
+      // New build live but no waiting SW: a network-first reload fetches it.
+      window.location.reload();
+    }
   };
   
   // Navigation layout state
@@ -205,6 +212,9 @@ export default function App() {
   const [networkOnline, setNetworkOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [swWaiting, setSwWaiting] = useState<ServiceWorker | null>(null);
+  // True once the server reports a build newer than the one this client booted with.
+  const [updateReady, setUpdateReady] = useState(false);
+  const bootCommitRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -482,14 +492,40 @@ export default function App() {
 
   const fetchAppVersion = async () => {
     try {
-      const res = await fetch("/api/version", { headers: getAuthHeader() });
+      const res = await fetch("/api/version", { headers: getAuthHeader(), cache: "no-store" });
       if (!res.ok) return;
       const d = await res.json();
       setAppVersion(d.shortCommit || d.version || "");
+      const commit: string = d.commit || "";
+      if (!commit) return; // dev/local build → can't compare reliably
+      if (bootCommitRef.current === null) {
+        bootCommitRef.current = commit; // remember the build this client loaded with
+      } else if (commit !== bootCommitRef.current) {
+        setUpdateReady(true); // a newer build is live on the server
+      }
     } catch (e) {
       // version is non-critical; ignore
     }
   };
+
+  // Proactively notice a newer server build (manual deploy / cron / Watchtower) so
+  // the update banner appears on its own — no manual "Kiểm tra cập nhật" needed.
+  useEffect(() => {
+    if (!currentUser) return;
+    const poke = () => {
+      fetchAppVersion();
+      navigator.serviceWorker?.getRegistration?.().then(reg => reg?.update()).catch(() => {});
+    };
+    const onVisible = () => { if (document.visibilityState === "visible") poke(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", poke);
+    const iv = window.setInterval(poke, 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", poke);
+      window.clearInterval(iv);
+    };
+  }, [currentUser]);
 
   // Listen to realtime server pushes (SSE sync connection)
   useEffect(() => {
@@ -1142,13 +1178,13 @@ export default function App() {
         </div>
       )}
 
-      {/* PWA: update available */}
-      {swWaiting && (
+      {/* PWA: update available (new SW waiting, or server build is newer than ours) */}
+      {(swWaiting || updateReady) && (
         <button
           onClick={handleApplyUpdate}
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[70] bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer"
+          className="fixed left-1/2 -translate-x-1/2 z-[70] bottom-[calc(1rem+env(safe-area-inset-bottom))] bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold px-4 py-2 rounded-full shadow-lg flex items-center gap-1.5 cursor-pointer"
         >
-          <Sparkles className="w-4 h-4" /> Có bản cập nhật mới — Bấm để làm mới
+          <Sparkles className="w-4 h-4" /> Đã có bản mới — Bấm để cập nhật
         </button>
       )}
 
