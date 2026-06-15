@@ -1120,15 +1120,22 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
       "Trường cat bắt buộc thuộc: Đạm, Rau củ, Tinh bột, Trái cây, Gia vị. Không quá 40 nguyên liệu và 30 món."
     ].join("\n\n");
 
+    // Tắt "thinking" + cấp nhiều output token: thực đơn JSON khá lớn, nếu để
+    // gemini-2.5-flash suy nghĩ sẽ ngốn hết token và treo/không ra JSON.
     const response = await geminiGenerate(ai, {
       model: "gemini-2.5-flash",
       contents: prompt,
-      config: { responseMimeType: "application/json" }
+      config: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 0 }
+      }
     } as any);
 
     const parsed = parseAssistantJson(response.text || "");
     if (!parsed || !Array.isArray(parsed.days) || !Array.isArray(parsed.groceries)) {
-      res.status(502).json({ error: "AI trả về dữ liệu không hợp lệ. Hãy thử lại." });
+      console.error("Meal-plan AI parse fail. finishReason:", (response as any)?.candidates?.[0]?.finishReason, "len:", (response.text || "").length);
+      res.status(502).json({ error: "AI trả về dữ liệu không hợp lệ (có thể do quá dài). Hãy giảm số ngày rồi thử lại." });
       return;
     }
 
