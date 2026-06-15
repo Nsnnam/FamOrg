@@ -1147,6 +1147,18 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
       try { learned = FamilyDB.addDishesFromAI(cleanDishes); } catch (e) { console.error("Lưu món AI lỗi:", e); }
     }
 
+    // Save as the shared weekly menu shown on the shopping view + sync the family.
+    FamilyDB.setMealPlan({
+      days: cleanDays,
+      groceries: cleanGroceries as any,
+      source: "ai",
+      adults,
+      children,
+      updatedAt: new Date().toISOString(),
+      updatedById: req.userSession?.userId || ""
+    });
+    broadcastSyncEvent("SHOPPING_UPDATE");
+
     res.json({ days: cleanDays, groceries: cleanGroceries, source: "ai", learned });
   } catch (err: any) {
     console.error("Meal-plan error:", err);
