@@ -3,20 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback, lazy, Suspense } from "react";
-import { 
-  FileText, 
-  Plus, 
-  Trash2, 
-  Pin, 
-  PinOff, 
-  Search, 
-  Tag as TagIcon, 
-  Eye, 
-  Lock, 
-  Edit3, 
+import React, { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
+import {
+  FileText,
+  Plus,
+  Trash2,
+  Pin,
+  PinOff,
+  Search,
+  Tag as TagIcon,
+  Eye,
+  Lock,
+  Edit3,
   X,
-  Share2
+  Share2,
+  Sparkles,
+  Loader2
 } from "lucide-react";
 import { Note, User, UserRole, isLimitedViewer } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -30,6 +32,7 @@ interface NotesProps {
   notes: Note[];
   onSaveNote: (note: Partial<Note>) => Promise<any>;
   onDeleteNote: (id: string) => Promise<any>;
+  authHeaders: Record<string, string>;
 }
 
 // Full Markdown (GFM) renderer — lazy-loaded so react-markdown stays out of the
@@ -43,7 +46,8 @@ export function Notes({
   users,
   notes,
   onSaveNote,
-  onDeleteNote
+  onDeleteNote,
+  authHeaders
 }: NotesProps) {
   // Query states
   const [searchTerm, setSearchTerm] = useState("");
@@ -63,6 +67,43 @@ export function Notes({
   const [formIsPinned, setFormIsPinned] = useState(false);
   const [formIsShared, setFormIsShared] = useState(true);
   const [editorPreview, setEditorPreview] = useState(false); // Soạn (false) / Xem trước (true)
+
+  // AI viết nháp ghi chú
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/version", { headers: authHeaders })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setAiEnabled(!!d.aiEnabled); })
+      .catch(() => {});
+  }, []);
+
+  const handleAiDraft = async () => {
+    const p = aiPrompt.trim();
+    if (!p) { setAiError("Hãy mô tả nội dung bạn muốn AI viết."); return; }
+    setAiBusy(true);
+    setAiError("");
+    try {
+      const res = await fetch("/api/notes/ai-draft", {
+        method: "POST",
+        headers: { ...authHeaders, "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: p, title: formTitle.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Không tạo được ghi chú bằng AI.");
+      if (!formTitle.trim() && data.title) setFormTitle(data.title);
+      setFormContent(prev => (prev.trim() ? `${prev.trim()}\n\n${data.content}` : data.content));
+      setEditorPreview(true); // hiển thị kết quả đã render
+      setAiPrompt("");
+    } catch (err: any) {
+      setAiError(err.message || "Không tạo được ghi chú bằng AI.");
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   // Escape-to-close + scroll lock + focus trap for the editor & reader modals
   const editorRef = React.useRef<HTMLDivElement | null>(null);
@@ -121,6 +162,8 @@ export function Notes({
     setFormIsPinned(false);
     setFormIsShared(true);
     setEditorPreview(false);
+    setAiPrompt("");
+    setAiError("");
     setEditingNote(null);
     setFormError("");
     setIsEditorOpen(true);
@@ -141,6 +184,8 @@ export function Notes({
     setFormIsPinned(note.isPinned);
     setFormIsShared(note.isShared);
     setEditorPreview(false);
+    setAiPrompt("");
+    setAiError("");
     setEditingNote(note);
     setFormError("");
     setReadingNote(null); // close the reader so the editor isn't hidden behind it
@@ -440,6 +485,35 @@ export function Notes({
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 text-sm font-bold"
                 />
               </div>
+
+              {/* AI viết giúp — chỉ hiện khi đã cấu hình Gemini key */}
+              {aiEnabled && (
+                <div className="space-y-1.5 bg-violet-500/5 border border-violet-500/20 rounded-xl p-3">
+                  <label className="text-violet-300 font-semibold flex items-center gap-1.5 text-[11px]">
+                    <Sparkles className="w-3.5 h-3.5" /> Nhờ AI viết giúp
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAiDraft(); } }}
+                      placeholder="VD: lập kế hoạch dọn nhà cuối tuần, công thức bún bò Huế…"
+                      className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-violet-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAiDraft}
+                      disabled={aiBusy || !aiPrompt.trim()}
+                      className="bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-slate-950 font-bold px-3.5 py-2 rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-all"
+                    >
+                      {aiBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      {aiBusy ? "Đang viết…" : "Tạo bằng AI"}
+                    </button>
+                  </div>
+                  {aiError && <p className="text-[11px] text-rose-400">{aiError}</p>}
+                  <p className="text-[10px] text-violet-300/60">AI sẽ chèn nội dung Markdown vào ô bên dưới (nối thêm nếu đã có sẵn).</p>
+                </div>
+              )}
 
               {/* Content: trình soạn Markdown đầy đủ + xem trước trực tiếp */}
               <div className="space-y-1.5">

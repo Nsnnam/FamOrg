@@ -1451,6 +1451,7 @@ export default function App() {
                   notes={notes}
                   onSaveNote={handleSaveNote}
                   onDeleteNote={handleDeleteNote}
+                  authHeaders={getAuthHeader()}
                 />
               )}
 

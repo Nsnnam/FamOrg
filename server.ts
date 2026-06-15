@@ -8,7 +8,7 @@ import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
-import { FamilyDB, verifyPassword, getSessionSecret } from "./server/db.js";
+import { FamilyDB, verifyPassword, getSessionSecret, getAppSettings, setAppSetting } from "./server/db.js";
 import { UserRole, isLimitedViewer } from "./src/types.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
@@ -75,6 +75,37 @@ const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 // Optional Watchtower HTTP API for one-click in-app updates.
 const WATCHTOWER_URL = process.env.WATCHTOWER_URL || "";
 const WATCHTOWER_TOKEN = process.env.WATCHTOWER_HTTP_API_TOKEN || "";
+
+// --- GEMINI API KEY ---
+// Admin can set a key from the UI (stored in app_settings.json); falls back to env.
+function getGeminiKey(): string {
+  const fromDb = (getAppSettings().geminiApiKey || "").trim();
+  return fromDb || (process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim();
+}
+function geminiKeySource(): "app" | "env" | "none" {
+  if ((getAppSettings().geminiApiKey || "").trim()) return "app";
+  if ((process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim()) return "env";
+  return "none";
+}
+function maskKey(key: string): string {
+  if (!key) return "";
+  if (key.length <= 8) return "••••";
+  return `${key.slice(0, 4)}••••${key.slice(-4)}`;
+}
+function aiStatus() {
+  const key = getGeminiKey();
+  return { configured: Boolean(key), source: geminiKeySource(), masked: maskKey(key) };
+}
+// Lightweight validation: make a tiny call so a bad key fails fast at save time.
+async function testGeminiKey(key: string): Promise<void> {
+  const { GoogleGenAI } = await import("@google/genai");
+  const ai = new GoogleGenAI({ apiKey: key });
+  await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: "ping",
+    config: { responseMimeType: "text/plain" }
+  } as any);
+}
 
 // Body parser - supports rich receipt images in finances
 app.use(express.json({ limit: "15mb" }));
@@ -240,7 +271,7 @@ app.get("/api/version", requireAuth, (_req: AuthRequest, res: Response) => {
     shortCommit: GIT_SHA ? GIT_SHA.slice(0, 7) : "",
     buildTime: BUILD_TIME,
     canAutoUpdate: Boolean(WATCHTOWER_URL && WATCHTOWER_TOKEN),
-    aiEnabled: Boolean(process.env.GEMINI_API_KEY || process.env.API_KEY)
+    aiEnabled: Boolean(getGeminiKey())
   });
 });
 
@@ -286,6 +317,33 @@ app.post("/api/update", requireAuth, requireRole([UserRole.ADMIN]), async (_req:
   } catch (err: any) {
     res.status(502).json({ error: err.message || "Không kích hoạt được cập nhật tự động." });
   }
+});
+
+// --- AI SETTINGS (Gemini API key, admin only) ---
+
+app.get("/api/settings/ai", requireAuth, requireRole([UserRole.ADMIN]), (_req: AuthRequest, res: Response) => {
+  res.json(aiStatus());
+});
+
+// Save (and validate) a Gemini key, or clear it by sending an empty value.
+app.post("/api/settings/ai", requireAuth, requireRole([UserRole.ADMIN]), async (req: AuthRequest, res: Response) => {
+  const apiKey = String(req.body?.apiKey ?? "").trim();
+
+  if (!apiKey) {
+    setAppSetting("geminiApiKey", null);
+    res.json({ ...aiStatus(), message: "Đã xóa key trong app. Sẽ dùng key từ biến môi trường (nếu có)." });
+    return;
+  }
+
+  try {
+    await testGeminiKey(apiKey);
+  } catch (err: any) {
+    res.status(400).json({ error: "Key không dùng được (gọi thử Gemini thất bại): " + (err?.message || "lỗi không rõ") });
+    return;
+  }
+
+  setAppSetting("geminiApiKey", apiKey);
+  res.json({ ...aiStatus(), message: "Đã lưu Gemini API key. Tính năng AI đã sẵn sàng." });
 });
 
 // --- AUTH API ENDPOINTS ---
@@ -887,14 +945,14 @@ function normalizeAssistantActions(actions: any[]): any[] {
 }
 
 app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Response) => {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  const apiKey = getGeminiKey();
   const message = String(req.body?.message || "").trim();
   if (!message) {
     res.status(400).json({ error: "Vui long nhap cau hoi cho tro ly" });
     return;
   }
   if (!apiKey) {
-    res.status(400).json({ error: "Chua cau hinh GEMINI_API_KEY cho AI assistant" });
+    res.status(400).json({ error: "Chưa cấu hình Gemini API key. Vào Thiết lập để nhập key." });
     return;
   }
 
@@ -967,9 +1025,9 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
 
 // AI meal planner → balanced multi-day menu + consolidated grocery list.
 app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: Response) => {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  const apiKey = getGeminiKey();
   if (!apiKey) {
-    res.status(400).json({ error: "Chưa cấu hình GEMINI_API_KEY cho gợi ý AI." });
+    res.status(400).json({ error: "Chưa cấu hình Gemini API key. Vào Thiết lập để nhập key." });
     return;
   }
   const adults = Math.min(10, Math.max(0, Math.floor(Number(req.body?.adults) || 0)));
@@ -1032,6 +1090,56 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
   } catch (err: any) {
     console.error("Meal-plan error:", err);
     res.status(500).json({ error: err.message || "Không tạo được thực đơn AI." });
+  }
+});
+
+// AI viết nháp ghi chú (Markdown) từ mô tả ngắn của người dùng.
+app.post("/api/notes/ai-draft", requireAuth, async (req: AuthRequest, res: Response) => {
+  if (req.userSession?.role === UserRole.GUEST) {
+    res.status(403).json({ error: "Tài khoản khách không thể tạo ghi chú." });
+    return;
+  }
+  const apiKey = getGeminiKey();
+  if (!apiKey) {
+    res.status(400).json({ error: "Chưa cấu hình Gemini API key. Vào Thiết lập để nhập key." });
+    return;
+  }
+  const promptText = String(req.body?.prompt || "").trim().slice(0, 2000);
+  const existingTitle = String(req.body?.title || "").trim().slice(0, 200);
+  if (!promptText) {
+    res.status(400).json({ error: "Hãy mô tả nội dung ghi chú bạn muốn AI viết." });
+    return;
+  }
+
+  try {
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = [
+      "Bạn là trợ lý viết ghi chú cho một app gia đình. Viết bằng tiếng Việt, rõ ràng, hữu ích, đúng trọng tâm.",
+      "Trả về DUY NHẤT một JSON hợp lệ, không bọc markdown, không thêm chữ ngoài JSON.",
+      'Schema: {"title":"tiêu đề ngắn gọn","content":"nội dung ở định dạng Markdown (GFM): dùng tiêu đề ##, danh sách, checkbox - [ ], in đậm, bảng khi hợp lý"}',
+      existingTitle ? `Tiêu đề gợi ý sẵn: ${existingTitle}` : "Tự đặt tiêu đề phù hợp.",
+      `Yêu cầu của người dùng: ${promptText}`
+    ].join("\n\n");
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: { responseMimeType: "application/json" }
+    } as any);
+
+    const parsed = parseAssistantJson(response.text || "");
+    const title = cleanAssistantText(parsed?.title, 200) || existingTitle || "Ghi chú mới";
+    // Keep newlines/markdown intact — do NOT run through cleanAssistantText (it collapses whitespace).
+    const content = String(parsed?.content || "").trim().slice(0, 20000) || (response.text || "").trim();
+    if (!content) {
+      res.status(502).json({ error: "AI chưa tạo được nội dung. Hãy thử mô tả chi tiết hơn." });
+      return;
+    }
+    res.json({ title, content });
+  } catch (err: any) {
+    console.error("Notes AI draft error:", err);
+    res.status(500).json({ error: err?.message || "Không tạo được ghi chú bằng AI." });
   }
 });
 

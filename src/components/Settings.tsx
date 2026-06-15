@@ -24,7 +24,8 @@ import {
   KeyRound,
   Pencil,
   Tag,
-  Rocket
+  Rocket,
+  Sparkles
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -156,6 +157,13 @@ export function Settings({
   const [updateMsg, setUpdateMsg] = useState("");
   const [updateDone, setUpdateDone] = useState(false);
 
+  // AI (Gemini) key config — admin only
+  const [aiKeyStatus, setAiKeyStatus] = useState<{ configured: boolean; source: string; masked: string } | null>(null);
+  const [aiKeyInput, setAiKeyInput] = useState("");
+  const [aiKeyBusy, setAiKeyBusy] = useState(false);
+  const [aiKeyMsg, setAiKeyMsg] = useState("");
+  const [aiKeyErr, setAiKeyErr] = useState("");
+
   // Escape-to-close + scroll lock + focus trap for the edit-user & reset-password modals
   const editTargetRef = useRef<HTMLDivElement | null>(null);
   const resetTargetRef = useRef<HTMLDivElement | null>(null);
@@ -170,6 +178,36 @@ export function Settings({
       .then(d => { if (d) setVersionInfo(d); })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (currentUser.role !== UserRole.ADMIN) return;
+    fetch("/api/settings/ai", { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setAiKeyStatus(d); })
+      .catch(() => {});
+  }, []);
+
+  const saveAiKey = async (clear = false) => {
+    setAiKeyBusy(true);
+    setAiKeyMsg("");
+    setAiKeyErr("");
+    try {
+      const res = await fetch("/api/settings/ai", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: clear ? "" : aiKeyInput.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lưu key thất bại.");
+      setAiKeyStatus({ configured: data.configured, source: data.source, masked: data.masked });
+      setAiKeyMsg(data.message || "Đã cập nhật.");
+      setAiKeyInput("");
+    } catch (err: any) {
+      setAiKeyErr(err.message || "Lưu key thất bại.");
+    } finally {
+      setAiKeyBusy(false);
+    }
+  };
 
   const handleCheckUpdate = async () => {
     setUpdateBusy("check");
@@ -1257,6 +1295,53 @@ export function Settings({
               </div>
             </form>
           </motion.div>
+        </div>
+      )}
+
+      {/* AI (Gemini) API key — admin configurable, no .env editing needed */}
+      {currentUser.role === UserRole.ADMIN && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+          <div className="space-y-0.5">
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-violet-400" /> Trí tuệ AI (Gemini API Key)
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              {aiKeyStatus?.configured
+                ? `Đang dùng key ${aiKeyStatus.masked} (${aiKeyStatus.source === "app" ? "nhập trong app" : "biến môi trường"}). Bật trợ lý AI, gợi ý thực đơn & viết ghi chú.`
+                : "Chưa có key. Nhập Gemini API key để bật trợ lý AI, gợi ý thực đơn & viết ghi chú bằng AI."}
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="password"
+              autoComplete="off"
+              value={aiKeyInput}
+              onChange={(e) => setAiKeyInput(e.target.value)}
+              placeholder="Dán Gemini API key (AIza…)"
+              className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-violet-500"
+            />
+            <button
+              type="button"
+              onClick={() => saveAiKey(false)}
+              disabled={aiKeyBusy || !aiKeyInput.trim()}
+              className="bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-all"
+            >
+              {aiKeyBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Lưu & kiểm tra
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer noopener" className="text-[11px] text-sky-400 hover:underline">
+              Lấy key miễn phí ở Google AI Studio →
+            </a>
+            {aiKeyStatus?.configured && aiKeyStatus.source === "app" && (
+              <button type="button" onClick={() => saveAiKey(true)} disabled={aiKeyBusy} className="text-[11px] text-slate-400 hover:text-rose-400 ml-auto cursor-pointer">
+                Xóa key trong app
+              </button>
+            )}
+          </div>
+          {aiKeyErr && <p className="text-[11px] text-rose-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {aiKeyErr}</p>}
+          {aiKeyMsg && <p className="text-[11px] text-emerald-400 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5 shrink-0" /> {aiKeyMsg}</p>}
         </div>
       )}
 
