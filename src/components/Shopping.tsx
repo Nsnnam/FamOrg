@@ -99,10 +99,21 @@ export function Shopping({
     return { adults: Math.max(1, adults), children };
   }, [users]);
 
-  const [planAdults, setPlanAdults] = useState(householdDefaults.adults);
-  const [planChildren, setPlanChildren] = useState(householdDefaults.children);
-  const [planDays, setPlanDays] = useState(7);
+  // Inputs are free-typed strings (cho phép xoá, gõ lại, không kẹt ở 1/7); chỉ
+  // chuyển sang số + kẹp ngưỡng khi dùng hoặc khi rời ô (onBlur).
+  const [adultsInput, setAdultsInput] = useState(String(householdDefaults.adults));
+  const [childrenInput, setChildrenInput] = useState(String(householdDefaults.children));
+  const [daysInput, setDaysInput] = useState("7");
   const [planNotes, setPlanNotes] = useState("");
+
+  const sanitizeInt = (v: string) => v.replace(/\D/g, "").replace(/^0+(?=\d)/, ""); // bỏ ký tự lạ + số 0 đứng đầu
+  const clampInt = (s: string, min: number, max: number, fallback: number) => {
+    const n = parseInt(s, 10);
+    return isNaN(n) ? fallback : Math.max(min, Math.min(max, n));
+  };
+  const planAdults = clampInt(adultsInput, 0, 10, householdDefaults.adults);
+  const planChildren = clampInt(childrenInput, 0, 10, householdDefaults.children);
+  const planDays = clampInt(daysInput, 1, 7, 7);
   const [weekPlan, setWeekPlan] = useState<StoredMealPlan | null>(null);
   const [planBusy, setPlanBusy] = useState<"" | "random" | "ai" | "add">("");
   const [planError, setPlanError] = useState("");
@@ -123,9 +134,9 @@ export function Shopping({
         setWeekPlan(d.mealPlan || null);
         if (!didInitControls.current && d.mealPlan) {
           didInitControls.current = true;
-          setPlanAdults(d.mealPlan.adults || householdDefaults.adults);
-          setPlanChildren(typeof d.mealPlan.children === "number" ? d.mealPlan.children : householdDefaults.children);
-          setPlanDays(d.mealPlan.days?.length || 7);
+          setAdultsInput(String(d.mealPlan.adults || householdDefaults.adults));
+          setChildrenInput(String(typeof d.mealPlan.children === "number" ? d.mealPlan.children : householdDefaults.children));
+          setDaysInput(String(d.mealPlan.days?.length || 7));
         }
       })
       .catch(() => {});
@@ -360,20 +371,23 @@ export function Shopping({
         <div className="grid grid-cols-3 gap-2.5">
           <label className="space-y-1">
             <span className="text-slate-400 font-semibold block">Người lớn</span>
-            <input type="number" min={0} max={10} value={planAdults}
-              onChange={(e) => setPlanAdults(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+            <input type="text" inputMode="numeric" value={adultsInput}
+              onChange={(e) => setAdultsInput(sanitizeInt(e.target.value).slice(0, 2))}
+              onBlur={() => setAdultsInput(String(clampInt(adultsInput, 0, 10, householdDefaults.adults)))}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-emerald-500 font-bold" />
           </label>
           <label className="space-y-1">
             <span className="text-slate-400 font-semibold block">Trẻ em</span>
-            <input type="number" min={0} max={10} value={planChildren}
-              onChange={(e) => setPlanChildren(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+            <input type="text" inputMode="numeric" value={childrenInput}
+              onChange={(e) => setChildrenInput(sanitizeInt(e.target.value).slice(0, 2))}
+              onBlur={() => setChildrenInput(String(clampInt(childrenInput, 0, 10, householdDefaults.children)))}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-emerald-500 font-bold" />
           </label>
           <label className="space-y-1">
             <span className="text-slate-400 font-semibold block">Số ngày</span>
-            <input type="number" min={1} max={7} value={planDays}
-              onChange={(e) => setPlanDays(Math.max(1, Math.min(7, Number(e.target.value) || 1)))}
+            <input type="text" inputMode="numeric" value={daysInput}
+              onChange={(e) => setDaysInput(sanitizeInt(e.target.value).slice(0, 1))}
+              onBlur={() => setDaysInput(String(clampInt(daysInput, 1, 7, 7)))}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-emerald-500 font-bold" />
           </label>
         </div>
