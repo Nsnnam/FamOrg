@@ -156,6 +156,9 @@ export function Shopping({
     setPlanError("");
     setAddedCount(null);
     if (mode === "ai") setAiLearned(null);
+    // Đừng để quay vòng vô tận: tự huỷ nếu chờ quá lâu (AI 75s, random 20s).
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), mode === "ai" ? 75000 : 20000);
     try {
       const url = mode === "ai" ? "/api/shopping/meal-plan" : "/api/shopping/meal-plan/random";
       const body = mode === "ai"
@@ -164,7 +167,8 @@ export function Shopping({
       const res = await fetch(url, {
         method: "POST",
         headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: controller.signal
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Không tạo được thực đơn.");
@@ -190,10 +194,13 @@ export function Shopping({
         });
         setExcluded(new Set());
         setPlanError("Dùng bộ món mẫu (không kết nối được máy chủ): " + (err?.message || ""));
+      } else if (err?.name === "AbortError") {
+        setPlanError("AI phản hồi quá lâu (có thể đang quá tải). Hãy giảm số ngày rồi thử lại, hoặc dùng \"Đổi thực đơn\".");
       } else {
         setPlanError(err.message || "Không tạo được thực đơn AI.");
       }
     } finally {
+      clearTimeout(timer);
       setPlanBusy("");
     }
   };
