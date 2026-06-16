@@ -1309,18 +1309,32 @@ export class FamilyDB {
   // Seeded from SEED_DISHES on first use; grows as AI suggests new dishes.
   public static getDishLibrary(): StoredDish[] {
     const db = this.readRaw();
-    if (!db.dishLibrary || db.dishLibrary.length === 0) {
-      const now = new Date().toISOString();
-      db.dishLibrary = SEED_DISHES.map((d, i) => ({
-        id: `dish_seed_${i}`,
+    if (!db.dishLibrary) db.dishLibrary = [];
+    // Top up any seed dishes (name+slot) the library is missing — so expanding
+    // SEED_DISHES reaches existing installs without wiping AI-learned dishes.
+    const known = new Set(db.dishLibrary.map(d => `${d.name.trim().toLowerCase()}|${d.slot}`));
+    const now = new Date().toISOString();
+    let added = 0;
+    SEED_DISHES.forEach(d => {
+      const key = `${d.name.trim().toLowerCase()}|${d.slot}`;
+      if (known.has(key)) return;
+      known.add(key);
+      // Stable, collision-free id (don't reuse numeric indices that may clash
+      // with existing dish_seed_N ids when topping up an older library).
+      const slug = d.name
+        .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      db.dishLibrary.push({
+        id: `dish_seed_${d.slot}_${slug}`,
         name: d.name,
         slot: d.slot,
         ingredients: d.ingredients,
         source: "seed" as const,
         createdAt: now
-      }));
-      this.writeRaw(db);
-    }
+      });
+      added++;
+    });
+    if (added > 0) this.writeRaw(db);
     return db.dishLibrary;
   }
 
