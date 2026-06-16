@@ -335,7 +335,8 @@ export interface PushSubscriptionRecord {
 }
 
 // --- Meal planner dish library (grows over time from AI suggestions) ---
-export type DishSlot = "breakfast" | "main" | "side" | "fruit";
+// "onedish" = bữa một tô/dĩa đầy đủ (bún, phở, cơm tấm…), không cần cơm + món mặn + canh kèm theo.
+export type DishSlot = "breakfast" | "main" | "side" | "fruit" | "onedish";
 export type FoodCategory = "Đạm" | "Rau củ" | "Tinh bột" | "Trái cây" | "Gia vị";
 export interface MealIngredient {
   name: string;
