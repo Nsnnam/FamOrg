@@ -758,6 +758,7 @@ export function Finance({
               <option value="medical">Y tế 💊</option>
               <option value="transport">Đi lại 🚗</option>
               <option value="other">Khoản khác 🏷️</option>
+              <option value="Bán tài sản">Bán tài sản 🪙</option>
             </select>
           </div>
 
@@ -825,8 +826,9 @@ export function Finance({
                         <span className="flex items-center gap-1 font-mono text-[10px]"><Calendar className="w-3 h-3 text-slate-500" /> {tx.date}</span>
                         {/* Account */}
                         <span>{translateAccount(tx.account)}</span>
-                        {/* Category tag */}
+                        {/* Category tag — hạng mục chi, và khoản thu từ bán tài sản */}
                         {!isIncome && <span className="px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 text-[10px]">#{translateCategory(tx.category).split(" ")[0]}</span>}
+                        {isIncome && tx.category === "Bán tài sản" && <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-semibold">🪙 Bán tài sản</span>}
                         {/* Member user */}
                         {creator && <span className="text-[10px] font-semibold text-sky-400">@{creator.username}</span>}
                       </div>
