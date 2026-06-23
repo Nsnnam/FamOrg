@@ -10,6 +10,7 @@ import {
   Coins,
   FileText,
   Gem,
+  HandCoins,
   Image as ImageIcon,
   Info,
   Landmark,
@@ -28,7 +29,16 @@ import {
   X
 } from "lucide-react";
 import { motion } from "motion/react";
-import { AssetPhoto, AssetType, FamilyAsset, User, UserRole } from "../types.js";
+import {
+  AccountType,
+  AssetPhoto,
+  AssetType,
+  FamilyAsset,
+  FinancialTransaction,
+  TransactionType,
+  User,
+  UserRole
+} from "../types.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { optimizeImageFile } from "../utils/image.js";
 import { uploadDataUrl } from "../utils/uploadImage.js";
@@ -52,7 +62,17 @@ interface AssetsProps {
   widgets?: any;
   onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
   onDeleteAsset: (id: string) => Promise<any>;
+  onSaveTransaction?: (tx: Partial<FinancialTransaction>) => Promise<any>;
 }
+
+// Hạng mục thu nhập dùng khi ghi nhận tiền bán tài sản vào sổ thu chi.
+const ASSET_SALE_CATEGORY = "Bán tài sản";
+
+const SELL_ACCOUNTS: { value: AccountType; label: string }[] = [
+  { value: AccountType.BANK, label: "Ngân hàng 💳" },
+  { value: AccountType.CASH, label: "Tiền mặt 💵" },
+  { value: AccountType.E_WALLET, label: "Ví điện tử 📱" }
+];
 
 const ASSET_TYPES: { value: AssetType; label: string; short: string }[] = [
   { value: "crypto", label: "Tài sản mã hóa / crypto", short: "Crypto" },
@@ -110,7 +130,8 @@ export function Assets({
   assets,
   widgets,
   onSaveAsset,
-  onDeleteAsset
+  onDeleteAsset,
+  onSaveTransaction
 }: AssetsProps) {
   const { confirm, ConfirmDialog } = useConfirm();
   const [searchTerm, setSearchTerm] = useState("");
@@ -122,6 +143,17 @@ export function Assets({
   const [formError, setFormError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
   const [showGoldPurityInfo, setShowGoldPurityInfo] = useState(false);
+
+  // Bán tài sản — popup ghi nhận tiền bán vào sổ thu chi rồi xóa tài sản.
+  const [sellingAsset, setSellingAsset] = useState<FamilyAsset | null>(null);
+  const [sellMode, setSellMode] = useState<"estimate" | "custom">("estimate");
+  const [sellPrice, setSellPrice] = useState<number>(0);
+  const [sellEstimate, setSellEstimate] = useState<number>(0);
+  const [sellAccount, setSellAccount] = useState<AccountType>(AccountType.BANK);
+  const [sellDate, setSellDate] = useState(new Date().toISOString().slice(0, 10));
+  const [sellNote, setSellNote] = useState("");
+  const [sellError, setSellError] = useState("");
+  const [selling, setSelling] = useState(false);
 
   const [formType, setFormType] = useState<AssetType>("gold_bar");
   const [formName, setFormName] = useState("");
@@ -326,15 +358,22 @@ export function Assets({
   const formRef = useRef<HTMLDivElement | null>(null);
   const photoRef = useRef<HTMLDivElement | null>(null);
   const goldInfoRef = useRef<HTMLDivElement | null>(null);
+  const sellRef = useRef<HTMLDivElement | null>(null);
   const closePhoto = useCallback(() => setSelectedPhoto(null), []);
   const closeGoldInfo = useCallback(() => setShowGoldPurityInfo(false), []);
+  const closeSell = useCallback(() => {
+    if (selling) return;
+    setSellingAsset(null);
+    setSellError("");
+  }, [selling]);
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!selectedPhoto, closePhoto, photoRef);
   useModalA11y(showGoldPurityInfo, closeGoldInfo, goldInfoRef);
+  useModalA11y(!!sellingAsset, closeSell, sellRef);
 
   // Nút nổi thêm tài sản — icon trùng tab con "Tài sản gia đình", ẩn khi đang mở modal
   useTabFab(
-    !isFormOpen && !selectedPhoto && !showGoldPurityInfo
+    !isFormOpen && !selectedPhoto && !showGoldPurityInfo && !sellingAsset
       ? { id: "assets", color: "emerald", title: "Thêm tài sản gia đình", icon: FileText, onClick: openCreateForm }
       : null
   );
@@ -463,6 +502,59 @@ export function Assets({
     });
     if (!ok) return;
     await onDeleteAsset(asset.id);
+  };
+
+  const openSellForm = (asset: FamilyAsset) => {
+    // Gợi ý giá bán = giá trị hiệu dụng hiện tại (live thị trường → ước tính → giá mua).
+    const estimate = getEffectiveValue(asset, marketPrices).value;
+    setSellingAsset(asset);
+    setSellEstimate(estimate);
+    setSellMode("estimate");
+    setSellPrice(estimate);
+    setSellAccount(AccountType.BANK);
+    setSellDate(new Date().toISOString().slice(0, 10));
+    setSellNote("");
+    setSellError("");
+  };
+
+  const handleSellModeChange = (mode: "estimate" | "custom") => {
+    setSellMode(mode);
+    if (mode === "estimate") setSellPrice(sellEstimate);
+  };
+
+  const handleConfirmSell = async () => {
+    if (!sellingAsset) return;
+    setSellError("");
+    const price = Number(sellPrice) || 0;
+    if (price <= 0) {
+      setSellError("Vui lòng nhập giá bán lớn hơn 0.");
+      return;
+    }
+    if (!onSaveTransaction) {
+      setSellError("Không ghi nhận được khoản thu từ bán tài sản.");
+      return;
+    }
+    // Sổ thu chi chỉ tính bằng VNĐ — tài sản định giá USD sẽ quy đổi theo tỷ giá hiện tại.
+    const rate = marketPrices?.usdVndRate || 25000;
+    const amountVnd = sellingAsset.currency === "USD" ? Math.round(price * rate) : Math.round(price);
+    const noteSuffix = sellNote.trim() ? ` — ${sellNote.trim()}` : "";
+    setSelling(true);
+    try {
+      await onSaveTransaction({
+        type: TransactionType.INCOME,
+        amount: amountVnd,
+        category: ASSET_SALE_CATEGORY,
+        account: sellAccount,
+        description: `Bán tài sản: ${sellingAsset.name}${noteSuffix}`,
+        date: sellDate
+      });
+      await onDeleteAsset(sellingAsset.id);
+      setSellingAsset(null);
+    } catch (err: any) {
+      setSellError(err.message || "Không ghi nhận được giao dịch bán tài sản.");
+    } finally {
+      setSelling(false);
+    }
   };
 
   const fmtUsd = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
@@ -671,6 +763,11 @@ export function Assets({
                       </div>
                       {canManageAsset(asset) && (
                         <div className="flex items-center gap-1 shrink-0">
+                          {onSaveTransaction && (
+                            <button type="button" onClick={() => openSellForm(asset)} aria-label={`Bán tài sản ${asset.name}`} title="Bán tài sản" className="size-8 rounded-lg bg-slate-950 border border-slate-800 text-slate-500 hover:text-emerald-400 flex items-center justify-center cursor-pointer">
+                              <HandCoins className="size-3.5" />
+                            </button>
+                          )}
                           <button type="button" onClick={() => openEditForm(asset)} aria-label={`Sửa tài sản ${asset.name}`} className="size-8 rounded-lg bg-slate-950 border border-slate-800 text-slate-500 hover:text-amber-400 flex items-center justify-center cursor-pointer">
                             <Pencil className="size-3.5" />
                           </button>
@@ -1079,6 +1176,123 @@ export function Assets({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {sellingAsset && (
+        <div onClick={closeSell} className="fixed inset-0 bg-slate-950/85 flex items-center justify-center z-50 p-4" id="asset-sell-modal">
+          <motion.div
+            ref={sellRef}
+            tabIndex={-1}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
+              <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
+                <HandCoins className="size-5 text-emerald-400" /> Bán tài sản
+              </h3>
+              <button type="button" onClick={closeSell} disabled={selling} aria-label="Đóng" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center disabled:opacity-50">
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto px-5 py-4 flex-1 min-h-0 text-xs">
+              {sellError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl font-medium">{sellError}</div>
+              )}
+
+              <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3">
+                <p className="text-[11px] text-slate-500">Tài sản</p>
+                <p className="text-sm font-bold text-slate-100 truncate">{sellingAsset.name}</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Giá trị ước lượng hiện tại:{" "}
+                  <span className="text-emerald-400 font-bold">{sellEstimate > 0 ? formatMoney(sellEstimate, sellingAsset.currency) : "Chưa xác định"}</span>
+                </p>
+              </div>
+
+              {/* Chọn cách định giá bán */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSellModeChange("estimate")}
+                  disabled={sellEstimate <= 0}
+                  className={`px-3 py-2.5 rounded-xl font-bold border transition-all ${sellMode === "estimate" ? "bg-emerald-500 text-slate-950 border-emerald-500" : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"} disabled:opacity-40 disabled:cursor-not-allowed`}
+                >
+                  Theo giá ước lượng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSellModeChange("custom")}
+                  className={`px-3 py-2.5 rounded-xl font-bold border transition-all ${sellMode === "custom" ? "bg-emerald-500 text-slate-950 border-emerald-500" : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"}`}
+                >
+                  Tự nhập giá
+                </button>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-400 block font-semibold">Giá bán thực tế ({sellingAsset.currency})</label>
+                <input
+                  inputMode="numeric"
+                  value={formatMoneyInput(sellPrice)}
+                  onChange={(e) => { setSellMode("custom"); setSellPrice(parseMoneyInput(e.target.value)); }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none focus:border-emerald-500 font-mono text-base font-bold"
+                />
+                {sellingAsset.currency === "USD" && sellPrice > 0 && (
+                  <p className="text-[10px] text-slate-500">
+                    ≈ {formatMoney(Math.round(sellPrice * (marketPrices?.usdVndRate || 25000)))} (quy đổi theo tỷ giá {(marketPrices?.usdVndRate || 25000).toLocaleString("vi-VN")}đ/USD)
+                  </p>
+                )}
+                {(() => {
+                  const purchase = Number(sellingAsset.purchaseValue || 0);
+                  if (purchase <= 0 || sellPrice <= 0) return null;
+                  const diff = sellPrice - purchase;
+                  const up = diff >= 0;
+                  const pct = (diff / purchase) * 100;
+                  return (
+                    <p className={`text-[10px] flex items-center gap-1 ${up ? "text-emerald-400" : "text-rose-400"}`}>
+                      {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                      So với giá mua {formatMoney(purchase, sellingAsset.currency)}: {up ? "Lời" : "Lỗ"} {formatMoney(Math.abs(diff), sellingAsset.currency)} ({up ? "+" : "−"}{Math.abs(pct).toFixed(1)}%)
+                    </p>
+                  );
+                })()}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-400 block font-semibold">Tiền vào ví</label>
+                  <select value={sellAccount} onChange={(e) => setSellAccount(e.target.value as AccountType)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
+                    {SELL_ACCOUNTS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-slate-400 block font-semibold">Ngày bán</label>
+                  <input type="date" value={sellDate} onChange={(e) => setSellDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-400 block font-semibold">Ghi chú (không bắt buộc)</label>
+                <input value={sellNote} onChange={(e) => setSellNote(e.target.value)} placeholder="VD: bán cho người quen, đã nhận đủ tiền..." className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none focus:border-emerald-500" />
+              </div>
+
+              <p className="text-[10px] text-slate-500 leading-relaxed">
+                Khi xác nhận: hệ thống ghi một khoản <span className="text-emerald-400 font-semibold">THU</span> với hạng mục "{ASSET_SALE_CATEGORY}" vào sổ thu chi, sau đó xóa tài sản này khỏi danh sách.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-slate-800 shrink-0">
+              <button type="button" onClick={closeSell} disabled={selling} className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl font-bold disabled:opacity-50">
+                Hủy
+              </button>
+              <button type="button" onClick={handleConfirmSell} disabled={selling || sellPrice <= 0} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl font-bold disabled:opacity-50 flex items-center gap-1.5">
+                <HandCoins className="size-4" /> {selling ? "Đang ghi nhận..." : "Xác nhận bán"}
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
 
