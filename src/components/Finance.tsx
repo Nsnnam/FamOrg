@@ -439,6 +439,7 @@ export function Finance({
           widgets={widgets}
           onSaveAsset={onSaveAsset}
           onDeleteAsset={onDeleteAsset}
+          onSaveTransaction={onSaveTransaction}
         />
       ) : (
         <>
