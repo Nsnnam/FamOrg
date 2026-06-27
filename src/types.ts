@@ -61,6 +61,7 @@ export interface User {
   avatarColor: string; // Tailwind color name like 'bg-red-500'
   avatarImage?: string; // Optional custom avatar (base64 data-uri); falls back to avatarColor
   dateOfBirth?: string; // YYYY-MM-DD, used for birthday reminders
+  gender?: "male" | "female"; // dùng cho đánh giá BMI theo tuổi/giới (trẻ em)
   phone?: string; // Optional contact phone number
   createdAt: string;
 }

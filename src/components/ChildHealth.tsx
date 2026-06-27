@@ -4,9 +4,10 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Syringe, Plus, Trash2, Check, Calendar, Ruler, Baby } from "lucide-react";
+import { Syringe, Plus, Trash2, Check, Calendar, Ruler, HeartPulse } from "lucide-react";
 import { VaccinationRecord, GrowthRecord, User } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
+import { assessBmi, ageFromDob, BmiAssessment } from "../utils/bmi.js";
 
 interface ChildHealthProps {
   currentUser: User;
@@ -92,6 +93,24 @@ export function ChildHealth({
     [growthRecords, childId]
   );
 
+  const selectedMember = useMemo(() => users.find(u => u.id === childId), [users, childId]);
+
+  // BMI từ bản ghi mới nhất có ĐỦ cả chiều cao & cân nặng.
+  const bmiInfo = useMemo<BmiAssessment | null>(() => {
+    const latest = [...childGrowth].reverse().find(g => g.heightCm != null && g.weightKg != null);
+    if (!latest || !selectedMember) return null;
+    return assessBmi(latest.heightCm!, latest.weightKg!, selectedMember.dateOfBirth, selectedMember.gender);
+  }, [childGrowth, selectedMember]);
+
+  const bmiBadgeClass = (c: BmiAssessment["color"]) => {
+    switch (c) {
+      case "emerald": return "bg-emerald-500/15 text-emerald-400 border-emerald-500/30";
+      case "amber": return "bg-amber-500/15 text-amber-400 border-amber-500/30";
+      case "rose": return "bg-rose-500/15 text-rose-400 border-rose-500/30";
+      default: return "bg-slate-700/30 text-slate-300 border-slate-600/40";
+    }
+  };
+
   const handleAddVaccine = async (e: React.FormEvent) => {
     e.preventDefault();
     setVError("");
@@ -172,7 +191,7 @@ export function ChildHealth({
       {/* Chọn thành viên */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3">
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-          <Baby className="w-5 h-5 text-pink-400" /> Sức khỏe trẻ em
+          <HeartPulse className="w-5 h-5 text-pink-400" /> Sức khỏe gia đình
         </h3>
         <div className="flex items-center gap-2 text-xs">
           <label className="text-slate-500">Thành viên:</label>
@@ -248,6 +267,26 @@ export function ChildHealth({
           <button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg px-3 py-2 font-bold flex items-center justify-center gap-1 cursor-pointer"><Plus className="w-4 h-4" /> Ghi</button>
           {gError && <p className="col-span-2 sm:col-span-4 text-[11px] text-rose-400">{gError}</p>}
         </form>
+
+        {/* Đánh giá BMI (từ số đo mới nhất có đủ cao & nặng) */}
+        {bmiInfo && (
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[10px] text-slate-500 font-bold uppercase">BMI hiện tại</span>
+                <span className="text-xl font-extrabold text-slate-100 tabular-nums">{bmiInfo.bmi.toFixed(1)}</span>
+              </div>
+              <span className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${bmiBadgeClass(bmiInfo.color)}`}>
+                {bmiInfo.label}
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-500">
+              {bmiInfo.basis === "adult" && "Đối chiếu chuẩn người lớn châu Á (Việt Nam): <18,5 thiếu cân · 18,5–22,9 bình thường · 23–24,9 thừa cân · 25–29,9 béo phì độ I · ≥30 độ II."}
+              {bmiInfo.basis === "child" && `Đối chiếu chuẩn WHO theo tuổi & giới${selectedMember?.gender ? (selectedMember.gender === "male" ? " (nam)" : " (nữ)") : ""}${(() => { const a = ageFromDob(selectedMember?.dateOfBirth); return a != null ? ` · ${Math.floor(a)} tuổi` : ""; })()}.`}
+              {bmiInfo.note}
+            </p>
+          </div>
+        )}
 
         {childGrowth.length === 0 ? (
           <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có số đo nào.</p>

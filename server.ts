@@ -1572,7 +1572,7 @@ app.get("/api/users", requireAuth, (req: AuthRequest, res: Response) => {
 
 app.post("/api/users", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
-  const { username, fullName, role, passwordPlain, avatarColor, dateOfBirth, phone, familyRelation } = req.body;
+  const { username, fullName, role, passwordPlain, avatarColor, dateOfBirth, gender, phone, familyRelation } = req.body;
 
   if (!username || !fullName || !role || !passwordPlain) {
     res.status(400).json({ error: "Vui lòng nhập đầy đủ chi tiết thành viên mới!" });
@@ -1591,6 +1591,7 @@ app.post("/api/users", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthReq
       passwordPlain,
       avatarColor,
       dateOfBirth,
+      gender,
       phone,
       familyRelation
     }, session.userId, session.username);
@@ -1605,13 +1606,14 @@ app.post("/api/users", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthReq
 // Self-service profile update: a user can edit their OWN personal info only.
 app.post("/api/profile", requireAuth, (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
-  const { fullName, dateOfBirth, phone, avatarImage, avatarColor } = req.body;
+  const { fullName, dateOfBirth, gender, phone, avatarImage, avatarColor } = req.body;
 
   try {
     validateAvatarImagePayload(avatarImage);
     const updated = FamilyDB.updateProfile(session.userId, {
       fullName,
       dateOfBirth,
+      gender,
       phone,
       avatarImage,
       avatarColor
@@ -1639,7 +1641,7 @@ app.delete("/api/users/:id", requireAuth, requireRole([UserRole.ADMIN]), (req: A
 app.post("/api/users/:id", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   const { id } = req.params;
-  const { fullName, role, dateOfBirth, phone, avatarColor, familyRelation } = req.body;
+  const { fullName, role, dateOfBirth, gender, phone, avatarColor, familyRelation } = req.body;
 
   if (role !== undefined && !VALID_ROLES.has(role)) {
     res.status(400).json({ error: "Vai trò (phân quyền) không hợp lệ!" });
@@ -1647,7 +1649,7 @@ app.post("/api/users/:id", requireAuth, requireRole([UserRole.ADMIN]), (req: Aut
   }
 
   try {
-    const updated = FamilyDB.adminUpdateUser(id, { fullName, role, dateOfBirth, phone, avatarColor, familyRelation }, session.userId, session.username);
+    const updated = FamilyDB.adminUpdateUser(id, { fullName, role, dateOfBirth, gender, phone, avatarColor, familyRelation }, session.userId, session.username);
     broadcastSyncEvent("USERS_UPDATE", { updatedId: id });
     res.json({ user: updated });
   } catch (err: any) {

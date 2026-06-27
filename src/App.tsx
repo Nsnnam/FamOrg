@@ -26,7 +26,7 @@ import {
   ShoppingCart,
   Pill,
   FolderLock,
-  Baby
+  HeartPulse
 } from "lucide-react";
 import {
   User,
@@ -1390,7 +1390,7 @@ export default function App() {
     { id: "notes", label: "Ghi chú", icon: FileText },
     { id: "shopping", label: "Đi chợ", icon: ShoppingCart },
     { id: "medications", label: "Thuốc", icon: Pill },
-    ...(canAccessFinance(currentUser.role) ? [{ id: "child-health", label: "Sức khỏe bé", icon: Baby }] : []),
+    ...(canAccessFinance(currentUser.role) ? [{ id: "child-health", label: "Sức khỏe gia đình", icon: HeartPulse }] : []),
     // Only show finance to Admin and Members; hidden from Child and Guest accounts
     ...(canAccessFinance(currentUser.role) ? [{ id: "finance", label: "Chi tiêu", icon: Wallet }] : []),
     ...(canAccessFinance(currentUser.role) ? [{ id: "documents", label: "Giấy tờ", icon: FolderLock }] : []),
