@@ -472,7 +472,7 @@ export class FamilyDB {
   // MUTATIONS (each returns the modified db items or a success state)
   
   // Create User (Admin Only)
-  public static createUser(u: { username: string; fullName: string; role: UserRole; passwordPlain: string; avatarColor: string; dateOfBirth?: string; phone?: string; familyRelation?: FamilyRelation }, adminId: string, adminUser: string): User {
+  public static createUser(u: { username: string; fullName: string; role: UserRole; passwordPlain: string; avatarColor: string; dateOfBirth?: string; gender?: "male" | "female"; phone?: string; familyRelation?: FamilyRelation }, adminId: string, adminUser: string): User {
     const db = this.readRaw();
     if (db.users.some(existing => existing.username === u.username.toLowerCase())) {
       throw new Error("Tài khoản này đã tồn tại trong gia đình!");
@@ -486,6 +486,7 @@ export class FamilyDB {
       familyRelation: u.familyRelation || undefined,
       avatarColor: u.avatarColor || "bg-indigo-500",
       dateOfBirth: u.dateOfBirth || undefined,
+      gender: u.gender === "male" || u.gender === "female" ? u.gender : undefined,
       phone: u.phone ? u.phone.trim() : undefined,
       passwordHash: hashPassword(u.passwordPlain),
       createdAt: new Date().toISOString()
@@ -501,7 +502,7 @@ export class FamilyDB {
   }
 
   // Update own profile (self-service personalization)
-  public static updateProfile(userId: string, data: { fullName?: string; dateOfBirth?: string; phone?: string; avatarImage?: string; avatarColor?: string }): User {
+  public static updateProfile(userId: string, data: { fullName?: string; dateOfBirth?: string; gender?: "male" | "female" | ""; phone?: string; avatarImage?: string; avatarColor?: string }): User {
     const db = this.readRaw();
     const idx = db.users.findIndex(u => u.id === userId);
     if (idx === -1) {
@@ -517,6 +518,9 @@ export class FamilyDB {
     }
     if (data.dateOfBirth !== undefined) {
       user.dateOfBirth = data.dateOfBirth || undefined;
+    }
+    if (data.gender !== undefined) {
+      user.gender = data.gender === "male" || data.gender === "female" ? data.gender : undefined;
     }
     if (data.phone !== undefined) {
       user.phone = data.phone.trim() || undefined;
@@ -631,7 +635,7 @@ export class FamilyDB {
   // Admin updates another member's profile + role
   public static adminUpdateUser(
     targetId: string,
-    data: { fullName?: string; role?: UserRole; dateOfBirth?: string; phone?: string; avatarColor?: string; familyRelation?: FamilyRelation },
+    data: { fullName?: string; role?: UserRole; dateOfBirth?: string; gender?: "male" | "female" | ""; phone?: string; avatarColor?: string; familyRelation?: FamilyRelation },
     adminId: string,
     adminUser: string
   ): User {
@@ -656,6 +660,7 @@ export class FamilyDB {
     if (data.role !== undefined) user.role = data.role;
     if (data.familyRelation !== undefined) user.familyRelation = data.familyRelation || undefined;
     if (data.dateOfBirth !== undefined) user.dateOfBirth = data.dateOfBirth || undefined;
+    if (data.gender !== undefined) user.gender = data.gender === "male" || data.gender === "female" ? data.gender : undefined;
     if (data.phone !== undefined) user.phone = data.phone.trim() || undefined;
     if (data.avatarColor !== undefined && data.avatarColor) user.avatarColor = data.avatarColor;
 

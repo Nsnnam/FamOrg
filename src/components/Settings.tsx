@@ -108,11 +108,13 @@ export function Settings({
   const [regPassword, setRegPassword] = useState("");
   const [regAvatar, setRegAvatar] = useState("bg-indigo-500");
   const [regDob, setRegDob] = useState("");
+  const [regGender, setRegGender] = useState<"male" | "female" | "">("");
   const [regPhone, setRegPhone] = useState("");
 
   // My-profile form (self-service personalization)
   const [profFullName, setProfFullName] = useState(currentUser.fullName);
   const [profDob, setProfDob] = useState(currentUser.dateOfBirth || "");
+  const [profGender, setProfGender] = useState<"male" | "female" | "">(currentUser.gender || "");
   const [profPhone, setProfPhone] = useState(currentUser.phone || "");
   const [profAvatarImage, setProfAvatarImage] = useState(currentUser.avatarImage || "");
   const [profAvatarColor, setProfAvatarColor] = useState(currentUser.avatarColor || "bg-indigo-500");
@@ -121,6 +123,7 @@ export function Settings({
   useEffect(() => {
     setProfFullName(currentUser.fullName);
     setProfDob(currentUser.dateOfBirth || "");
+    setProfGender(currentUser.gender || "");
     setProfPhone(currentUser.phone || "");
     setProfAvatarImage(currentUser.avatarImage || "");
     setProfAvatarColor(currentUser.avatarColor || "bg-indigo-500");
@@ -141,6 +144,7 @@ export function Settings({
   const [euRole, setEuRole] = useState<UserRole>(UserRole.MEMBER);
   const [euRelation, setEuRelation] = useState<FamilyRelation | "">("");
   const [euDob, setEuDob] = useState("");
+  const [euGender, setEuGender] = useState<"male" | "female" | "">("");
   const [euPhone, setEuPhone] = useState("");
   const [euColor, setEuColor] = useState("bg-indigo-500");
 
@@ -321,6 +325,7 @@ export function Settings({
         passwordPlain: regPassword,
         avatarColor: regAvatar,
         dateOfBirth: regDob || undefined,
+        gender: regGender || undefined,
         phone: regPhone.trim() || undefined
       });
       setActionSuccess(`Đã tạo tài khoản thành viên mới cho ${regFullName.trim()} thành công!`);
@@ -329,6 +334,7 @@ export function Settings({
       setRegFullName("");
       setRegPassword("");
       setRegDob("");
+      setRegGender("");
       setRegPhone("");
       setRegRelation("");
     } catch (err: any) {
@@ -377,6 +383,7 @@ export function Settings({
       await onUpdateProfile({
         fullName: profFullName.trim(),
         dateOfBirth: profDob,
+        gender: profGender,
         phone: profPhone,
         avatarImage: profAvatarImage,
         avatarColor: profAvatarColor
@@ -447,6 +454,7 @@ export function Settings({
     setEuRole(u.role);
     setEuRelation(u.familyRelation || "");
     setEuDob(u.dateOfBirth || "");
+    setEuGender(u.gender || "");
     setEuPhone(u.phone || "");
     setEuColor(u.avatarColor || "bg-indigo-500");
     setActionError("");
@@ -469,6 +477,7 @@ export function Settings({
         role: euRole,
         familyRelation: euRelation || undefined,
         dateOfBirth: euDob,
+        gender: euGender,
         phone: euPhone,
         avatarColor: euColor
       });
@@ -717,6 +726,18 @@ export function Settings({
                     className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
+                <div className="space-y-1 text-xs min-w-0">
+                  <label className="text-slate-400 font-semibold">Giới tính <span className="text-slate-600 font-normal">(để tính BMI)</span></label>
+                  <select
+                    value={profGender}
+                    onChange={(e) => setProfGender(e.target.value as "male" | "female" | "")}
+                    className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="">Chưa chọn</option>
+                    <option value="male">Nam</option>
+                    <option value="female">Nữ</option>
+                  </select>
+                </div>
               </div>
 
               <button
@@ -953,6 +974,18 @@ export function Settings({
                         onChange={(e) => setRegPhone(e.target.value)}
                         className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none font-mono"
                       />
+                    </div>
+                    <div className="space-y-1 min-w-0">
+                      <label className="text-slate-400 font-semibold">Giới tính <span className="text-slate-600 font-normal">(để tính BMI)</span></label>
+                      <select
+                        value={regGender}
+                        onChange={(e) => setRegGender(e.target.value as "male" | "female" | "")}
+                        className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
+                      >
+                        <option value="">Chưa chọn</option>
+                        <option value="male">Nam</option>
+                        <option value="female">Nữ</option>
+                      </select>
                     </div>
                   </div>
 
@@ -1199,6 +1232,18 @@ export function Settings({
                     placeholder="09xx xxx xxx"
                     className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
+                </div>
+                <div className="space-y-1 min-w-0">
+                  <label className="text-slate-400 font-semibold">Giới tính <span className="text-slate-600 font-normal">(để tính BMI)</span></label>
+                  <select
+                    value={euGender}
+                    onChange={(e) => setEuGender(e.target.value as "male" | "female" | "")}
+                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="">Chưa chọn</option>
+                    <option value="male">Nam</option>
+                    <option value="female">Nữ</option>
+                  </select>
                 </div>
               </div>
 
