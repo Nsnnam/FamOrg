@@ -133,6 +133,8 @@ export interface Task {
   recurrenceType?: RecurrenceType;
   recurrenceInterval?: number;
   recurrenceEndDate?: string;
+  // Xoay vòng người nhận: mỗi lần task lặp lại tái tạo sẽ chuyển sang thành viên kế tiếp trong danh sách.
+  rotationMemberIds?: string[];
   sourceRecurringTaskId?: string | null;
   comments: TaskComment[];
   history: TaskHistory[];
@@ -238,6 +240,54 @@ export interface RecurringBill {
   updatedAt: string;
 }
 
+// --- Mục tiêu tiết kiệm (sinking fund): để dành cho Tết, du lịch, học phí... ---
+export interface SavingsContribution {
+  id: string;
+  amount: number; // dương = bỏ thêm vào quỹ, âm = rút bớt ra
+  date: string;   // YYYY-MM-DD
+  note?: string;
+  byId: string;   // ai đóng góp
+  createdAt: string;
+}
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  targetAmount: number;
+  deadline?: string;  // YYYY-MM-DD (tùy chọn) — ngày muốn đạt mục tiêu
+  color?: string;     // emerald | sky | amber | rose | violet...
+  note?: string;
+  isShared: boolean;  // chia sẻ cả nhà hay chỉ người tạo
+  creatorId: string;
+  contributions: SavingsContribution[]; // số dư hiện tại = tổng các đóng góp
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- Theo dõi vay / cho mượn (nợ) ---
+export interface DebtPayment {
+  id: string;
+  amount: number; // số tiền trả/nhận trong lần này
+  date: string;   // YYYY-MM-DD
+  note?: string;
+  byId: string;
+  createdAt: string;
+}
+
+export interface Debt {
+  id: string;
+  direction: "borrowed" | "lent"; // borrowed = mình đang nợ; lent = mình cho mượn
+  counterparty: string;           // tên người hoặc ngân hàng
+  amount: number;                 // tổng nợ gốc
+  dueDate?: string;               // YYYY-MM-DD — ngày hẹn trả (để nhắc)
+  note?: string;
+  isSettled: boolean;             // đã tất toán
+  creatorId: string;
+  payments: DebtPayment[];        // còn lại = amount - tổng payments
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type AssetType =
   | "crypto"
   | "land"
@@ -306,6 +356,20 @@ export interface MedicationReminder {
   updatedAt: string;
 }
 
+// Nhật ký uống thuốc — một bản ghi cho mỗi liều (medication + ngày + giờ).
+// status "taken"/"skipped"; khi người dùng bỏ đánh dấu thì bản ghi bị xoá (về trạng thái chưa ghi nhận).
+export interface MedicationLog {
+  id: string;
+  medicationId: string;
+  patientId: string;
+  date: string; // YYYY-MM-DD — liều thuộc ngày nào
+  time: string; // HH:mm — mốc giờ trong medication.times
+  status: "taken" | "skipped";
+  loggedById: string; // ai bấm ghi nhận
+  loggedAt: string;
+  notes?: string;
+}
+
 // Shopping / grocery list
 export interface ShoppingItem {
   id: string;
@@ -317,6 +381,84 @@ export interface ShoppingItem {
   purchasedById?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// --- Kho giấy tờ gia đình (giấy tờ tuỳ thân, đăng kiểm, bảo hiểm, bảo hành...) ---
+export type DocumentType =
+  | "cccd"                 // CCCD / CMND
+  | "passport"             // Hộ chiếu
+  | "driver_license"       // Bằng lái xe
+  | "vehicle_registration" // Đăng ký xe (cà vẹt)
+  | "vehicle_inspection"   // Đăng kiểm xe
+  | "insurance"            // Bảo hiểm (xe/nhà/nhân thọ)
+  | "health_insurance"     // Bảo hiểm y tế (BHYT)
+  | "warranty"             // Bảo hành
+  | "contract"             // Hợp đồng
+  | "certificate"          // Giấy chứng nhận (khai sinh, kết hôn...)
+  | "other";
+
+export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
+  cccd: "CCCD / CMND",
+  passport: "Hộ chiếu",
+  driver_license: "Bằng lái xe",
+  vehicle_registration: "Đăng ký xe",
+  vehicle_inspection: "Đăng kiểm xe",
+  insurance: "Bảo hiểm",
+  health_insurance: "Bảo hiểm y tế",
+  warranty: "Bảo hành",
+  contract: "Hợp đồng",
+  certificate: "Giấy chứng nhận",
+  other: "Khác"
+};
+
+// Một tệp scan/ảnh đính kèm của giấy tờ (lưu dưới dạng URL "/uploads/...").
+export interface DocumentFile {
+  id: string;
+  fileName: string;
+  url: string;      // "/uploads/documents/..."
+  sizeKb?: number;
+  createdAt: string;
+}
+
+export interface FamilyDocument {
+  id: string;
+  type: DocumentType;
+  title: string;
+  ownerId?: string;        // thuộc về thành viên nào
+  documentNumber?: string; // số giấy tờ
+  issuer?: string;         // nơi cấp
+  issueDate?: string;      // YYYY-MM-DD
+  expiryDate?: string;     // YYYY-MM-DD — dùng để nhắc hết hạn
+  notes?: string;
+  files: DocumentFile[];
+  isShared: boolean;       // chia sẻ giữa người lớn hay chỉ người tạo/chủ sở hữu thấy
+  creatorId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- Sức khỏe trẻ em: tiêm chủng & tăng trưởng ---
+export interface VaccinationRecord {
+  id: string;
+  childId: string;        // thành viên (trẻ) được tiêm
+  name: string;           // tên vắc-xin
+  doseLabel?: string;     // "Mũi 1", "Nhắc lại"...
+  scheduledDate?: string; // YYYY-MM-DD — ngày hẹn tiêm (để nhắc)
+  doneDate?: string;      // YYYY-MM-DD — ngày đã tiêm
+  status: "scheduled" | "done" | "skipped";
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GrowthRecord {
+  id: string;
+  childId: string;
+  date: string;     // YYYY-MM-DD
+  heightCm?: number;
+  weightKg?: number;
+  note?: string;
+  createdAt: string;
 }
 
 // A Web Push subscription tied to one user's device/browser. Used to deliver
@@ -375,8 +517,14 @@ export interface FamilyOrganizerDB {
   rewardLedger: RewardPointEntry[];
   budgets: BudgetLimit[];
   recurringBills: RecurringBill[];
+  savingsGoals: SavingsGoal[];
+  debts: Debt[];
   assets: FamilyAsset[];
   medications: MedicationReminder[];
+  medicationLogs: MedicationLog[];
+  vaccinations: VaccinationRecord[];
+  growthRecords: GrowthRecord[];
+  documents: FamilyDocument[];
   shoppingItems: ShoppingItem[];
   dishLibrary: StoredDish[];
   mealPlan?: StoredMealPlan | null;

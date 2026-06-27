@@ -22,10 +22,12 @@ import {
   CheckCircle2,
   Pencil
 } from "lucide-react";
-import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, canAccessFinance } from "../types.js";
+import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, SavingsGoal, Debt, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { Assets } from "./Assets.js";
+import { SavingsGoals } from "./SavingsGoals.js";
+import { DebtTracker } from "./DebtTracker.js";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
@@ -36,6 +38,8 @@ interface FinanceProps {
   transactions: FinancialTransaction[];
   budgets: BudgetLimit[];
   recurringBills: RecurringBill[];
+  savingsGoals: SavingsGoal[];
+  debts: Debt[];
   assets: FamilyAsset[];
   widgets?: any;
   onSaveTransaction: (tx: Partial<FinancialTransaction>) => Promise<any>;
@@ -45,6 +49,14 @@ interface FinanceProps {
   onSaveRecurringBill: (bill: Partial<RecurringBill>) => Promise<any>;
   onPayRecurringBill: (id: string) => Promise<any>;
   onDeleteRecurringBill: (id: string) => Promise<any>;
+  onSaveSavingsGoal: (goal: Partial<SavingsGoal>) => Promise<any>;
+  onDeleteSavingsGoal: (id: string) => Promise<any>;
+  onContributeSavings: (goalId: string, amount: number, date: string, note?: string) => Promise<any>;
+  onRemoveSavingsContribution: (goalId: string, contributionId: string) => Promise<any>;
+  onSaveDebt: (debt: Partial<Debt>) => Promise<any>;
+  onDeleteDebt: (id: string) => Promise<any>;
+  onAddDebtPayment: (debtId: string, amount: number, date: string, note?: string) => Promise<any>;
+  onRemoveDebtPayment: (debtId: string, paymentId: string) => Promise<any>;
   onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
   onDeleteAsset: (id: string) => Promise<any>;
 }
@@ -63,6 +75,22 @@ const BILL_CATEGORIES = [
 function translateBillCategory(value: string): string {
   return BILL_CATEGORIES.find(c => c.value === value)?.label ?? value;
 }
+
+// Hạng mục THU NHẬP gợi ý — giá trị lưu trực tiếp là nhãn tiếng Việt (income category là free-text).
+// Chọn "__custom__" để tự nhập nguồn thu khác.
+const INCOME_CATEGORIES = [
+  "Lương tháng",
+  "Tiền thưởng",
+  "Làm thêm / Freelance",
+  "Hoa hồng bán hàng",
+  "Cổ tức",
+  "Lợi nhuận cổ phần / Đầu tư",
+  "Cho thuê (nhà/xe...)",
+  "Tiền mượn / Vay",
+  "Được cho / Biếu tặng",
+] as const;
+const INCOME_CUSTOM = "__custom__";
+const isPresetIncome = (cat: string) => (INCOME_CATEGORIES as readonly string[]).includes(cat);
 
 function isAlreadyPaidThisPeriod(bill: RecurringBill): boolean {
   if (!bill.lastPaidDate) return false;
@@ -88,6 +116,8 @@ export function Finance({
   transactions,
   budgets,
   recurringBills,
+  savingsGoals,
+  debts,
   assets,
   widgets,
   onSaveTransaction,
@@ -97,6 +127,14 @@ export function Finance({
   onSaveRecurringBill,
   onPayRecurringBill,
   onDeleteRecurringBill,
+  onSaveSavingsGoal,
+  onDeleteSavingsGoal,
+  onContributeSavings,
+  onRemoveSavingsContribution,
+  onSaveDebt,
+  onDeleteDebt,
+  onAddDebtPayment,
+  onRemoveDebtPayment,
   onSaveAsset,
   onDeleteAsset
 }: FinanceProps) {
@@ -206,6 +244,44 @@ export function Finance({
       balance: totalIncome - totalExpense
     };
   }, [transactions]);
+
+  // Số dư theo từng ví (tính từ giao dịch: thu cộng, chi trừ). Chưa có "số dư đầu kỳ".
+  const accountBalances = useMemo(() => {
+    const bal: Record<string, number> = { cash: 0, bank: 0, e_wallet: 0 };
+    transactions.forEach(tx => {
+      const delta = tx.type === "income" ? tx.amount : -tx.amount;
+      if (bal[tx.account] === undefined) bal[tx.account] = 0;
+      bal[tx.account] += delta;
+    });
+    return bal;
+  }, [transactions]);
+
+  // Xuất danh sách giao dịch (theo bộ lọc đang xem) ra file CSV (mở được bằng Excel).
+  const exportTransactionsCsv = () => {
+    const header = ["Ngày", "Loại", "Hạng mục", "Ví", "Số tiền", "Nội dung", "Người tạo"];
+    const esc = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
+    const rows = filteredTransactions.map(tx => {
+      const creator = users.find(u => u.id === tx.creatorId);
+      return [
+        tx.date,
+        tx.type === "income" ? "Thu" : "Chi",
+        translateCategory(tx.category),
+        translateAccount(tx.account),
+        String(tx.amount),
+        tx.description,
+        creator?.fullName || ""
+      ].map(esc).join(",");
+    });
+    // Thêm BOM để Excel nhận đúng UTF-8 tiếng Việt.
+    const csv = "﻿" + [header.map(esc).join(","), ...rows].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `thu-chi_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const currentMonthBudgets = useMemo(
@@ -387,6 +463,8 @@ export function Finance({
       case "shopping": return "Mua sắm quần áo 🛍️";
       case "medical": return "Y tế / Chăm sóc sức khỏe 💊";
       case "transport": return "Phương tiện đi lại 🚗";
+      case "debt_bank": return "Trả nợ ngân hàng 🏦";
+      case "debt_personal": return "Trả nợ cá nhân 🤝";
       default: return cat;
     }
   };
@@ -408,6 +486,8 @@ export function Finance({
       case "shopping": return "text-pink-400 bg-pink-500/10";
       case "medical": return "text-rose-400 bg-rose-500/10";
       case "transport": return "text-sky-400 bg-sky-500/10";
+      case "debt_bank": return "text-orange-400 bg-orange-500/10";
+      case "debt_personal": return "text-teal-400 bg-teal-500/10";
       default: return "text-slate-400 bg-slate-800";
     }
   };
@@ -510,6 +590,25 @@ export function Finance({
         </div>
       </div>
 
+      {/* Số dư theo từng ví (tính từ giao dịch) */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3" id="account-balances">
+        {[
+          { key: "cash", label: "Tiền mặt 💵" },
+          { key: "bank", label: "Ngân hàng 💳" },
+          { key: "e_wallet", label: "Ví điện tử 📱" }
+        ].map(acc => {
+          const v = accountBalances[acc.key] || 0;
+          return (
+            <div key={acc.key} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-md min-w-0">
+              <span className="block text-[10px] text-slate-500 font-semibold truncate">{acc.label}</span>
+              <span className={`block mt-1 text-[13px] sm:text-lg font-extrabold font-sans tabular-nums leading-tight break-words ${v >= 0 ? "text-slate-100" : "text-rose-400"}`}>
+                {v.toLocaleString()} đ
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" id="finance-planning">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -528,6 +627,8 @@ export function Finance({
               <option value="shopping">Mua sắm</option>
               <option value="medical">Y tế</option>
               <option value="transport">Đi lại</option>
+              <option value="debt_bank">Trả nợ ngân hàng</option>
+              <option value="debt_personal">Trả nợ cá nhân</option>
               <option value="other">Khác</option>
             </select>
             <input
@@ -635,6 +736,28 @@ export function Finance({
           </div>
         </div>
       </div>
+
+      {/* Mục tiêu tiết kiệm (sinking fund) */}
+      <SavingsGoals
+        currentUser={currentUser}
+        users={users}
+        savingsGoals={savingsGoals}
+        onSaveSavingsGoal={onSaveSavingsGoal}
+        onDeleteSavingsGoal={onDeleteSavingsGoal}
+        onContributeSavings={onContributeSavings}
+        onRemoveSavingsContribution={onRemoveSavingsContribution}
+      />
+
+      {/* Theo dõi vay / cho mượn */}
+      <DebtTracker
+        currentUser={currentUser}
+        users={users}
+        debts={debts}
+        onSaveDebt={onSaveDebt}
+        onDeleteDebt={onDeleteDebt}
+        onAddDebtPayment={onAddDebtPayment}
+        onRemoveDebtPayment={onRemoveDebtPayment}
+      />
 
       {/* Advanced charts & breakdowns layout */}
       {chartCategoryDistribution.length > 0 && (
@@ -757,6 +880,8 @@ export function Finance({
               <option value="shopping">Mua sắm 🛍️</option>
               <option value="medical">Y tế 💊</option>
               <option value="transport">Đi lại 🚗</option>
+              <option value="debt_bank">Trả nợ ngân hàng 🏦</option>
+              <option value="debt_personal">Trả nợ cá nhân 🤝</option>
               <option value="other">Khoản khác 🏷️</option>
               <option value="Bán tài sản">Bán tài sản 🪙</option>
             </select>
@@ -799,8 +924,16 @@ export function Finance({
         </div>
       ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden" id="transactions-table">
-          <div className="bg-slate-950 p-4 border-b border-slate-800 text-xs text-slate-400 font-semibold uppercase tracking-wider flex justify-between items-center">
+          <div className="bg-slate-950 p-4 border-b border-slate-800 text-xs text-slate-400 font-semibold uppercase tracking-wider flex justify-between items-center gap-2">
             <span>Dòng tiền chi tiết ({filteredTransactions.length} bản ghi)</span>
+            <button
+              type="button"
+              onClick={exportTransactionsCsv}
+              className="flex items-center gap-1 normal-case bg-slate-900 hover:bg-slate-800 border border-slate-800 text-sky-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer"
+              title="Xuất danh sách đang lọc ra file CSV (Excel)"
+            >
+              <FileText className="w-3.5 h-3.5" /> Xuất CSV
+            </button>
           </div>
 
           <div className="divide-y divide-slate-800 max-h-[400px] overflow-y-auto">
@@ -981,16 +1114,31 @@ export function Finance({
                       <option value="shopping">Mua sắm 🛍️</option>
                       <option value="medical">Y tế 💊</option>
                       <option value="transport">Đi lại / Xăng xe 🚗</option>
+                      <option value="debt_bank">Trả nợ ngân hàng 🏦</option>
+                      <option value="debt_personal">Trả nợ cá nhân 🤝</option>
                       <option value="other">Khoản khác 🏷️</option>
                     </select>
                   ) : (
-                    <input 
-                      type="text"
-                      placeholder="Ví dụ: Khoản lương, trúng số, làm ngoài giờ..."
-                      value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
-                    />
+                    <div className="space-y-2">
+                      <select
+                        value={isPresetIncome(formCategory as string) ? (formCategory as string) : INCOME_CUSTOM}
+                        onChange={(e) => setFormCategory(e.target.value === INCOME_CUSTOM ? "" : e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
+                      >
+                        {INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        <option value={INCOME_CUSTOM}>Khác (tự nhập)…</option>
+                      </select>
+                      {!isPresetIncome(formCategory as string) && (
+                        <input
+                          type="text"
+                          placeholder="Nhập nguồn thu khác: trúng số, tiền lì xì..."
+                          value={formCategory}
+                          onChange={(e) => setFormCategory(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
+                          autoFocus
+                        />
+                      )}
+                    </div>
                   )}
                 </div>
 

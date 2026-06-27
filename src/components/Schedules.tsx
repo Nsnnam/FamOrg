@@ -20,6 +20,7 @@ import {
   Cake,
   ChevronLeft,
   ChevronRight,
+  Download,
   X
 } from "lucide-react";
 import { FamilyPlan, User, UserRole, isLimitedViewer, FAMILY_RELATION_LABELS } from "../types.js";
@@ -87,6 +88,38 @@ export function Schedules({
     setEditingPlan(null);
     setFormError("");
     setIsFormOpen(true);
+  };
+
+  // Xuất các sự kiện ra file .ics để nhập vào Google/Apple Calendar (giờ địa phương, floating time).
+  const exportPlansIcs = () => {
+    const dt = (s: string) => {
+      const [d, t] = String(s).split(" ");
+      const [y, mo, da] = (d || "").split("-");
+      const [hh, mm] = (t || "00:00").split(":");
+      if (!y || !mo || !da) return "";
+      return `${y}${mo.padStart(2, "0")}${da.padStart(2, "0")}T${(hh || "00").padStart(2, "0")}${(mm || "00").padStart(2, "0")}00`;
+    };
+    const esc = (v = "") => String(v).replace(/([\\;,])/g, "\\$1").replace(/\n/g, "\\n");
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Family Organizer//VI//", "CALSCALE:GREGORIAN"];
+    filteredPlans.forEach(p => {
+      const start = dt(p.startDate);
+      if (!start) return;
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:${p.id}@family-organizer`);
+      lines.push(`DTSTART:${start}`);
+      lines.push(`DTEND:${dt(p.endDate || p.startDate) || start}`);
+      lines.push(`SUMMARY:${esc(p.title)}`);
+      if (p.description) lines.push(`DESCRIPTION:${esc(p.description)}`);
+      lines.push("END:VEVENT");
+    });
+    lines.push("END:VCALENDAR");
+    const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `lich-gia-dinh_${new Date().toISOString().slice(0, 10)}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Nút nổi lên lịch nhanh — ẩn khi đang mở form/chi tiết hoặc tài khoản khách
@@ -459,8 +492,19 @@ export function Schedules({
             </button>
           </div>
 
+          {/* Xuất .ics */}
+          <button
+            type="button"
+            onClick={exportPlansIcs}
+            disabled={filteredPlans.length === 0}
+            className="bg-slate-900 hover:bg-slate-800 border border-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-sky-400 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Xuất sự kiện ra file .ics để nhập vào Google/Apple Calendar"
+          >
+            <Download className="w-3.5 h-3.5" /> .ics
+          </button>
+
           {/* New register event button */}
-          <button 
+          <button
             disabled={currentUser.role === UserRole.GUEST}
             onClick={handleOpenCreatePlan}
             className="bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-slate-950 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all shadow-md shadow-sky-500/5 cursor-pointer"

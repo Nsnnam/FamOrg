@@ -30,6 +30,25 @@ import { DateTimePicker24 } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 
+// Parse "YYYY-MM-DD HH:mm" hoặc ISO về Date (null nếu không hợp lệ)
+const parseTaskDate = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = new Date(String(value).replace(" ", "T"));
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+// Task được coi là quá hạn nếu: status đã là overdue, hoặc chưa hoàn thành mà đã qua dueDate
+const isTaskOverdue = (task: Task) => {
+  if (task.status === TaskStatus.COMPLETED) return false;
+  if (task.status === TaskStatus.OVERDUE) return true;
+  const due = parseTaskDate(task.dueDate);
+  return due !== null && due.getTime() < Date.now();
+};
+
+// Trạng thái hiển thị thực tế (suy ra quá hạn động, không cần DB cập nhật status)
+const effectiveStatus = (task: Task): TaskStatus =>
+  isTaskOverdue(task) ? TaskStatus.OVERDUE : task.status;
+
 interface TasksProps {
   currentUser: User;
   users: User[];
@@ -79,6 +98,7 @@ export function Tasks({
   const [newRewardPoints, setNewRewardPoints] = useState(0);
   const [newRecurrenceType, setNewRecurrenceType] = useState<RecurrenceType>("none");
   const [newRecurrenceEndDate, setNewRecurrenceEndDate] = useState("");
+  const [newRotationMemberIds, setNewRotationMemberIds] = useState<string[]>([]);
   const [manualRewardUser, setManualRewardUser] = useState("");
   const [manualRewardPoints, setManualRewardPoints] = useState(0);
   const [manualRewardReason, setManualRewardReason] = useState("");
@@ -97,8 +117,8 @@ export function Tasks({
         task.tags.some(t => t.toLowerCase().includes(searchTerm.toLowerCase()));
       if (!matchText) return false;
 
-      // 2. Status
-      if (statusFilter !== "all" && task.status !== statusFilter) return false;
+      // 2. Status (dùng trạng thái suy luận để bộ lọc "Quá hạn" bắt được task đã qua hạn)
+      if (statusFilter !== "all" && effectiveStatus(task) !== statusFilter) return false;
 
       // 3. Assignee
       if (assigneeFilter !== "all") {
@@ -153,6 +173,7 @@ export function Tasks({
     setNewRewardPoints(0);
     setNewRecurrenceType("none");
     setNewRecurrenceEndDate("");
+    setNewRotationMemberIds([]);
   };
 
   // Open the modal in "create" mode (clean form)
@@ -182,6 +203,7 @@ export function Tasks({
     setNewRewardPoints(task.rewardPoints || 0);
     setNewRecurrenceType(task.recurrenceType || "none");
     setNewRecurrenceEndDate(task.recurrenceEndDate || "");
+    setNewRotationMemberIds(task.rotationMemberIds || []);
     setEditingTaskId(task.id);
     setFormError("");
     setSelectedTask(null); // close detail modal if it was open
@@ -222,7 +244,9 @@ export function Tasks({
       rewardPoints: Number(newRewardPoints) || 0,
       recurrenceType: newRecurrenceType,
       recurrenceInterval: 1,
-      recurrenceEndDate: newRecurrenceEndDate || undefined
+      recurrenceEndDate: newRecurrenceEndDate || undefined,
+      // Chỉ gửi danh sách xoay vòng khi task có lặp lại; ngược lại xoá cấu hình cũ.
+      rotationMemberIds: newRecurrenceType !== "none" ? newRotationMemberIds : []
     };
 
     if (editingTaskId) {
@@ -360,12 +384,6 @@ export function Tasks({
     });
   };
 
-  const parseTaskDate = (value?: string | null) => {
-    if (!value) return null;
-    const parsed = new Date(String(value).replace(" ", "T"));
-    return isNaN(parsed.getTime()) ? null : parsed;
-  };
-
   const completedReferenceDate = (task: Task) => {
     return parseTaskDate(task.completedAt) ||
       parseTaskDate(task.updatedAt) ||
@@ -442,8 +460,10 @@ export function Tasks({
     : kanbanColumns.filter(column => column.status === statusFilter);
 
   const quickNextStatus = (task: Task): { label: string; status: TaskStatus } => {
-    if (task.status === TaskStatus.TODO) return { label: "Bắt đầu", status: TaskStatus.IN_PROGRESS };
     if (task.status === TaskStatus.COMPLETED) return { label: "Mở lại", status: TaskStatus.TODO };
+    // Task quá hạn (kể cả khi đang ở todo/in_progress) → hành động chính là hoàn thành
+    if (isTaskOverdue(task)) return { label: "Hoàn thành", status: TaskStatus.COMPLETED };
+    if (task.status === TaskStatus.TODO) return { label: "Bắt đầu", status: TaskStatus.IN_PROGRESS };
     return { label: "Hoàn thành", status: TaskStatus.COMPLETED };
   };
 
@@ -650,7 +670,7 @@ export function Tasks({
             <div className={`grid grid-cols-1 md:grid-cols-2 ${visibleKanbanColumns.length > 2 ? "2xl:grid-cols-4" : "xl:grid-cols-2"} gap-4`}>
               {visibleKanbanColumns.map(column => {
                 const Icon = column.icon;
-                const columnTasks = sortedTasks(boardTasks.filter(task => task.status === column.status));
+                const columnTasks = sortedTasks(boardTasks.filter(task => effectiveStatus(task) === column.status));
 
                 return (
                   <section key={column.status} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/70 shadow-lg overflow-hidden">
@@ -770,8 +790,8 @@ export function Tasks({
                                   </div>
 
                                   <div className="flex flex-wrap gap-1.5">
-                                    <span className={`text-[10px] px-2 py-0.5 border rounded-lg font-semibold ${statusColor(task.status)}`}>
-                                      {statusName(task.status)}
+                                    <span className={`text-[10px] px-2 py-0.5 border rounded-lg font-semibold ${statusColor(effectiveStatus(task))}`}>
+                                      {statusName(effectiveStatus(task))}
                                     </span>
                                     {task.isShared ? (
                                       <span className="text-[10px] px-2 py-0.5 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-lg font-semibold flex items-center gap-1">
@@ -1128,6 +1148,30 @@ export function Tasks({
                       onChange={(e) => setNewRecurrenceEndDate(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
+                  </div>
+                )}
+                {newRecurrenceType !== "none" && (
+                  <div className="space-y-1.5 col-span-2">
+                    <label className="text-slate-400 block font-semibold">Xoay vòng người nhận (tùy chọn)</label>
+                    <p className="text-[10px] text-slate-500">Chọn các thành viên để mỗi lần lặp lại tự luân phiên giao cho người kế tiếp.</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {users.map(u => {
+                        const active = newRotationMemberIds.includes(u.id);
+                        return (
+                          <button
+                            type="button"
+                            key={u.id}
+                            onClick={() => setNewRotationMemberIds(prev => active ? prev.filter(id => id !== u.id) : [...prev, u.id])}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${active ? "bg-indigo-500 text-white border-indigo-400" : "bg-slate-950 text-slate-400 border-slate-800 hover:border-indigo-500/50"}`}
+                          >
+                            {active && newRotationMemberIds.indexOf(u.id) >= 0 ? `${newRotationMemberIds.indexOf(u.id) + 1}. ` : ""}{u.fullName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {newRotationMemberIds.length > 0 && (
+                      <p className="text-[10px] text-indigo-400">Thứ tự xoay vòng theo số hiển thị. Bấm lại để bỏ chọn.</p>
+                    )}
                   </div>
                 )}
               </div>

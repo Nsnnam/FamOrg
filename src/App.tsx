@@ -24,7 +24,9 @@ import {
   Moon,
   Lock,
   ShoppingCart,
-  Pill
+  Pill,
+  FolderLock,
+  Baby
 } from "lucide-react";
 import {
   User,
@@ -39,9 +41,16 @@ import {
   BudgetLimit,
   RecurringBill,
   MedicationReminder,
+  MedicationLog,
+  FamilyDocument,
+  SavingsGoal,
+  Debt,
+  VaccinationRecord,
+  GrowthRecord,
   ROLE_LABELS,
   FAMILY_RELATION_LABELS,
-  canAccessFinance
+  canAccessFinance,
+  canManageMedication
 } from "./types.js";
 import { Auth } from "./components/Auth.js";
 import { Avatar } from "./components/Avatar.js";
@@ -52,6 +61,8 @@ import { Notes } from "./components/Notes.js";
 import { Finance } from "./components/Finance.js";
 import { Shopping } from "./components/Shopping.js";
 import { Medication } from "./components/Medication.js";
+import { Documents } from "./components/Documents.js";
+import { ChildHealth } from "./components/ChildHealth.js";
 import { Assistant } from "./components/Assistant.js";
 import { FabProvider } from "./components/FabHost.js";
 import { Settings } from "./components/Settings.js";
@@ -124,7 +135,7 @@ export default function App() {
   // Push notifications: clear the app-icon badge when the app is opened/focused,
   // and deep-link to the right tab when a push notification is tapped.
   useEffect(() => {
-    const KNOWN_TABS = ["dashboard", "tasks", "plans", "notes", "shopping", "medications", "finance", "settings"];
+    const KNOWN_TABS = ["dashboard", "tasks", "plans", "notes", "shopping", "medications", "child-health", "finance", "documents", "settings"];
     const clearBadge = () => { try { (navigator as any).clearAppBadge?.(); } catch (e) { /* ignore */ } };
 
     clearBadge();
@@ -218,7 +229,7 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
-    if (!canAccessFinance(currentUser.role) && activeTab === "finance") {
+    if (!canAccessFinance(currentUser.role) && (activeTab === "finance" || activeTab === "documents" || activeTab === "child-health")) {
       setActiveTab("dashboard");
       return;
     }
@@ -236,7 +247,13 @@ export default function App() {
   const [rewardTotals, setRewardTotals] = useState<Record<string, number>>({});
   const [budgets, setBudgets] = useState<BudgetLimit[]>([]);
   const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
   const [medications, setMedications] = useState<MedicationReminder[]>([]);
+  const [medicationLogs, setMedicationLogs] = useState<MedicationLog[]>([]);
+  const [vaccinations, setVaccinations] = useState<VaccinationRecord[]>([]);
+  const [growthRecords, setGrowthRecords] = useState<GrowthRecord[]>([]);
+  const [documents, setDocuments] = useState<FamilyDocument[]>([]);
   const [shoppingItems, setShoppingItems] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
@@ -378,10 +395,12 @@ export default function App() {
   const fetchFinancePlanning = async () => {
     if (!currentUser || !canAccessFinance(currentUser.role)) return;
     try {
-      const [budgetRes, billRes, assetRes] = await Promise.all([
+      const [budgetRes, billRes, assetRes, savingsRes, debtRes] = await Promise.all([
         fetch("/api/finance/budgets", { headers: getAuthHeader() }),
         fetch("/api/finance/recurring-bills", { headers: getAuthHeader() }),
-        fetch("/api/finance/assets", { headers: getAuthHeader() })
+        fetch("/api/finance/assets", { headers: getAuthHeader() }),
+        fetch("/api/finance/savings-goals", { headers: getAuthHeader() }),
+        fetch("/api/finance/debts", { headers: getAuthHeader() })
       ]);
       if (budgetRes.ok) {
         const data = await budgetRes.json();
@@ -395,6 +414,14 @@ export default function App() {
         const data = await assetRes.json();
         setAssets(data.assets || []);
       }
+      if (savingsRes.ok) {
+        const data = await savingsRes.json();
+        setSavingsGoals(data.savingsGoals || []);
+      }
+      if (debtRes.ok) {
+        const data = await debtRes.json();
+        setDebts(data.debts || []);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -407,6 +434,49 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setMedications(data.medications || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchMedicationLogs = async () => {
+    // Nhật ký liều chỉ dành cho Admin/Member (đồng nhất với route backend).
+    if (!currentUser || !canManageMedication(currentUser.role)) return;
+    try {
+      const res = await fetch("/api/medications/logs", { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = await res.json();
+        setMedicationLogs(data.logs || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchChildHealth = async () => {
+    // Tiêm chủng & tăng trưởng chỉ dành cho Admin/Member.
+    if (!currentUser || !canAccessFinance(currentUser.role)) return;
+    try {
+      const res = await fetch("/api/child-health", { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = await res.json();
+        setVaccinations(data.vaccinations || []);
+        setGrowthRecords(data.growthRecords || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchDocuments = async () => {
+    // Kho giấy tờ chỉ dành cho Admin/Member (đồng nhất với route backend).
+    if (!currentUser || !canAccessFinance(currentUser.role)) return;
+    try {
+      const res = await fetch("/api/documents", { headers: getAuthHeader() });
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data.documents || []);
       }
     } catch (e) {
       console.error(e);
@@ -483,6 +553,9 @@ export default function App() {
     fetchRewards();
     fetchFinancePlanning();
     fetchMedications();
+    fetchMedicationLogs();
+    fetchChildHealth();
+    fetchDocuments();
     fetchShopping();
     fetchNotifications();
     fetchBackupsAndLogs();
@@ -587,11 +660,21 @@ export default function App() {
             break;
           case "MEDICATIONS_UPDATE":
             fetchMedications();
+            fetchMedicationLogs();
             fetchNotifications();
             fetchBackupsAndLogs();
             break;
           case "SHOPPING_UPDATE":
             fetchShopping();
+            fetchBackupsAndLogs();
+            break;
+          case "DOCUMENTS_UPDATE":
+            fetchDocuments();
+            fetchBackupsAndLogs();
+            break;
+          case "CHILD_HEALTH_UPDATE":
+            fetchChildHealth();
+            fetchNotifications();
             fetchBackupsAndLogs();
             break;
           case "NOTIFICATIONS_UPDATE":
@@ -873,6 +956,70 @@ export default function App() {
     return res.json();
   };
 
+  const handleSaveSavingsGoal = async (payload: Partial<SavingsGoal>) => {
+    const res = await fetch("/api/finance/savings-goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
+  const handleDeleteSavingsGoal = async (id: string) => {
+    const res = await fetch(`/api/finance/savings-goals/${id}`, { method: "DELETE", headers: getAuthHeader() });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
+  const handleContributeSavings = async (goalId: string, amount: number, date: string, note?: string) => {
+    const res = await fetch(`/api/finance/savings-goals/${goalId}/contributions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ amount, date, note })
+    });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
+  const handleRemoveSavingsContribution = async (goalId: string, contributionId: string) => {
+    const res = await fetch(`/api/finance/savings-goals/${goalId}/contributions/${contributionId}`, { method: "DELETE", headers: getAuthHeader() });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
+  const handleSaveDebt = async (payload: Partial<Debt>) => {
+    const res = await fetch("/api/finance/debts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
+  const handleDeleteDebt = async (id: string) => {
+    const res = await fetch(`/api/finance/debts/${id}`, { method: "DELETE", headers: getAuthHeader() });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
+  const handleAddDebtPayment = async (debtId: string, amount: number, date: string, note?: string) => {
+    const res = await fetch(`/api/finance/debts/${debtId}/payments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ amount, date, note })
+    });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
+  const handleRemoveDebtPayment = async (debtId: string, paymentId: string) => {
+    const res = await fetch(`/api/finance/debts/${debtId}/payments/${paymentId}`, { method: "DELETE", headers: getAuthHeader() });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
   const handleSaveAsset = async (payload: Partial<FamilyAsset>) => {
     const res = await fetch("/api/finance/assets", {
       method: "POST",
@@ -915,6 +1062,75 @@ export default function App() {
     const res = await fetch(`/api/medications/${id}`, {
       method: "DELETE",
       headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleSaveVaccination = async (payload: Partial<VaccinationRecord>) => {
+    const res = await fetch("/api/child-health/vaccinations", {
+      method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeader() }, body: JSON.stringify(payload)
+    });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+  const handleDeleteVaccination = async (id: string) => {
+    const res = await fetch(`/api/child-health/vaccinations/${id}`, { method: "DELETE", headers: getAuthHeader() });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+  const handleSaveGrowth = async (payload: Partial<GrowthRecord>) => {
+    const res = await fetch("/api/child-health/growth", {
+      method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeader() }, body: JSON.stringify(payload)
+    });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+  const handleDeleteGrowth = async (id: string) => {
+    const res = await fetch(`/api/child-health/growth/${id}`, { method: "DELETE", headers: getAuthHeader() });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
+
+  const handleSaveDocument = async (payload: Partial<FamilyDocument>) => {
+    const res = await fetch("/api/documents", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    const res = await fetch(`/api/documents/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  // Ghi nhận / bỏ đánh dấu một liều thuốc (status: "taken" | "skipped" | "none")
+  const handleLogDose = async (
+    medicationId: string,
+    date: string,
+    time: string,
+    status: "taken" | "skipped" | "none"
+  ) => {
+    const res = await fetch("/api/medications/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ medicationId, date, time, status })
     });
     if (!res.ok) {
       const data = await res.json();
@@ -1174,8 +1390,10 @@ export default function App() {
     { id: "notes", label: "Ghi chú", icon: FileText },
     { id: "shopping", label: "Đi chợ", icon: ShoppingCart },
     { id: "medications", label: "Thuốc", icon: Pill },
+    ...(canAccessFinance(currentUser.role) ? [{ id: "child-health", label: "Sức khỏe bé", icon: Baby }] : []),
     // Only show finance to Admin and Members; hidden from Child and Guest accounts
     ...(canAccessFinance(currentUser.role) ? [{ id: "finance", label: "Chi tiêu", icon: Wallet }] : []),
+    ...(canAccessFinance(currentUser.role) ? [{ id: "documents", label: "Giấy tờ", icon: FolderLock }] : []),
     { id: "settings", label: "Thiết lập", icon: Settings2 }
   ];
 
@@ -1486,8 +1704,10 @@ export default function App() {
                   currentUser={currentUser}
                   users={users}
                   medications={medications}
+                  medicationLogs={medicationLogs}
                   onSaveMedication={handleSaveMedication}
                   onDeleteMedication={handleDeleteMedication}
+                  onLogDose={handleLogDose}
                 />
               )}
 
@@ -1498,9 +1718,19 @@ export default function App() {
                   transactions={transactions}
                   budgets={budgets}
                   recurringBills={recurringBills}
+                  savingsGoals={savingsGoals}
+                  debts={debts}
                   assets={assets}
                   widgets={widgets}
                   onSaveTransaction={handleSaveTransaction}
+                  onSaveSavingsGoal={handleSaveSavingsGoal}
+                  onDeleteSavingsGoal={handleDeleteSavingsGoal}
+                  onContributeSavings={handleContributeSavings}
+                  onRemoveSavingsContribution={handleRemoveSavingsContribution}
+                  onSaveDebt={handleSaveDebt}
+                  onDeleteDebt={handleDeleteDebt}
+                  onAddDebtPayment={handleAddDebtPayment}
+                  onRemoveDebtPayment={handleRemoveDebtPayment}
                   onDeleteTransaction={handleDeleteTransaction}
                   onSaveBudget={handleSaveBudget}
                   onDeleteBudget={handleDeleteBudget}
@@ -1509,6 +1739,29 @@ export default function App() {
                   onDeleteRecurringBill={handleDeleteRecurringBill}
                   onSaveAsset={handleSaveAsset}
                   onDeleteAsset={handleDeleteAsset}
+                />
+              )}
+
+              {activeTab === "child-health" && canAccessFinance(currentUser.role) && (
+                <ChildHealth
+                  currentUser={currentUser}
+                  users={users}
+                  vaccinations={vaccinations}
+                  growthRecords={growthRecords}
+                  onSaveVaccination={handleSaveVaccination}
+                  onDeleteVaccination={handleDeleteVaccination}
+                  onSaveGrowth={handleSaveGrowth}
+                  onDeleteGrowth={handleDeleteGrowth}
+                />
+              )}
+
+              {activeTab === "documents" && canAccessFinance(currentUser.role) && (
+                <Documents
+                  currentUser={currentUser}
+                  users={users}
+                  documents={documents}
+                  onSaveDocument={handleSaveDocument}
+                  onDeleteDocument={handleDeleteDocument}
                 />
               )}
 

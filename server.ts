@@ -270,10 +270,38 @@ const requireRole = (roles: UserRole[]) => {
   };
 };
 
+const canViewSavingsGoal = (goal: { isShared: boolean; creatorId: string }, session: AuthRequest["userSession"]) => {
+  if (!session) return false;
+  return goal.isShared || goal.creatorId === session.userId;
+};
+
+const canManageSavingsGoal = (goal: { isShared: boolean; creatorId: string }, session: AuthRequest["userSession"]) => {
+  if (!session) return false;
+  return goal.creatorId === session.userId || (goal.isShared && session.role === UserRole.ADMIN);
+};
+
+const canViewDocument = (
+  doc: { isShared: boolean; creatorId: string; ownerId?: string },
+  session: AuthRequest["userSession"]
+) => {
+  if (!session) return false;
+  return doc.isShared || doc.creatorId === session.userId || doc.ownerId === session.userId;
+};
+
+const canManageDocument = (
+  doc: { isShared: boolean; creatorId: string; ownerId?: string },
+  session: AuthRequest["userSession"]
+) => {
+  if (!session) return false;
+  return doc.creatorId === session.userId ||
+    doc.ownerId === session.userId ||
+    (doc.isShared && session.role === UserRole.ADMIN);
+};
+
 // --- MEDIA UPLOAD ---
 // Accepts an optimized base64 data URL, writes it to disk under the given
 // category folder, and returns the "/uploads/..." URL to store in the DB.
-const UPLOAD_CATEGORIES = new Set(["avatars", "assets", "receipts"]);
+const UPLOAD_CATEGORIES = new Set(["avatars", "assets", "receipts", "documents"]);
 
 app.post("/api/uploads", requireAuth, (req: AuthRequest, res: Response) => {
   const { dataUrl, category, subfolder } = req.body || {};
@@ -737,6 +765,128 @@ app.delete("/api/finance/recurring-bills/:id", requireAuth, requireRole([UserRol
   res.json({ success: true });
 });
 
+// --- MỤC TIÊU TIẾT KIỆM ---
+app.get("/api/finance/savings-goals", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const savingsGoals = FamilyDB.getSavingsGoals().filter(goal => canViewSavingsGoal(goal, session));
+  res.json({ savingsGoals });
+});
+
+app.post("/api/finance/savings-goals", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  if (req.body?.id) {
+    const existing = FamilyDB.getSavingsGoals().find(g => g.id === req.body.id);
+    if (!existing) {
+      res.status(404).json({ error: "Khong tim thay muc tieu tiet kiem" });
+      return;
+    }
+    if (!canManageSavingsGoal(existing, session)) {
+      res.status(403).json({ error: "Ban khong co quyen sua muc tieu tiet kiem nay." });
+      return;
+    }
+  }
+  try {
+    const goal = FamilyDB.saveSavingsGoal(req.body, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { savingsGoalId: goal.id });
+    res.json({ goal });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/finance/savings-goals/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const existing = FamilyDB.getSavingsGoals().find(g => g.id === req.params.id);
+  if (existing && !canManageSavingsGoal(existing, session)) {
+    res.status(403).json({ error: "Ban khong co quyen xoa muc tieu tiet kiem nay." });
+    return;
+  }
+  try {
+    FamilyDB.deleteSavingsGoal(req.params.id, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { deletedGoalId: req.params.id });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/finance/savings-goals/:id/contributions", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const existing = FamilyDB.getSavingsGoals().find(g => g.id === req.params.id);
+  if (existing && !canViewSavingsGoal(existing, session)) {
+    res.status(403).json({ error: "Ban khong co quyen ghi nhan muc tieu tiet kiem nay." });
+    return;
+  }
+  try {
+    const goal = FamilyDB.addSavingsContribution(req.params.id, req.body, session.userId);
+    broadcastSyncEvent("FINANCE_UPDATE", { savingsGoalId: goal.id });
+    res.json({ goal });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/finance/savings-goals/:id/contributions/:cid", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const existing = FamilyDB.getSavingsGoals().find(g => g.id === req.params.id);
+  const contribution = existing?.contributions.find(c => c.id === req.params.cid);
+  if (existing && (!canViewSavingsGoal(existing, session) || (!canManageSavingsGoal(existing, session) && contribution?.byId !== session.userId))) {
+    res.status(403).json({ error: "Ban khong co quyen xoa lan ghi nhan nay." });
+    return;
+  }
+  try {
+    const goal = FamilyDB.removeSavingsContribution(req.params.id, req.params.cid);
+    broadcastSyncEvent("FINANCE_UPDATE", { savingsGoalId: goal.id });
+    res.json({ goal });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --- VAY / CHO MƯỢN (NỢ) ---
+app.get("/api/finance/debts", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (_req: AuthRequest, res: Response) => {
+  res.json({ debts: FamilyDB.getDebts() });
+});
+
+app.post("/api/finance/debts", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const debt = FamilyDB.saveDebt(req.body, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { debtId: debt.id });
+    res.json({ debt });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/finance/debts/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  FamilyDB.deleteDebt(req.params.id, session.userId, session.username);
+  broadcastSyncEvent("FINANCE_UPDATE", { deletedDebtId: req.params.id });
+  res.json({ success: true });
+});
+
+app.post("/api/finance/debts/:id/payments", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const debt = FamilyDB.addDebtPayment(req.params.id, req.body, session.userId);
+    broadcastSyncEvent("FINANCE_UPDATE", { debtId: debt.id });
+    res.json({ debt });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/finance/debts/:id/payments/:pid", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  try {
+    const debt = FamilyDB.removeDebtPayment(req.params.id, req.params.pid);
+    broadcastSyncEvent("FINANCE_UPDATE", { debtId: debt.id });
+    res.json({ debt });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.get("/api/finance/assets", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
   res.json({ assets: FamilyDB.getAssets() });
 });
@@ -915,6 +1065,109 @@ app.post("/api/medications", requireAuth, requireRole([UserRole.ADMIN, UserRole.
 app.delete("/api/medications/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
   FamilyDB.deleteMedication(req.params.id);
   broadcastSyncEvent("MEDICATIONS_UPDATE", { deletedId: req.params.id });
+  res.json({ success: true });
+});
+
+// Nhật ký uống thuốc — danh sách log gần đây (mặc định 30 ngày, hoặc ?since=YYYY-MM-DD)
+app.get("/api/medications/logs", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const since = typeof req.query.since === "string" ? req.query.since : undefined;
+  res.json({ logs: FamilyDB.getMedicationLogs(since) });
+});
+
+// Ghi nhận một liều (taken/skipped) hoặc bỏ đánh dấu (none)
+app.post("/api/medications/logs", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const result = FamilyDB.logMedicationDose(req.body, session.userId);
+    broadcastSyncEvent("MEDICATIONS_UPDATE", { medicationId: req.body?.medicationId });
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --- KHO GIẤY TỜ API (chỉ Admin/Member) ---
+
+app.get("/api/documents", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const documents = FamilyDB.getDocuments().filter(doc => canViewDocument(doc, session));
+  res.json({ documents });
+});
+
+app.post("/api/documents", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  if (req.body?.id) {
+    const existing = FamilyDB.getDocuments().find(d => d.id === req.body.id);
+    if (!existing) {
+      res.status(404).json({ error: "Khong tim thay giay to" });
+      return;
+    }
+    if (!canManageDocument(existing, session)) {
+      res.status(403).json({ error: "Ban khong co quyen sua giay to nay." });
+      return;
+    }
+  }
+  try {
+    const document = FamilyDB.saveDocument(req.body, session.userId, session.username);
+    broadcastSyncEvent("DOCUMENTS_UPDATE", { documentId: document.id });
+    res.json({ document });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/documents/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const existing = FamilyDB.getDocuments().find(d => d.id === req.params.id);
+  if (existing && !canManageDocument(existing, session)) {
+    res.status(403).json({ error: "Ban khong co quyen xoa giay to nay." });
+    return;
+  }
+  try {
+    FamilyDB.deleteDocument(req.params.id, session.userId, session.username);
+    broadcastSyncEvent("DOCUMENTS_UPDATE", { deletedId: req.params.id });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --- SỨC KHỎE TRẺ: TIÊM CHỦNG & TĂNG TRƯỞNG (chỉ Admin/Member) ---
+app.get("/api/child-health", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (_req: AuthRequest, res: Response) => {
+  res.json({ vaccinations: FamilyDB.getVaccinations(), growthRecords: FamilyDB.getGrowthRecords() });
+});
+
+app.post("/api/child-health/vaccinations", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const vaccination = FamilyDB.saveVaccination(req.body, session.userId, session.username);
+    broadcastSyncEvent("CHILD_HEALTH_UPDATE", { vaccinationId: vaccination.id });
+    res.json({ vaccination });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/child-health/vaccinations/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  FamilyDB.deleteVaccination(req.params.id);
+  broadcastSyncEvent("CHILD_HEALTH_UPDATE", { deletedVaccinationId: req.params.id });
+  res.json({ success: true });
+});
+
+app.post("/api/child-health/growth", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const record = FamilyDB.saveGrowthRecord(req.body, session.userId, session.username);
+    broadcastSyncEvent("CHILD_HEALTH_UPDATE", { growthId: record.id });
+    res.json({ record });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/child-health/growth/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  FamilyDB.deleteGrowthRecord(req.params.id);
+  broadcastSyncEvent("CHILD_HEALTH_UPDATE", { deletedGrowthId: req.params.id });
   res.json({ success: true });
 });
 
