@@ -20,6 +20,15 @@ import {
   RecurringBill,
   FamilyAsset,
   MedicationReminder,
+  MedicationLog,
+  FamilyDocument,
+  DOCUMENT_TYPE_LABELS,
+  SavingsGoal,
+  SavingsContribution,
+  Debt,
+  DebtPayment,
+  VaccinationRecord,
+  GrowthRecord,
   ShoppingItem,
   Notification,
   PushSubscriptionRecord,
@@ -36,6 +45,12 @@ import { dispatchPush } from "./push.js";
 // Whitelist of valid asset types (mirrors AssetType in src/types.ts).
 const VALID_ASSET_TYPES = new Set<string>([
   "crypto", "land", "gold_bar", "gold_ring", "gold_jewelry", "gold_other", "vehicle", "stock", "other"
+]);
+
+// Whitelist of valid document types (mirrors DocumentType in src/types.ts).
+const VALID_DOCUMENT_TYPES = new Set<string>([
+  "cccd", "passport", "driver_license", "vehicle_registration", "vehicle_inspection",
+  "insurance", "health_insurance", "warranty", "contract", "certificate", "other"
 ]);
 
 // Collect the stored image URLs referenced by an asset's photos.
@@ -154,8 +169,14 @@ const initialDBState = (): FamilyOrganizerDB => {
     rewardLedger: [],
     budgets: [],
     recurringBills: [],
+    savingsGoals: [],
+    debts: [],
     assets: [],
     medications: [],
+    medicationLogs: [],
+    vaccinations: [],
+    growthRecords: [],
+    documents: [],
     shoppingItems: [],
     dishLibrary: [],
     mealPlan: null,
@@ -176,8 +197,14 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.rewardLedger = db.rewardLedger || [];
   db.budgets = db.budgets || [];
   db.recurringBills = db.recurringBills || [];
+  db.savingsGoals = db.savingsGoals || [];
+  db.debts = db.debts || [];
   db.assets = db.assets || [];
   db.medications = db.medications || [];
+  db.medicationLogs = db.medicationLogs || [];
+  db.vaccinations = db.vaccinations || [];
+  db.growthRecords = db.growthRecords || [];
+  db.documents = db.documents || [];
   db.shoppingItems = db.shoppingItems || [];
   db.dishLibrary = db.dishLibrary || [];
   db.mealPlan = db.mealPlan || null;
@@ -527,14 +554,19 @@ export class FamilyDB {
       const dob = new Date(u.dateOfBirth);
       if (isNaN(dob.getTime())) return;
 
-      const bday = new Date(year, dob.getMonth(), dob.getDate()).getTime();
-      const diffDays = Math.round((bday - todayMidnight) / 86400000);
-      if (diffDays < 0 || diffDays > 7) return;
+      // Lần sinh nhật sắp tới: nếu năm nay đã qua thì tính sang năm sau → bao luôn ca cuối/đầu năm.
+      let bdayDate = new Date(year, dob.getMonth(), dob.getDate());
+      if (bdayDate.getTime() < todayMidnight) {
+        bdayDate = new Date(year + 1, dob.getMonth(), dob.getDate());
+      }
+      const diffDays = Math.round((bdayDate.getTime() - todayMidnight) / 86400000);
+      if (diffDays > 7) return;
 
-      const notifId = `notif_bday_${u.id}_${year}`;
+      const occYear = bdayDate.getFullYear();
+      const notifId = `notif_bday_${u.id}_${occYear}`;
       if (db.notifications.some(n => n.id === notifId)) return;
 
-      const age = year - dob.getFullYear();
+      const age = occYear - dob.getFullYear();
       const when = diffDays === 0 ? "hôm nay 🎉" : `trong ${diffDays} ngày nữa`;
       const bdayNotif: Notification = {
         id: notifId,
@@ -682,13 +714,25 @@ export class FamilyDB {
         });
       }
 
+      const nextRecurrenceType = (taskData as any).recurrenceType ?? oldTask.recurrenceType ?? "none";
+      const nextRecurrenceEndDate = nextRecurrenceType !== "none"
+        ? ((taskData as any).recurrenceEndDate ?? oldTask.recurrenceEndDate)
+        : undefined;
+      const rawRotation = Object.prototype.hasOwnProperty.call(taskData, "rotationMemberIds")
+        ? (taskData as any).rotationMemberIds
+        : oldTask.rotationMemberIds;
+      const nextRotation = nextRecurrenceType !== "none" && Array.isArray(rawRotation)
+        ? rawRotation.map((id: unknown) => String(id || "").trim()).filter(Boolean)
+        : undefined;
+
       const updatedTask: Task = {
         ...oldTask,
         ...taskData,
         rewardPoints: Math.max(0, Number((taskData as any).rewardPoints ?? oldTask.rewardPoints ?? 0)),
-        recurrenceType: (taskData as any).recurrenceType ?? oldTask.recurrenceType ?? "none",
+        recurrenceType: nextRecurrenceType,
         recurrenceInterval: Math.max(1, Number((taskData as any).recurrenceInterval ?? oldTask.recurrenceInterval ?? 1)),
-        recurrenceEndDate: (taskData as any).recurrenceEndDate ?? oldTask.recurrenceEndDate,
+        recurrenceEndDate: nextRecurrenceEndDate,
+        rotationMemberIds: nextRotation && nextRotation.length > 0 ? nextRotation : undefined,
         sourceRecurringTaskId: (taskData as any).sourceRecurringTaskId ?? oldTask.sourceRecurringTaskId ?? null,
         completedById: isCompleting ? userId : (taskData.completedById ?? oldTask.completedById ?? null),
         completedAt: isCompleting ? nowStr : (taskData.completedAt ?? oldTask.completedAt ?? null),
@@ -729,11 +773,19 @@ export class FamilyDB {
         );
 
         if (nextDueDate && nextDue && (!recurrenceEnd || nextDue.getTime() <= recurrenceEnd.getTime()) && !alreadyGenerated) {
+          // Xoay vòng người nhận: chuyển sang thành viên kế tiếp trong danh sách (nếu có cấu hình).
+          let nextAssignee = updatedTask.assigneeId;
+          const rotation = (updatedTask.rotationMemberIds || []).filter(Boolean);
+          if (rotation.length > 0) {
+            const curIdx = rotation.indexOf(updatedTask.assigneeId || "");
+            nextAssignee = rotation[(curIdx + 1) % rotation.length];
+          }
           const nextTask: Task = {
             ...updatedTask,
             id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
             status: "todo" as any,
             dueDate: nextDueDate,
+            assigneeId: nextAssignee,
             sourceRecurringTaskId: rootId,
             completedById: null,
             completedAt: null,
@@ -774,6 +826,7 @@ export class FamilyDB {
         recurrenceType: (taskData as any).recurrenceType || "none",
         recurrenceInterval: Math.max(1, Number((taskData as any).recurrenceInterval || 1)),
         recurrenceEndDate: (taskData as any).recurrenceEndDate || undefined,
+        rotationMemberIds: (taskData as any).rotationMemberIds || undefined,
         sourceRecurringTaskId: null,
         comments: [],
         history: [{
@@ -1110,6 +1163,313 @@ export class FamilyDB {
     this.writeRaw(db);
   }
 
+  // --- Mục tiêu tiết kiệm ---
+  public static getSavingsGoals(): SavingsGoal[] {
+    return this.readRaw().savingsGoals;
+  }
+
+  public static saveSavingsGoal(data: Partial<SavingsGoal>, userId: string, username: string): SavingsGoal {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    if (!data.name || !data.name.trim()) throw new Error("Thieu ten muc tieu tiet kiem");
+    const target = Number(data.targetAmount) || 0;
+    if (target <= 0) throw new Error("So tien muc tieu phai lon hon 0");
+
+    if (data.id) {
+      const idx = db.savingsGoals.findIndex(g => g.id === data.id);
+      if (idx === -1) throw new Error("Khong tim thay muc tieu tiet kiem");
+      const updated: SavingsGoal = {
+        ...db.savingsGoals[idx],
+        name: data.name.trim(),
+        targetAmount: target,
+        deadline: data.deadline || undefined,
+        color: data.color || db.savingsGoals[idx].color,
+        note: data.note?.trim() || undefined,
+        isShared: data.isShared !== undefined ? data.isShared : db.savingsGoals[idx].isShared,
+        updatedAt: now
+        // contributions giữ nguyên — chỉ sửa qua add/removeContribution
+      };
+      db.savingsGoals[idx] = updated;
+      this.writeRaw(db);
+      return updated;
+    }
+
+    const goal: SavingsGoal = {
+      id: `goal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: data.name.trim(),
+      targetAmount: target,
+      deadline: data.deadline || undefined,
+      color: data.color || "emerald",
+      note: data.note?.trim() || undefined,
+      isShared: data.isShared !== undefined ? data.isShared : true,
+      creatorId: userId,
+      contributions: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    db.savingsGoals.unshift(goal);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Tiet kiem", `Da tao muc tieu "${goal.name}".`);
+    return goal;
+  }
+
+  public static deleteSavingsGoal(id: string, userId: string, username: string): void {
+    const db = this.readRaw();
+    const goal = db.savingsGoals.find(g => g.id === id);
+    if (!goal) return;
+    db.savingsGoals = db.savingsGoals.filter(g => g.id !== id);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Tiet kiem", `Da xoa muc tieu "${goal.name}".`);
+  }
+
+  public static addSavingsContribution(
+    goalId: string,
+    data: { amount?: number; date?: string; note?: string },
+    userId: string
+  ): SavingsGoal {
+    const db = this.readRaw();
+    const goal = db.savingsGoals.find(g => g.id === goalId);
+    if (!goal) throw new Error("Khong tim thay muc tieu tiet kiem");
+    const amount = Number(data.amount) || 0;
+    if (amount === 0) throw new Error("So tien dong gop phai khac 0");
+    const contribution: SavingsContribution = {
+      id: `contrib_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      amount,
+      date: data.date || new Date().toISOString().slice(0, 10),
+      note: data.note?.trim() || undefined,
+      byId: userId,
+      createdAt: new Date().toISOString()
+    };
+    goal.contributions.unshift(contribution);
+    goal.updatedAt = new Date().toISOString();
+    this.writeRaw(db);
+    return goal;
+  }
+
+  public static removeSavingsContribution(goalId: string, contributionId: string): SavingsGoal {
+    const db = this.readRaw();
+    const goal = db.savingsGoals.find(g => g.id === goalId);
+    if (!goal) throw new Error("Khong tim thay muc tieu tiet kiem");
+    goal.contributions = goal.contributions.filter(c => c.id !== contributionId);
+    goal.updatedAt = new Date().toISOString();
+    this.writeRaw(db);
+    return goal;
+  }
+
+  // --- Theo dõi vay / cho mượn (nợ) ---
+  public static getDebts(): Debt[] {
+    return this.readRaw().debts;
+  }
+
+  public static saveDebt(data: Partial<Debt>, userId: string, username: string): Debt {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    if (!data.counterparty || !data.counterparty.trim()) throw new Error("Thieu ten nguoi/ngan hang");
+    const amount = Number(data.amount) || 0;
+    if (amount <= 0) throw new Error("So tien no phai lon hon 0");
+    const direction = data.direction === "lent" ? "lent" : "borrowed";
+
+    if (data.id) {
+      const idx = db.debts.findIndex(d => d.id === data.id);
+      if (idx === -1) throw new Error("Khong tim thay khoan no");
+      const updated: Debt = {
+        ...db.debts[idx],
+        direction,
+        counterparty: data.counterparty.trim(),
+        amount,
+        dueDate: data.dueDate || undefined,
+        note: data.note?.trim() || undefined,
+        isSettled: data.isSettled !== undefined ? data.isSettled : db.debts[idx].isSettled,
+        updatedAt: now
+        // payments giữ nguyên — chỉ sửa qua add/removeDebtPayment
+      };
+      db.debts[idx] = updated;
+      this.writeRaw(db);
+      return updated;
+    }
+
+    const debt: Debt = {
+      id: `debt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      direction,
+      counterparty: data.counterparty.trim(),
+      amount,
+      dueDate: data.dueDate || undefined,
+      note: data.note?.trim() || undefined,
+      isSettled: false,
+      creatorId: userId,
+      payments: [],
+      createdAt: now,
+      updatedAt: now
+    };
+    db.debts.unshift(debt);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "No", `Da them khoan ${direction === "lent" ? "cho muon" : "vay"} voi "${debt.counterparty}".`);
+    return debt;
+  }
+
+  public static deleteDebt(id: string, userId: string, username: string): void {
+    const db = this.readRaw();
+    const debt = db.debts.find(d => d.id === id);
+    if (!debt) return;
+    db.debts = db.debts.filter(d => d.id !== id);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "No", `Da xoa khoan no voi "${debt.counterparty}".`);
+  }
+
+  public static addDebtPayment(
+    debtId: string,
+    data: { amount?: number; date?: string; note?: string },
+    userId: string
+  ): Debt {
+    const db = this.readRaw();
+    const debt = db.debts.find(d => d.id === debtId);
+    if (!debt) throw new Error("Khong tim thay khoan no");
+    const amount = Number(data.amount) || 0;
+    if (amount <= 0) throw new Error("So tien tra phai lon hon 0");
+    const payment: DebtPayment = {
+      id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      amount,
+      date: data.date || new Date().toISOString().slice(0, 10),
+      note: data.note?.trim() || undefined,
+      byId: userId,
+      createdAt: new Date().toISOString()
+    };
+    debt.payments.unshift(payment);
+    // Tự đánh dấu tất toán khi đã trả đủ.
+    const paid = debt.payments.reduce((s, p) => s + p.amount, 0);
+    if (paid >= debt.amount) debt.isSettled = true;
+    debt.updatedAt = new Date().toISOString();
+    this.writeRaw(db);
+    return debt;
+  }
+
+  public static removeDebtPayment(debtId: string, paymentId: string): Debt {
+    const db = this.readRaw();
+    const debt = db.debts.find(d => d.id === debtId);
+    if (!debt) throw new Error("Khong tim thay khoan no");
+    debt.payments = debt.payments.filter(p => p.id !== paymentId);
+    const paid = debt.payments.reduce((s, p) => s + p.amount, 0);
+    if (paid < debt.amount) debt.isSettled = false; // mở lại nếu chưa đủ
+    debt.updatedAt = new Date().toISOString();
+    this.writeRaw(db);
+    return debt;
+  }
+
+  // --- Sức khỏe trẻ: tiêm chủng ---
+  public static getVaccinations(): VaccinationRecord[] {
+    return this.readRaw().vaccinations;
+  }
+
+  public static saveVaccination(data: Partial<VaccinationRecord>, userId: string, username: string): VaccinationRecord {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    if (!data.childId) throw new Error("Thieu thong tin tre");
+    if (!data.name || !data.name.trim()) throw new Error("Thieu ten vac-xin");
+    const status = data.status === "done" || data.status === "skipped" ? data.status : "scheduled";
+
+    if (data.id) {
+      const idx = db.vaccinations.findIndex(v => v.id === data.id);
+      if (idx === -1) throw new Error("Khong tim thay mui tiem");
+      const updated: VaccinationRecord = {
+        ...db.vaccinations[idx],
+        childId: data.childId,
+        name: data.name.trim(),
+        doseLabel: data.doseLabel?.trim() || undefined,
+        scheduledDate: data.scheduledDate || undefined,
+        doneDate: data.doneDate || undefined,
+        status,
+        note: data.note?.trim() || undefined,
+        updatedAt: now
+      };
+      db.vaccinations[idx] = updated;
+      this.writeRaw(db);
+      return updated;
+    }
+
+    const rec: VaccinationRecord = {
+      id: `vac_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      childId: data.childId,
+      name: data.name.trim(),
+      doseLabel: data.doseLabel?.trim() || undefined,
+      scheduledDate: data.scheduledDate || undefined,
+      doneDate: data.doneDate || undefined,
+      status,
+      note: data.note?.trim() || undefined,
+      createdAt: now,
+      updatedAt: now
+    };
+    db.vaccinations.unshift(rec);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Tiem chung", `Da them mui "${rec.name}".`);
+    return rec;
+  }
+
+  public static deleteVaccination(id: string): void {
+    const db = this.readRaw();
+    db.vaccinations = db.vaccinations.filter(v => v.id !== id);
+    this.writeRaw(db);
+  }
+
+  // --- Sức khỏe trẻ: tăng trưởng ---
+  public static getGrowthRecords(): GrowthRecord[] {
+    return this.readRaw().growthRecords;
+  }
+
+  public static saveGrowthRecord(data: Partial<GrowthRecord>, userId: string, username: string): GrowthRecord {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    if (!data.childId) throw new Error("Thieu thong tin tre");
+    if (!data.date) throw new Error("Thieu ngay do");
+    const rawHeight = (data as any).heightCm;
+    const rawWeight = (data as any).weightKg;
+    const height = rawHeight !== undefined && rawHeight !== null && rawHeight !== "" ? Number(rawHeight) : undefined;
+    const weight = rawWeight !== undefined && rawWeight !== null && rawWeight !== "" ? Number(rawWeight) : undefined;
+    if (height === undefined && weight === undefined) {
+      throw new Error("Nhap chieu cao hoac can nang");
+    }
+    if (height !== undefined && (!Number.isFinite(height) || height <= 0)) {
+      throw new Error("Chieu cao phai lon hon 0");
+    }
+    if (weight !== undefined && (!Number.isFinite(weight) || weight <= 0)) {
+      throw new Error("Can nang phai lon hon 0");
+    }
+
+    if (data.id) {
+      const idx = db.growthRecords.findIndex(g => g.id === data.id);
+      if (idx === -1) throw new Error("Khong tim thay ban ghi");
+      const updated: GrowthRecord = {
+        ...db.growthRecords[idx],
+        childId: data.childId,
+        date: data.date,
+        heightCm: height,
+        weightKg: weight,
+        note: data.note?.trim() || undefined
+      };
+      db.growthRecords[idx] = updated;
+      this.writeRaw(db);
+      return updated;
+    }
+
+    const rec: GrowthRecord = {
+      id: `growth_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      childId: data.childId,
+      date: data.date,
+      heightCm: height,
+      weightKg: weight,
+      note: data.note?.trim() || undefined,
+      createdAt: now
+    };
+    db.growthRecords.unshift(rec);
+    this.writeRaw(db);
+    return rec;
+  }
+
+  public static deleteGrowthRecord(id: string): void {
+    const db = this.readRaw();
+    db.growthRecords = db.growthRecords.filter(g => g.id !== id);
+    this.writeRaw(db);
+  }
+
   public static payRecurringBill(id: string, userId: string, username: string): { bill: RecurringBill; transaction: FinancialTransaction } {
     const db = this.readRaw();
     const idx = db.recurringBills.findIndex(b => b.id === id);
@@ -1417,7 +1777,143 @@ export class FamilyDB {
   public static deleteMedication(id: string): void {
     const db = this.readRaw();
     db.medications = db.medications.filter(m => m.id !== id);
+    // Dọn nhật ký liều của lịch thuốc đã xoá để tránh bản ghi mồ côi.
+    db.medicationLogs = db.medicationLogs.filter(l => l.medicationId !== id);
     this.writeRaw(db);
+  }
+
+  // --- Nhật ký uống thuốc (adherence) ---
+  // Trả về log gần đây (mặc định 30 ngày) để client hiển thị liều hôm nay + lịch sử ngắn.
+  public static getMedicationLogs(sinceDate?: string): MedicationLog[] {
+    const logs = this.readRaw().medicationLogs;
+    if (!sinceDate) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      sinceDate = formatLocalDateTime(cutoff, false);
+    }
+    return logs.filter(l => l.date >= sinceDate!);
+  }
+
+  // Ghi nhận một liều. status "none" => xoá bản ghi (quay về chưa đánh dấu).
+  // Định danh liều bởi (medicationId + date + time): bấm lại sẽ cập nhật, không tạo trùng.
+  public static logMedicationDose(
+    data: { medicationId?: string; date?: string; time?: string; status?: string; notes?: string },
+    userId: string
+  ): { log: MedicationLog | null; cleared: boolean } {
+    const db = this.readRaw();
+    const med = db.medications.find(m => m.id === data.medicationId);
+    if (!med) throw new Error("Khong tim thay lich thuoc");
+    if (!data.date || !data.time) throw new Error("Thieu ngay hoac gio cua lieu thuoc");
+    const status = data.status;
+    if (status !== "taken" && status !== "skipped" && status !== "none") {
+      throw new Error("Trang thai lieu thuoc khong hop le");
+    }
+
+    const idx = db.medicationLogs.findIndex(
+      l => l.medicationId === data.medicationId && l.date === data.date && l.time === data.time
+    );
+
+    if (status === "none") {
+      if (idx === -1) return { log: null, cleared: false };
+      db.medicationLogs.splice(idx, 1);
+      this.writeRaw(db);
+      return { log: null, cleared: true };
+    }
+
+    const now = new Date().toISOString();
+    if (idx !== -1) {
+      const updated: MedicationLog = {
+        ...db.medicationLogs[idx],
+        status,
+        loggedById: userId,
+        loggedAt: now,
+        notes: data.notes !== undefined ? data.notes : db.medicationLogs[idx].notes
+      };
+      db.medicationLogs[idx] = updated;
+      this.writeRaw(db);
+      return { log: updated, cleared: false };
+    }
+
+    const log: MedicationLog = {
+      id: `medlog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      medicationId: med.id,
+      patientId: med.patientId,
+      date: data.date,
+      time: data.time,
+      status,
+      loggedById: userId,
+      loggedAt: now,
+      notes: data.notes
+    };
+    db.medicationLogs.unshift(log);
+    this.writeRaw(db);
+    return { log, cleared: false };
+  }
+
+  // --- Kho giấy tờ gia đình ---
+  public static getDocuments(): FamilyDocument[] {
+    return this.readRaw().documents;
+  }
+
+  public static saveDocument(data: Partial<FamilyDocument>, userId: string, username: string): FamilyDocument {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    if (!data.title || !data.title.trim()) throw new Error("Thieu ten giay to");
+    if (!data.type || !VALID_DOCUMENT_TYPES.has(data.type)) throw new Error("Loai giay to khong hop le");
+
+    const files = Array.isArray(data.files) ? data.files : [];
+
+    if (data.id) {
+      const idx = db.documents.findIndex(d => d.id === data.id);
+      if (idx === -1) throw new Error("Khong tim thay giay to");
+      const prev = db.documents[idx];
+      // Xoá file đính kèm đã bị gỡ khỏi danh sách mới để không để lại rác trên đĩa.
+      const newUrls = new Set(files.map(f => f.url));
+      (prev.files || []).forEach(f => { if (!newUrls.has(f.url)) deleteMediaByUrl(f.url); });
+      const updated: FamilyDocument = {
+        ...prev,
+        ...data,
+        title: data.title.trim(),
+        files,
+        updatedAt: now
+      } as FamilyDocument;
+      db.documents[idx] = updated;
+      this.writeRaw(db);
+      this.logActivity(userId, username, "Giay to", `Da cap nhat giay to "${updated.title}".`);
+      return updated;
+    }
+
+    const doc: FamilyDocument = {
+      id: `doc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: data.type,
+      title: data.title.trim(),
+      ownerId: data.ownerId || undefined,
+      documentNumber: data.documentNumber?.trim() || undefined,
+      issuer: data.issuer?.trim() || undefined,
+      issueDate: data.issueDate || undefined,
+      expiryDate: data.expiryDate || undefined,
+      notes: data.notes?.trim() || undefined,
+      files,
+      isShared: data.isShared !== undefined ? data.isShared : false,
+      creatorId: userId,
+      createdAt: now,
+      updatedAt: now
+    };
+    db.documents.unshift(doc);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Giay to", `Da them giay to "${doc.title}".`);
+    return doc;
+  }
+
+  public static deleteDocument(id: string, userId: string, username: string): void {
+    const db = this.readRaw();
+    const doc = db.documents.find(d => d.id === id);
+    if (!doc) return;
+    // Dọn các tệp scan/ảnh đính kèm trên đĩa.
+    (doc.files || []).forEach(f => deleteMediaByUrl(f.url));
+    db.documents = db.documents.filter(d => d.id !== id);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Giay to", `Da xoa giay to "${doc.title}".`);
   }
 
   // Pre-deadline reminders: notify before tasks are due and before plans start.
@@ -1450,6 +1946,8 @@ export class FamilyDB {
         ensure(`notif_taskdue1d_${t.id}`, recipient, "⏰ Sắp đến hạn công việc", `"${t.title}" đến hạn lúc ${t.dueDate}.`, "task");
       } else if (diffMin > 0 && diffMin <= 60) {
         ensure(`notif_taskdue1h_${t.id}`, recipient, "⏰ Công việc sắp đến hạn!", `"${t.title}" sẽ đến hạn trong vòng 1 giờ (${t.dueDate}).`, "task");
+      } else if (diffMin <= 0) {
+        ensure(`notif_taskoverdue_${t.id}`, recipient, "🔴 Công việc đã quá hạn", `"${t.title}" đã quá hạn (${t.dueDate}) mà chưa hoàn thành.`, "task");
       }
     });
 
@@ -1496,6 +1994,81 @@ export class FamilyDB {
           );
         }
       });
+    });
+
+    // (Nhắc sinh nhật do generateBirthdayNotifications xử lý riêng — không lặp lại ở đây.)
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    // Nhắc giấy tờ hết hạn — gửi cho người lớn phụ trách (chủ sở hữu nếu là người lớn, ngược lại người tạo).
+    // Dùng KHOẢNG ngày (không phải mốc đúng) để vẫn bắn dù cron lỡ đúng ngày; dedupe theo expiryDate.
+    const adultIds = new Set(db.users.filter(u => u.role === "admin" || u.role === "member").map(u => u.id));
+    db.documents.forEach(doc => {
+      if (!doc.expiryDate) return;
+      const p = String(doc.expiryDate).split("-");
+      if (p.length < 3) return;
+      const ey = Number(p[0]), em = Number(p[1]), ed = Number(p[2]);
+      if (!ey || !em || !ed) return;
+      const expiry = new Date(ey, em - 1, ed);
+      const diffDays = Math.round((expiry.getTime() - todayMidnight.getTime()) / 86400000);
+      const recipient = (doc.ownerId && adultIds.has(doc.ownerId)) ? doc.ownerId : doc.creatorId;
+      if (!recipient) return;
+      const exp = doc.expiryDate;
+      const typeLabel = DOCUMENT_TYPE_LABELS[doc.type] || "Giấy tờ";
+      if (diffDays > 7 && diffDays <= 30) {
+        ensure(`notif_docexp30_${doc.id}_${exp}`, recipient, "📄 Giấy tờ sắp hết hạn", `"${doc.title}" (${typeLabel}) sẽ hết hạn ngày ${exp} — còn ${diffDays} ngày.`, "system");
+      } else if (diffDays > 0 && diffDays <= 7) {
+        ensure(`notif_docexp7_${doc.id}_${exp}`, recipient, "📄 Giấy tờ sắp hết hạn!", `"${doc.title}" (${typeLabel}) chỉ còn ${diffDays} ngày là hết hạn (${exp}).`, "system");
+      } else if (diffDays === 0) {
+        ensure(`notif_docexp0_${doc.id}_${exp}`, recipient, "📄 Giấy tờ hết hạn hôm nay", `"${doc.title}" (${typeLabel}) hết hạn hôm nay (${exp}).`, "system");
+      } else if (diffDays < 0) {
+        ensure(`notif_docexpover_${doc.id}_${exp}`, recipient, "🔴 Giấy tờ đã hết hạn", `"${doc.title}" (${typeLabel}) đã hết hạn từ ${exp}.`, "system");
+      }
+    });
+
+    // Nhắc khoản nợ tới hạn (chưa tất toán & còn dư nợ). Gửi cho người tạo. Dedupe theo dueDate.
+    db.debts.forEach(d => {
+      if (d.isSettled || !d.dueDate) return;
+      const remaining = d.amount - (d.payments || []).reduce((s, p) => s + p.amount, 0);
+      if (remaining <= 0) return;
+      const p = String(d.dueDate).split("-");
+      if (p.length < 3) return;
+      const y = Number(p[0]), m = Number(p[1]), dd = Number(p[2]);
+      if (!y || !m || !dd) return;
+      const due = new Date(y, m - 1, dd);
+      const diffDays = Math.round((due.getTime() - todayMidnight.getTime()) / 86400000);
+      const recipient = d.creatorId;
+      if (!recipient) return;
+      const verb = d.direction === "lent" ? "thu hồi" : "trả";
+      const who = d.counterparty;
+      const amt = remaining.toLocaleString();
+      if (diffDays > 0 && diffDays <= 7) {
+        ensure(`notif_debtdue7_${d.id}_${d.dueDate}`, recipient, "💸 Khoản nợ sắp đến hạn", `Còn ${diffDays} ngày đến hạn ${verb} ${amt}đ với "${who}".`, "finance");
+      } else if (diffDays === 0) {
+        ensure(`notif_debtdue0_${d.id}_${d.dueDate}`, recipient, "💸 Khoản nợ đến hạn hôm nay", `Hôm nay đến hạn ${verb} ${amt}đ với "${who}".`, "finance");
+      } else if (diffDays < 0) {
+        ensure(`notif_debtover_${d.id}_${d.dueDate}`, recipient, "🔴 Khoản nợ đã quá hạn", `Đã quá hạn ${verb} ${amt}đ với "${who}" (hẹn ${d.dueDate}).`, "finance");
+      }
+    });
+
+    // Nhắc lịch tiêm chủng sắp tới (mũi chưa tiêm có ngày hẹn). Gửi cả nhà, dedupe theo ngày hẹn.
+    db.vaccinations.forEach(v => {
+      if (v.status !== "scheduled" || !v.scheduledDate) return;
+      const p = String(v.scheduledDate).split("-");
+      if (p.length < 3) return;
+      const y = Number(p[0]), m = Number(p[1]), dd = Number(p[2]);
+      if (!y || !m || !dd) return;
+      const when = new Date(y, m - 1, dd);
+      const diffDays = Math.round((when.getTime() - todayMidnight.getTime()) / 86400000);
+      const child = db.users.find(u => u.id === v.childId);
+      const childName = child?.fullName || "Bé";
+      const dose = v.doseLabel ? ` (${v.doseLabel})` : "";
+      if (diffDays > 0 && diffDays <= 7) {
+        ensure(`notif_vacsoon_${v.id}_${v.scheduledDate}`, "all", "💉 Sắp đến lịch tiêm", `${childName} còn ${diffDays} ngày đến lịch tiêm "${v.name}"${dose} (${v.scheduledDate}).`, "medication");
+      } else if (diffDays === 0) {
+        ensure(`notif_vacday_${v.id}_${v.scheduledDate}`, "all", "💉 Hôm nay đến lịch tiêm", `${childName} có lịch tiêm "${v.name}"${dose} hôm nay.`, "medication");
+      } else if (diffDays < 0) {
+        ensure(`notif_vacover_${v.id}_${v.scheduledDate}`, "all", "🔴 Trễ lịch tiêm", `${childName} đã trễ lịch tiêm "${v.name}"${dose} (hẹn ${v.scheduledDate}).`, "medication");
+      }
     });
 
     if (db.notifications.length > 200) {

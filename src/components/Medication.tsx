@@ -4,8 +4,8 @@
  */
 
 import React, { useMemo, useState, useRef } from "react";
-import { Pill, Plus, Trash2, Clock, X } from "lucide-react";
-import { MedicationReminder, User, canManageMedication } from "../types.js";
+import { Pill, Plus, Trash2, Clock, X, Check, Ban } from "lucide-react";
+import { MedicationReminder, MedicationLog, User, canManageMedication } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { TimeSelect24 } from "./DateTimePicker24.js";
 import { useTabFab } from "./FabHost.js";
@@ -14,16 +14,27 @@ interface MedicationProps {
   currentUser: User;
   users: User[];
   medications: MedicationReminder[];
+  medicationLogs: MedicationLog[];
   onSaveMedication: (medication: Partial<MedicationReminder>) => Promise<any>;
   onDeleteMedication: (id: string) => Promise<any>;
+  onLogDose: (medicationId: string, date: string, time: string, status: "taken" | "skipped" | "none") => Promise<any>;
+}
+
+// Ngày hôm nay theo giờ địa phương dạng YYYY-MM-DD (khớp định dạng MedicationLog.date).
+function localToday(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 export function Medication({
   currentUser,
   users,
   medications,
+  medicationLogs,
   onSaveMedication,
-  onDeleteMedication
+  onDeleteMedication,
+  onLogDose
 }: MedicationProps) {
   const [name, setName] = useState("");
   const [dosage, setDosage] = useState("");
@@ -54,6 +65,54 @@ export function Medication({
     () => [...medications].sort((a, b) => a.name.localeCompare(b.name)),
     [medications]
   );
+
+  const canManage = canManageMedication(currentUser.role);
+  const today = localToday();
+  const [doseSaving, setDoseSaving] = useState<string | null>(null);
+
+  // Tra cứu nhanh trạng thái liều theo (medId|time) cho ngày hôm nay.
+  const todayLogMap = useMemo(() => {
+    const map = new Map<string, MedicationLog["status"]>();
+    for (const log of medicationLogs) {
+      if (log.date === today) map.set(`${log.medicationId}|${log.time}`, log.status);
+    }
+    return map;
+  }, [medicationLogs, today]);
+
+  // Lịch thuốc có hiệu lực hôm nay (đang bật + trong khoảng ngày bắt đầu/kết thúc).
+  const isActiveToday = (med: MedicationReminder) =>
+    med.isActive &&
+    (!med.startDate || med.startDate <= today) &&
+    (!med.endDate || med.endDate >= today);
+
+  // Đếm tiến độ liều hôm nay để hiện ở đầu trang.
+  const todayProgress = useMemo(() => {
+    let total = 0;
+    let taken = 0;
+    for (const med of medications) {
+      if (!isActiveToday(med)) continue;
+      for (const time of med.times) {
+        total++;
+        if (todayLogMap.get(`${med.id}|${time}`) === "taken") taken++;
+      }
+    }
+    return { total, taken };
+  }, [medications, todayLogMap, today]);
+
+  // Bấm "Đã uống"/"Bỏ qua": nếu trạng thái đang là chính nó thì bỏ đánh dấu (none).
+  const handleDoseClick = async (med: MedicationReminder, time: string, target: "taken" | "skipped") => {
+    const key = `${med.id}|${time}`;
+    const current = todayLogMap.get(key);
+    const next = current === target ? "none" : target;
+    setDoseSaving(key);
+    try {
+      await onLogDose(med.id, today, time, next);
+    } catch (e) {
+      console.error("Không ghi nhận được liều thuốc", e);
+    } finally {
+      setDoseSaving(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,11 +164,18 @@ export function Medication({
   return (
     <div className="space-y-6" id="medication-module">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
             <Pill className="w-5 h-5 text-rose-400" /> Nhắc thuốc gia đình
           </h3>
-          <span className="text-[10px] text-slate-500 font-mono">{sorted.length} lịch</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            {canManage && todayProgress.total > 0 && (
+              <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border ${todayProgress.taken >= todayProgress.total ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-rose-500/10 text-rose-400 border-rose-500/20"}`}>
+                Hôm nay: {todayProgress.taken}/{todayProgress.total} liều
+              </span>
+            )}
+            <span className="text-[10px] text-slate-500 font-mono">{sorted.length} lịch</span>
+          </div>
         </div>
 
         {canManageMedication(currentUser.role) && (
@@ -193,6 +259,48 @@ export function Medication({
                       </span>
                     ))}
                   </div>
+
+                  {/* Nhật ký liều hôm nay — chỉ hiện cho người quản lý & khi lịch còn hiệu lực */}
+                  {canManage && isActiveToday(med) && med.times.length > 0 && (
+                    <div className="bg-slate-950/40 border border-slate-800 rounded-xl p-2.5 space-y-2">
+                      <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Hôm nay</p>
+                      <div className="space-y-1.5">
+                        {med.times.map(time => {
+                          const key = `${med.id}|${time}`;
+                          const status = todayLogMap.get(key);
+                          const busy = doseSaving === key;
+                          return (
+                            <div key={time} className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-mono text-slate-300 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-500" /> {time}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleDoseClick(med, time, "taken")}
+                                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors disabled:opacity-50 cursor-pointer ${status === "taken" ? "bg-emerald-500 text-slate-950 border-emerald-400" : "bg-slate-900 text-emerald-400 border-slate-700 hover:border-emerald-500/50"}`}
+                                  title="Đã uống"
+                                >
+                                  <Check className="w-3 h-3" /> Đã uống
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => handleDoseClick(med, time, "skipped")}
+                                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors disabled:opacity-50 cursor-pointer ${status === "skipped" ? "bg-amber-500 text-slate-950 border-amber-400" : "bg-slate-900 text-amber-400 border-slate-700 hover:border-amber-500/50"}`}
+                                  title="Bỏ qua liều này"
+                                >
+                                  <Ban className="w-3 h-3" /> Bỏ qua
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   <p className="text-[11px] text-slate-500 leading-relaxed">{med.notes || "Không có ghi chú thêm."}</p>
                 </motion.div>
               );

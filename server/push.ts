@@ -7,7 +7,10 @@
 // to subscribed devices so the PWA behaves like a native app even when closed.
 // No-ops gracefully when VAPID keys are not configured.
 
-import { setVapidDetails, sendNotification } from "web-push";
+// web-push là CommonJS — dưới ESM ("type": "module") không destructure named export
+// trực tiếp được (Node báo "does not provide an export named ..."). Import default rồi lấy field.
+import webpush from "web-push";
+const { setVapidDetails, sendNotification } = webpush;
 import { FamilyOrganizerDB, Notification, PushSubscriptionRecord } from "../src/types.js";
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
