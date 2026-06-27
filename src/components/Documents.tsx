@@ -3,12 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useRef, useState } from "react";
-import { FileText, Plus, Trash2, Pencil, X, Calendar, User as UserIcon, Paperclip, ExternalLink, ShieldAlert } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { FileText, Plus, Trash2, Pencil, X, Calendar, User as UserIcon, Paperclip, ExternalLink, ShieldAlert, ChevronLeft, ChevronRight } from "lucide-react";
 import { FamilyDocument, DocumentFile, DocumentType, DOCUMENT_TYPE_LABELS, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useTabFab } from "./FabHost.js";
+import { useConfirm } from "./ConfirmDialog.js";
+import { useModalA11y } from "../hooks/useModalA11y.js";
 
 interface DocumentsProps {
   currentUser: User;
@@ -40,6 +42,7 @@ function daysUntil(dateStr?: string): number | null {
 export function Documents({ currentUser, users, documents, onSaveDocument, onDeleteDocument }: DocumentsProps) {
   const [type, setType] = useState<DocumentType>("cccd");
   const [title, setTitle] = useState("");
+  const [titleManual, setTitleManual] = useState(false); // người dùng đã tự sửa tên?
   const [ownerId, setOwnerId] = useState("");
   const [documentNumber, setDocumentNumber] = useState("");
   const [issuer, setIssuer] = useState("");
@@ -53,8 +56,28 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [filterType, setFilterType] = useState<string>("all");
+  // Trình xem ảnh (lightbox): ảnh của một giấy tờ + vị trí đang xem.
+  const [viewer, setViewer] = useState<{ files: DocumentFile[]; index: number; title: string } | null>(null);
 
   const formRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const { confirm, ConfirmDialog } = useConfirm();
+
+  const closeViewer = () => setViewer(null);
+  const viewerPrev = () => setViewer(v => v ? { ...v, index: (v.index - 1 + v.files.length) % v.files.length } : v);
+  const viewerNext = () => setViewer(v => v ? { ...v, index: (v.index + 1) % v.files.length } : v);
+  useModalA11y(!!viewer, closeViewer, viewerRef);
+
+  // Mũi tên trái/phải để chuyển ảnh trong lightbox.
+  useEffect(() => {
+    if (!viewer) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") viewerPrev();
+      else if (e.key === "ArrowRight") viewerNext();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewer]);
 
   const canManageDocument = (doc: FamilyDocument) =>
     doc.creatorId === currentUser.id ||
@@ -66,8 +89,20 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }});
 
+  // Tự tạo tên giấy tờ từ loại + chủ sở hữu, vd: "CCCD của Ba", "Đăng kiểm xe".
+  const autoTitle = (t: DocumentType, oId: string) => {
+    const label = DOCUMENT_TYPE_LABELS[t];
+    const owner = users.find(u => u.id === oId);
+    return owner ? `${label} của ${owner.fullName}` : label;
+  };
+
+  // Khi đổi loại/chủ sở hữu mà người dùng chưa tự gõ tên thì cập nhật tên gợi ý.
+  useEffect(() => {
+    if (!titleManual) setTitle(autoTitle(type, ownerId));
+  }, [type, ownerId, titleManual, users]);
+
   const resetForm = () => {
-    setType("cccd"); setTitle(""); setOwnerId(""); setDocumentNumber("");
+    setType("cccd"); setTitle(""); setTitleManual(false); setOwnerId(""); setDocumentNumber("");
     setIssuer(""); setIssueDate(""); setExpiryDate(""); setNotes("");
     setIsShared(false); setFiles([]); setEditingId(null); setError("");
   };
@@ -75,6 +110,8 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
   const startEdit = (doc: FamilyDocument) => {
     setType(doc.type);
     setTitle(doc.title);
+    // Nếu tên trùng tên tự sinh thì vẫn cho cập nhật theo loại/chủ sở hữu; ngược lại giữ nguyên.
+    setTitleManual(doc.title !== autoTitle(doc.type, doc.ownerId || ""));
     setOwnerId(doc.ownerId || "");
     setDocumentNumber(doc.documentNumber || "");
     setIssuer(doc.issuer || "");
@@ -129,16 +166,13 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!title.trim()) {
-      setError("Nhập tên/loại giấy tờ.");
-      return;
-    }
+    const finalTitle = title.trim() || autoTitle(type, ownerId);
     setSaving(true);
     try {
       await onSaveDocument({
         id: editingId || undefined,
         type,
-        title: title.trim(),
+        title: finalTitle,
         ownerId: ownerId || undefined,
         documentNumber: documentNumber.trim() || undefined,
         issuer: issuer.trim() || undefined,
@@ -157,7 +191,13 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
   };
 
   const handleDelete = async (doc: FamilyDocument) => {
-    if (!window.confirm(`Xóa giấy tờ "${doc.title}"? Ảnh đính kèm cũng sẽ bị xóa.`)) return;
+    const ok = await confirm({
+      title: "Xóa giấy tờ?",
+      message: `Xóa "${doc.title}"? Ảnh/scan đính kèm cũng sẽ bị xóa và không thể khôi phục.`,
+      confirmLabel: "Xóa",
+      tone: "danger"
+    });
+    if (!ok) return;
     try {
       await onDeleteDocument(doc.id);
       if (editingId === doc.id) resetForm();
@@ -215,7 +255,24 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
           <select value={type} onChange={(e) => setType(e.target.value as DocumentType)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500">
             {DOC_TYPE_ORDER.map(t => <option key={t} value={t}>{DOCUMENT_TYPE_LABELS[t]}</option>)}
           </select>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Tên giấy tờ (vd: CCCD của Ba)" className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500" />
+          <div className="md:col-span-4 relative">
+            <input
+              value={title}
+              onChange={(e) => { setTitle(e.target.value); setTitleManual(e.target.value.trim() !== ""); }}
+              placeholder="Tên tự tạo từ loại + chủ sở hữu (có thể sửa)"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 pr-16 text-slate-200 outline-none focus:border-indigo-500"
+            />
+            {titleManual && (
+              <button
+                type="button"
+                onClick={() => { setTitleManual(false); setTitle(autoTitle(type, ownerId)); }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 bg-slate-800 rounded-md px-1.5 py-0.5 cursor-pointer"
+                title="Quay lại tên tự tạo"
+              >
+                Tự tạo
+              </button>
+            )}
+          </div>
 
           <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500">
             <option value="">Chủ sở hữu (tùy chọn)</option>
@@ -226,11 +283,11 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
 
           <div className="md:col-span-3 space-y-1">
             <label className="text-slate-500 text-[10px] block">Ngày cấp</label>
-            <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500 font-mono" />
+            <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className="w-full min-w-0 box-border appearance-none bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500 font-mono" />
           </div>
           <div className="md:col-span-3 space-y-1">
             <label className="text-slate-500 text-[10px] block">Ngày hết hạn (để nhắc)</label>
-            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500 font-mono" />
+            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="w-full min-w-0 box-border appearance-none bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500 font-mono" />
           </div>
 
           <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú thêm..." className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500" />
@@ -346,13 +403,19 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
 
                   {doc.files && doc.files.length > 0 && (
                     <div className="flex flex-wrap gap-2 pt-1">
-                      {doc.files.map(f => (
-                        <a key={f.id} href={f.url} target="_blank" rel="noreferrer" className="relative group" title={`Mở ${f.fileName}`}>
+                      {doc.files.map((f, i) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => setViewer({ files: doc.files, index: i, title: doc.title })}
+                          className="relative group cursor-pointer"
+                          title={`Xem ${f.fileName}`}
+                        >
                           <img src={f.url} alt={f.fileName} className="w-14 h-14 object-cover rounded-lg border border-slate-700" />
                           <span className="absolute inset-0 bg-slate-950/0 group-hover:bg-slate-950/40 rounded-lg flex items-center justify-center transition-colors">
                             <ExternalLink className="w-4 h-4 text-white opacity-0 group-hover:opacity-100" />
                           </span>
-                        </a>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -364,6 +427,46 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
           </AnimatePresence>
         </div>
       )}
+
+      {/* Trình xem ảnh giấy tờ */}
+      {viewer && viewer.files[viewer.index] && (
+        <div onClick={closeViewer} className="fixed inset-0 bg-slate-950/90 flex items-center justify-center z-[60] p-4" id="document-photo-viewer">
+          <div ref={viewerRef} tabIndex={-1} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Xem ảnh giấy tờ" className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col outline-none">
+            <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-100 truncate">{viewer.title}</p>
+                <p className="text-[11px] text-slate-500 tabular-nums truncate">
+                  {viewer.files[viewer.index].fileName}
+                  {viewer.files.length > 1 && ` • ${viewer.index + 1}/${viewer.files.length}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <a href={viewer.files[viewer.index].url} target="_blank" rel="noreferrer" aria-label="Mở ảnh gốc" title="Mở ảnh gốc trong tab mới" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center">
+                  <ExternalLink className="size-4" />
+                </a>
+                <button type="button" onClick={closeViewer} aria-label="Đóng" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center">
+                  <X className="size-4" />
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 bg-slate-950 flex items-center justify-center p-3 relative">
+              <img src={viewer.files[viewer.index].url} alt={viewer.files[viewer.index].fileName} className="max-h-[72vh] max-w-full object-contain rounded-lg" />
+              {viewer.files.length > 1 && (
+                <>
+                  <button type="button" onClick={viewerPrev} aria-label="Ảnh trước" className="absolute left-3 top-1/2 -translate-y-1/2 size-9 rounded-full bg-slate-900/80 hover:bg-slate-800 text-slate-200 flex items-center justify-center border border-slate-700">
+                    <ChevronLeft className="size-5" />
+                  </button>
+                  <button type="button" onClick={viewerNext} aria-label="Ảnh sau" className="absolute right-3 top-1/2 -translate-y-1/2 size-9 rounded-full bg-slate-900/80 hover:bg-slate-800 text-slate-200 flex items-center justify-center border border-slate-700">
+                    <ChevronRight className="size-5" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ConfirmDialog}
     </div>
   );
 }
