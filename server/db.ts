@@ -1273,6 +1273,14 @@ export class FamilyDB {
     const amount = Number(data.amount) || 0;
     if (amount <= 0) throw new Error("So tien no phai lon hon 0");
     const direction = data.direction === "lent" ? "lent" : "borrowed";
+    // Thông tin liên hệ (tùy chọn) + ảnh đính kèm (giấy tờ, biên nhận chuyển khoản)
+    const address = data.address?.trim() || undefined;
+    const phone = data.phone?.trim() || undefined;
+    const bankName = data.bankName?.trim() || undefined;
+    const loanDate = data.loanDate || undefined;
+    const attachments = Array.isArray(data.attachments)
+      ? data.attachments.filter(u => typeof u === "string" && u.trim()).slice(0, 12)
+      : undefined;
 
     if (data.id) {
       const idx = db.debts.findIndex(d => d.id === data.id);
@@ -1281,7 +1289,12 @@ export class FamilyDB {
         ...db.debts[idx],
         direction,
         counterparty: data.counterparty.trim(),
+        address,
+        phone,
+        bankName,
+        attachments,
         amount,
+        loanDate,
         dueDate: data.dueDate || undefined,
         note: data.note?.trim() || undefined,
         isSettled: data.isSettled !== undefined ? data.isSettled : db.debts[idx].isSettled,
@@ -1297,7 +1310,12 @@ export class FamilyDB {
       id: `debt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       direction,
       counterparty: data.counterparty.trim(),
+      address,
+      phone,
+      bankName,
+      attachments,
       amount,
+      loanDate,
       dueDate: data.dueDate || undefined,
       note: data.note?.trim() || undefined,
       isSettled: false,

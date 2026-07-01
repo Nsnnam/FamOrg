@@ -67,6 +67,7 @@ import { Assistant } from "./components/Assistant.js";
 import { FabProvider } from "./components/FabHost.js";
 import { Settings } from "./components/Settings.js";
 import { useModalA11y } from "./hooks/useModalA11y.js";
+import { reloadOnce, scheduleReloadFallback } from "./utils/appReload.js";
 import { motion, AnimatePresence } from "motion/react";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
@@ -110,11 +111,13 @@ export default function App() {
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
-    let refreshing = false;
+    // Chỉ reload khi controller ĐỔI do một bản SW mới tiếp quản (cập nhật thật).
+    // Lần cài đầu tiên, clients.claim() cũng bắn controllerchange nhưng lúc đó
+    // chưa có controller cũ — bỏ qua để không tự reload thừa khi mới mở app.
+    const hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (refreshing) return;
-      refreshing = true;
-      window.location.reload();
+      if (!hadController) return;
+      reloadOnce();
     });
     navigator.serviceWorker.register("/sw.js").then(reg => {
       if (reg.waiting) setSwWaiting(reg.waiting);
@@ -202,11 +205,12 @@ export default function App() {
   const handleApplyUpdate = () => {
     if (swWaiting) {
       // A new service worker is ready: activate it; controllerchange reloads us.
+      // Fallback reload only if controllerchange never fires (reloadOnce dedupes).
       swWaiting.postMessage("SKIP_WAITING");
-      window.setTimeout(() => window.location.reload(), 1500); // fallback if it doesn't fire
+      scheduleReloadFallback(3000);
     } else {
       // New build live but no waiting SW: a network-first reload fetches it.
-      window.location.reload();
+      reloadOnce();
     }
   };
   
