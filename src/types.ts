@@ -278,8 +278,13 @@ export interface DebtPayment {
 export interface Debt {
   id: string;
   direction: "borrowed" | "lent"; // borrowed = mình đang nợ; lent = mình cho mượn
-  counterparty: string;           // tên người hoặc ngân hàng
+  counterparty: string;           // tên người/tổ chức (bắt buộc)
+  address?: string;               // địa chỉ liên hệ
+  phone?: string;                 // số điện thoại
+  bankName?: string;              // ngân hàng / số tài khoản
+  attachments?: string[];         // ảnh giấy tờ vay, biên nhận chuyển khoản... (URL)
   amount: number;                 // tổng nợ gốc
+  loanDate?: string;              // YYYY-MM-DD — ngày mượn / cho mượn (bắt đầu)
   dueDate?: string;               // YYYY-MM-DD — ngày hẹn trả (để nhắc)
   note?: string;
   isSettled: boolean;             // đã tất toán

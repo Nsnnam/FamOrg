@@ -53,6 +53,7 @@ import { useConfirm } from "./ConfirmDialog.js";
 import { Avatar } from "./Avatar.js";
 import { optimizeImageFile } from "../utils/image.js";
 import { uploadDataUrl } from "../utils/uploadImage.js";
+import { reloadOnce, scheduleReloadFallback } from "../utils/appReload.js";
 import { PushNotificationsCard } from "./PushNotificationsCard.js";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
@@ -256,19 +257,26 @@ export function Settings({
   };
 
   // Pull the freshest service worker + assets, then reload into the new build.
+  // Bản mới đã được xác nhận đang chạy trên máy chủ trước khi gọi hàm này.
   const reloadIntoNewVersion = async () => {
     try {
       if ("serviceWorker" in navigator) {
         const reg = await navigator.serviceWorker.getRegistration();
         if (reg) {
           await reg.update().catch(() => {});
-          reg.waiting?.postMessage("SKIP_WAITING");
+          // Nếu có SW mới đang chờ: kích hoạt nó (controllerchange sẽ reload),
+          // kèm dự phòng. Nếu không có: reload thẳng (network-first lấy bản mới).
+          if (reg.waiting) {
+            reg.waiting.postMessage("SKIP_WAITING");
+            scheduleReloadFallback(3000);
+            return;
+          }
         }
       }
     } catch {
       /* ignore — reload still fetches fresh index.html (network-first) */
     }
-    setTimeout(() => window.location.reload(), 700);
+    reloadOnce();
   };
 
   const handleApplyUpdate = async () => {

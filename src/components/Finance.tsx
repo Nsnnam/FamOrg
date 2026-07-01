@@ -11,16 +11,19 @@ import {
   Plus, 
   Trash2, 
   Search, 
-  Calendar, 
-  Image as ImageIcon, 
-  ChevronRight, 
-  DollarSign, 
-  Filter, 
+  Calendar,
+  Image as ImageIcon,
+  ChevronRight,
+  ChevronLeft,
+  DollarSign,
+  Filter,
   X,
   CreditCard,
   FileText,
   CheckCircle2,
-  Pencil
+  Pencil,
+  RotateCcw,
+  BarChart3
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, SavingsGoal, Debt, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -110,6 +113,69 @@ function payButtonLabel(frequency: RecurringBill["frequency"]): string {
   return "Trả tháng này";
 }
 
+// ─── Kỳ xem: Tháng (mặc định) / Quý / Năm ────────────────────────────────
+// Mỗi kỳ được cô lập để so sánh với kỳ liền trước. Mốc `anchor` là một ngày
+// bất kỳ nằm trong kỳ đang xem; các hàm dưới suy ra biên & nhãn từ đó.
+type PeriodMode = "month" | "quarter" | "year";
+
+const PERIOD_LABELS: Record<PeriodMode, string> = { month: "Tháng", quarter: "Quý", year: "Năm" };
+
+// Biên [đầu, cuối] của kỳ chứa `anchor` (theo giờ địa phương).
+function periodBounds(mode: PeriodMode, anchor: Date): { start: Date; end: Date } {
+  const y = anchor.getFullYear();
+  const m = anchor.getMonth();
+  if (mode === "year") return { start: new Date(y, 0, 1), end: new Date(y, 11, 31) };
+  if (mode === "quarter") {
+    const qs = Math.floor(m / 3) * 3;
+    return { start: new Date(y, qs, 1), end: new Date(y, qs + 3, 0) };
+  }
+  return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) };
+}
+
+// YYYY-MM-DD theo giờ địa phương (khớp định dạng tx.date để so sánh chuỗi).
+function toDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+// Dời mốc sang kỳ liền trước/sau (dir = -1 / +1). Luôn ghim ngày = 1 và dựng
+// Date qua constructor (y, m+offset, 1) để JS tự chuẩn hoá tràn tháng/năm,
+// tránh lỗi tràn ngày của setMonth() khi anchor rơi vào ngày 29–31.
+function stepAnchor(mode: PeriodMode, anchor: Date, dir: number): Date {
+  const y = anchor.getFullYear();
+  const m = anchor.getMonth();
+  if (mode === "year") return new Date(y + dir, m, 1);
+  if (mode === "quarter") return new Date(y, m + dir * 3, 1);
+  return new Date(y, m + dir, 1);
+}
+
+function periodLabel(mode: PeriodMode, anchor: Date): string {
+  const y = anchor.getFullYear();
+  if (mode === "year") return `Năm ${y}`;
+  if (mode === "quarter") return `Quý ${Math.floor(anchor.getMonth() / 3) + 1}/${y}`;
+  return `Tháng ${String(anchor.getMonth() + 1).padStart(2, "0")}/${y}`;
+}
+
+// Danh sách khóa "YYYY-MM" các tháng nằm trong kỳ (để gộp ngân sách theo tháng).
+function periodMonths(mode: PeriodMode, anchor: Date): string[] {
+  const { start, end } = periodBounds(mode, anchor);
+  const res: string[] = [];
+  const d = new Date(start.getFullYear(), start.getMonth(), 1);
+  while (d <= end) {
+    res.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    d.setMonth(d.getMonth() + 1);
+  }
+  return res;
+}
+
+// % thay đổi giữa kỳ này và kỳ trước (làm tròn).
+function pctDelta(cur: number, prev: number): number {
+  if (prev === 0) return cur === 0 ? 0 : 100;
+  return Math.round(((cur - prev) / Math.abs(prev)) * 100);
+}
+
 export function Finance({
   currentUser,
   users,
@@ -139,6 +205,10 @@ export function Finance({
   onDeleteAsset
 }: FinanceProps) {
   const [financeView, setFinanceView] = useState<"cashflow" | "assets">("cashflow");
+  // Kỳ xem (Tháng/Quý/Năm) + mốc ngày trong kỳ + bật bảng so sánh 2 cột
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
+  const [anchor, setAnchor] = useState<Date>(() => new Date());
+  const [showCompare, setShowCompare] = useState(false);
   // Query Filter States
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -202,9 +272,34 @@ export function Finance({
   const formatMoneyInput = (n: number) => (n > 0 ? n.toLocaleString("vi-VN") : "");
   const parseMoneyInput = (s: string) => Number(s.replace(/[^\d]/g, "")) || 0;
 
+  // ─── Biên kỳ hiện tại & kỳ liền trước (để lọc + so sánh) ────────────────
+  const { start, end } = useMemo(() => periodBounds(periodMode, anchor), [periodMode, anchor]);
+  const startStr = toDateStr(start);
+  const endStr = toDateStr(end);
+  const prevAnchor = useMemo(() => stepAnchor(periodMode, anchor, -1), [periodMode, anchor]);
+  const prevBounds = useMemo(() => periodBounds(periodMode, prevAnchor), [periodMode, prevAnchor]);
+  const prevStartStr = toDateStr(prevBounds.start);
+  const prevEndStr = toDateStr(prevBounds.end);
+  const todayStr = toDateStr(new Date());
+  const isCurrentPeriod = startStr <= todayStr && todayStr <= endStr;
+  const canGoNext = endStr < todayStr; // không cho vượt quá kỳ hiện tại
+
+  // Giao dịch thuộc kỳ này / kỳ trước (chỉ lọc theo thời gian, không theo bộ lọc tìm kiếm)
+  const periodTx = useMemo(
+    () => transactions.filter(tx => tx.date >= startStr && tx.date <= endStr),
+    [transactions, startStr, endStr]
+  );
+  const prevTx = useMemo(
+    () => transactions.filter(tx => tx.date >= prevStartStr && tx.date <= prevEndStr),
+    [transactions, prevStartStr, prevEndStr]
+  );
+
   // Process filters
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
+      // 0. Thuộc kỳ đang xem
+      if (tx.date < startStr || tx.date > endStr) return false;
+
       // 1. Text description search
       if (searchTerm && !tx.description.toLowerCase().includes(searchTerm.toLowerCase())) return false;
 
@@ -222,28 +317,36 @@ export function Finance({
 
       return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [transactions, searchTerm, categoryFilter, accountFilter, typeFilter, memberFilter]);
+  }, [transactions, startStr, endStr, searchTerm, categoryFilter, accountFilter, typeFilter, memberFilter]);
 
-  // Overall Balances Calculations
-  const metrics = useMemo(() => {
+  // Tổng Thu/Chi/Cân đối của một tập giao dịch
+  const calcTotals = useCallback((list: FinancialTransaction[]) => {
     let totalIncome = 0;
     let totalExpense = 0;
-    
-    // Calculate for filtered set or full set? Full set provides better overview, so we calculate for the full set!
-    transactions.forEach(tx => {
-      if (tx.type === "income") {
-        totalIncome += tx.amount;
-      } else {
-        totalExpense += tx.amount;
-      }
+    list.forEach(tx => {
+      if (tx.type === "income") totalIncome += tx.amount;
+      else totalExpense += tx.amount;
     });
+    return { totalIncome, totalExpense, balance: totalIncome - totalExpense };
+  }, []);
 
-    return {
-      totalIncome,
-      totalExpense,
-      balance: totalIncome - totalExpense
-    };
-  }, [transactions]);
+  // Chỉ số của kỳ đang xem + kỳ liền trước (để hiện delta)
+  const metrics = useMemo(() => calcTotals(periodTx), [calcTotals, periodTx]);
+  const prevMetrics = useMemo(() => calcTotals(prevTx), [calcTotals, prevTx]);
+
+  // Chi tiêu theo hạng mục cho kỳ này / kỳ trước (dùng cho bảng so sánh)
+  const expenseByCat = useCallback((list: FinancialTransaction[]) => {
+    const m: Record<string, number> = {};
+    list.forEach(tx => { if (tx.type === "expense") m[tx.category] = (m[tx.category] || 0) + tx.amount; });
+    return m;
+  }, []);
+  const curCatMap = useMemo(() => expenseByCat(periodTx), [expenseByCat, periodTx]);
+  const prevCatMap = useMemo(() => expenseByCat(prevTx), [expenseByCat, prevTx]);
+  const compareCatKeys = useMemo(
+    () => Array.from(new Set([...Object.keys(curCatMap), ...Object.keys(prevCatMap)]))
+      .sort((a, b) => (curCatMap[b] || 0) - (curCatMap[a] || 0)),
+    [curCatMap, prevCatMap]
+  );
 
   // Số dư theo từng ví (tính từ giao dịch: thu cộng, chi trừ). Chưa có "số dư đầu kỳ".
   const accountBalances = useMemo(() => {
@@ -283,21 +386,32 @@ export function Finance({
     URL.revokeObjectURL(url);
   };
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const currentMonthBudgets = useMemo(
-    () => budgets.filter(b => b.month === currentMonth),
-    [budgets, currentMonth]
-  );
+  // Khóa tháng của mốc đang xem (ngân sách vốn đặt theo tháng)
+  const anchorMonthKey = `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}`;
+  const periodMonthsList = useMemo(() => periodMonths(periodMode, anchor), [periodMode, anchor]);
 
+  // Chế độ Tháng: ngân sách của đúng tháng đó (giữ id để sửa/xóa)
+  const monthBudgets = useMemo(
+    () => budgets.filter(b => b.month === anchorMonthKey),
+    [budgets, anchorMonthKey]
+  );
+  // Chế độ Quý/Năm: gộp hạn mức các tháng trong kỳ theo hạng mục (chỉ xem)
+  const aggregatedBudgets = useMemo(() => {
+    const map = new Map<string, number>();
+    budgets
+      .filter(b => periodMonthsList.includes(b.month))
+      .forEach(b => map.set(b.category, (map.get(b.category) || 0) + b.limit));
+    return Array.from(map, ([category, limit]) => ({ category, limit }));
+  }, [budgets, periodMonthsList]);
+
+  // Đã chi theo hạng mục trong kỳ (đối chiếu với hạn mức ngân sách)
   const budgetUsage = useMemo(() => {
     const spent: Record<string, number> = {};
-    transactions
-      .filter(tx => tx.type === "expense" && tx.date.startsWith(currentMonth))
-      .forEach(tx => {
-        spent[tx.category] = (spent[tx.category] || 0) + tx.amount;
-      });
+    periodTx
+      .filter(tx => tx.type === "expense")
+      .forEach(tx => { spent[tx.category] = (spent[tx.category] || 0) + tx.amount; });
     return spent;
-  }, [transactions, currentMonth]);
+  }, [periodTx]);
 
   // Group by category to build the visual Chart distribution
   const chartCategoryDistribution = useMemo(() => {
@@ -378,7 +492,7 @@ export function Finance({
       return;
     }
     try {
-      await onSaveBudget({ month: currentMonth, category: budgetCategory, limit: Number(budgetLimit) });
+      await onSaveBudget({ month: anchorMonthKey, category: budgetCategory, limit: Number(budgetLimit) });
       setBudgetLimit(0);
     } catch (err: any) {
       setBudgetError(err.message || "Khong luu duoc ngan sach");
@@ -492,6 +606,20 @@ export function Finance({
     }
   };
 
+  // Huy hiệu ± so với kỳ trước. higherIsGood=true (thu): tăng = tốt (xanh);
+  // false (chi): tăng = xấu (đỏ).
+  const DeltaBadge = ({ cur, prev, higherIsGood }: { cur: number; prev: number; higherIsGood: boolean }) => {
+    const d = pctDelta(cur, prev);
+    if (d === 0) return <span className="text-[10px] text-slate-500 font-mono">— so kỳ trước</span>;
+    const up = d > 0;
+    const good = higherIsGood ? up : !up;
+    return (
+      <span className={`text-[10px] font-mono font-bold ${good ? "text-emerald-400" : "text-rose-400"}`}>
+        {up ? "▲" : "▼"} {Math.abs(d)}% <span className="text-slate-500 font-normal">so kỳ trước</span>
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6" id="finance-module">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-xl flex flex-col sm:flex-row gap-2 text-xs font-bold">
@@ -538,29 +666,91 @@ export function Finance({
         </button>
       )}
 
+      {/* Period control: chọn chế độ kỳ + điều hướng kỳ + bật so sánh */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl space-y-3" id="finance-period">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-bold">
+            {(["month", "quarter", "year"] as PeriodMode[]).map(m => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPeriodMode(m)}
+                className={`py-1.5 rounded-lg transition-all cursor-pointer ${periodMode === m ? "bg-sky-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}
+              >
+                {PERIOD_LABELS[m]}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCompare(s => !s)}
+            className={`flex items-center gap-1 px-3 py-2 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${showCompare ? "bg-violet-500 text-slate-950 border-violet-500" : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"}`}
+            title="Bật/tắt bảng so sánh với kỳ liền trước"
+          >
+            <BarChart3 className="w-3.5 h-3.5" /> So sánh
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setAnchor(a => stepAnchor(periodMode, a, -1))}
+            className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:text-sky-400 transition-colors cursor-pointer"
+            title="Kỳ trước"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <div className="text-center min-w-0">
+            <p className="text-sm font-extrabold text-slate-100 truncate">{periodLabel(periodMode, anchor)}</p>
+            {!isCurrentPeriod ? (
+              <button
+                type="button"
+                onClick={() => setAnchor(new Date())}
+                className="inline-flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
+              >
+                <RotateCcw className="w-3 h-3" /> Về kỳ hiện tại
+              </button>
+            ) : (
+              <span className="text-[10px] text-slate-500 font-mono">Kỳ hiện tại</span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => canGoNext && setAnchor(a => stepAnchor(periodMode, a, 1))}
+            disabled={!canGoNext}
+            className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 hover:text-sky-400 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:text-slate-300"
+            title="Kỳ sau"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
       {/* Wallet Cards Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4" id="finance-summaries">
         
-        {/* Total balance card */}
+        {/* Cân đối trong kỳ (Thu − Chi) */}
         <div className="bg-radial from-slate-900 to-slate-950 border border-slate-850 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-semibold">Tích quỹ số dư</span>
+            <span className="text-slate-400 text-xs font-semibold">Cân đối kỳ này</span>
             <div className={`p-2 rounded-xl ${metrics.balance >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
               <Wallet className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-4 space-y-1">
             <h3 className={`text-2xl md:text-3xl font-extrabold font-sans tracking-tight ${metrics.balance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-              {metrics.balance.toLocaleString()} VNĐ
+              {metrics.balance >= 0 ? "+" : ""}{metrics.balance.toLocaleString()} VNĐ
             </h3>
-            <p className="text-slate-500 text-[10px] uppercase font-mono">Dòng tiền hiện khả dụng</p>
+            <DeltaBadge cur={metrics.balance} prev={prevMetrics.balance} higherIsGood={true} />
           </div>
         </div>
 
-        {/* Total Income card */}
+        {/* Thu nhập trong kỳ */}
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-semibold">Tổng nguồn thu nhập</span>
+            <span className="text-slate-400 text-xs font-semibold">Nguồn thu trong kỳ</span>
             <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-400">
               <TrendingUp className="w-5 h-5" />
             </div>
@@ -569,14 +759,14 @@ export function Finance({
             <h3 className="text-2xl font-extrabold text-slate-100 font-sans tracking-tight">
               +{metrics.totalIncome.toLocaleString()} VNĐ
             </h3>
-            <p className="text-slate-500 text-[10px] uppercase font-mono">Doanh thu / Quỹ đóng góp</p>
+            <DeltaBadge cur={metrics.totalIncome} prev={prevMetrics.totalIncome} higherIsGood={true} />
           </div>
         </div>
 
-        {/* Total Expense card */}
+        {/* Chi tiêu trong kỳ */}
         <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-md flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-semibold">Tổng chi tiêu rút ra</span>
+            <span className="text-slate-400 text-xs font-semibold">Chi tiêu trong kỳ</span>
             <div className="bg-rose-500/10 p-2 rounded-xl text-rose-400">
               <TrendingDown className="w-5 h-5" />
             </div>
@@ -585,7 +775,7 @@ export function Finance({
             <h3 className="text-2xl font-extrabold text-slate-100 font-sans tracking-tight">
               -{metrics.totalExpense.toLocaleString()} VNĐ
             </h3>
-            <p className="text-slate-500 text-[10px] uppercase font-mono">Mua sắm & Sinh hoạt phí</p>
+            <DeltaBadge cur={metrics.totalExpense} prev={prevMetrics.totalExpense} higherIsGood={false} />
           </div>
         </div>
       </div>
@@ -609,62 +799,158 @@ export function Finance({
         })}
       </div>
 
+      {/* Bảng so sánh kỳ này ↔ kỳ trước (bật/tắt bằng nút "So sánh") */}
+      {showCompare && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3" id="finance-compare">
+          <h3 className="text-sm font-bold text-slate-200 flex items-center gap-1.5">
+            <BarChart3 className="w-4 h-4 text-violet-400" />
+            So sánh: {periodLabel(periodMode, anchor)} ↔ {periodLabel(periodMode, prevAnchor)}
+          </h3>
+          <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="text-slate-500 text-[10px] uppercase tracking-wider border-b border-slate-800">
+                  <th className="text-left font-semibold py-2 pr-2">Hạng mục</th>
+                  <th className="text-right font-semibold py-2 px-2 whitespace-nowrap">{periodLabel(periodMode, anchor)}</th>
+                  <th className="text-right font-semibold py-2 px-2 whitespace-nowrap">{periodLabel(periodMode, prevAnchor)}</th>
+                  <th className="text-right font-semibold py-2 pl-2">Chênh lệch</th>
+                </tr>
+              </thead>
+              <tbody className="font-mono">
+                {([
+                  { label: "Tổng thu", cur: metrics.totalIncome, prev: prevMetrics.totalIncome, higherIsGood: true },
+                  { label: "Tổng chi", cur: metrics.totalExpense, prev: prevMetrics.totalExpense, higherIsGood: false },
+                  { label: "Cân đối", cur: metrics.balance, prev: prevMetrics.balance, higherIsGood: true }
+                ]).map(row => {
+                  const diff = row.cur - row.prev;
+                  const good = row.higherIsGood ? diff >= 0 : diff <= 0;
+                  return (
+                    <tr key={row.label} className="border-b border-slate-850 font-sans">
+                      <td className="py-2 pr-2 font-bold text-slate-200">{row.label}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-slate-200">{row.cur.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-slate-400">{row.prev.toLocaleString()}</td>
+                      <td className={`py-2 pl-2 text-right tabular-nums font-bold ${diff === 0 ? "text-slate-500" : good ? "text-emerald-400" : "text-rose-400"}`}>
+                        {diff > 0 ? "+" : ""}{diff.toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {compareCatKeys.length > 0 && (
+                  <tr>
+                    <td colSpan={4} className="pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500 font-sans">Chi tiết chi theo hạng mục</td>
+                  </tr>
+                )}
+                {compareCatKeys.map(cat => {
+                  const cur = curCatMap[cat] || 0;
+                  const prev = prevCatMap[cat] || 0;
+                  const diff = cur - prev;
+                  return (
+                    <tr key={cat} className="border-b border-slate-850 font-sans">
+                      <td className="py-1.5 pr-2 text-slate-300">{translateCategory(cat)}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{cur.toLocaleString()}</td>
+                      <td className="py-1.5 px-2 text-right tabular-nums text-slate-500">{prev.toLocaleString()}</td>
+                      <td className={`py-1.5 pl-2 text-right tabular-nums font-semibold ${diff === 0 ? "text-slate-500" : diff <= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                        {diff > 0 ? "+" : ""}{diff.toLocaleString()}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[10px] text-slate-500">Chênh lệch chi tiêu màu đỏ = chi nhiều hơn kỳ trước; màu xanh = tiết kiệm hơn.</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" id="finance-planning">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-200">Ngân sách tháng {currentMonth}</h3>
-            <span className="text-[10px] text-slate-500 font-mono">{currentMonthBudgets.length} hạn mức</span>
+            <h3 className="text-sm font-bold text-slate-200">Ngân sách {periodLabel(periodMode, anchor)}</h3>
+            <span className="text-[10px] text-slate-500 font-mono">
+              {(periodMode === "month" ? monthBudgets.length : aggregatedBudgets.length)} hạn mức
+            </span>
           </div>
-          <form onSubmit={handleCreateBudget} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2 text-xs">
-            <select
-              value={budgetCategory}
-              onChange={(e) => setBudgetCategory(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
-            >
-              <option value="food">Ăn uống</option>
-              <option value="education2">Học tập</option>
-              <option value="utilities">Điện nước</option>
-              <option value="shopping">Mua sắm</option>
-              <option value="medical">Y tế</option>
-              <option value="transport">Đi lại</option>
-              <option value="debt_bank">Trả nợ ngân hàng</option>
-              <option value="debt_personal">Trả nợ cá nhân</option>
-              <option value="other">Khác</option>
-            </select>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={formatMoneyInput(budgetLimit)}
-              onChange={(e) => setBudgetLimit(parseMoneyInput(e.target.value))}
-              placeholder="Hạn mức"
-              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
-            />
-            <button type="submit" className="bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl px-3 py-2 font-bold">
-              Lưu
-            </button>
-          </form>
-          {budgetError && <p className="text-[11px] text-rose-400">{budgetError}</p>}
+
+          {periodMode === "month" ? (
+            <>
+              <form onSubmit={handleCreateBudget} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2 text-xs">
+                <select
+                  value={budgetCategory}
+                  onChange={(e) => setBudgetCategory(e.target.value)}
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+                >
+                  <option value="food">Ăn uống</option>
+                  <option value="education2">Học tập</option>
+                  <option value="utilities">Điện nước</option>
+                  <option value="shopping">Mua sắm</option>
+                  <option value="medical">Y tế</option>
+                  <option value="transport">Đi lại</option>
+                  <option value="debt_bank">Trả nợ ngân hàng</option>
+                  <option value="debt_personal">Trả nợ cá nhân</option>
+                  <option value="other">Khác</option>
+                </select>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatMoneyInput(budgetLimit)}
+                  onChange={(e) => setBudgetLimit(parseMoneyInput(e.target.value))}
+                  placeholder="Hạn mức"
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+                />
+                <button type="submit" className="bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl px-3 py-2 font-bold">
+                  Lưu
+                </button>
+              </form>
+              {budgetError && <p className="text-[11px] text-rose-400">{budgetError}</p>}
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-500 bg-slate-950/60 border border-slate-800 rounded-xl px-3 py-2">
+              Ngân sách đặt theo tháng — đang tổng hợp {periodMonthsList.length} tháng trong kỳ. Chuyển về chế độ <b className="text-slate-300">Tháng</b> để thêm/sửa hạn mức.
+            </p>
+          )}
+
           <div className="space-y-2">
-            {currentMonthBudgets.length === 0 ? (
-              <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có ngân sách cho tháng này.</p>
-            ) : currentMonthBudgets.map(b => {
-              const used = budgetUsage[b.category] || 0;
-              const pct = Math.min(100, Math.round((used / b.limit) * 100));
-              return (
-                <div key={b.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-200">{translateCategory(b.category)}</span>
-                    <button onClick={() => onDeleteBudget(b.id)} className="text-slate-500 hover:text-rose-400">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+            {periodMode === "month" ? (
+              monthBudgets.length === 0 ? (
+                <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có ngân sách cho kỳ này.</p>
+              ) : monthBudgets.map(b => {
+                const used = budgetUsage[b.category] || 0;
+                const pct = Math.min(100, Math.round((used / b.limit) * 100));
+                return (
+                  <div key={b.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-200">{translateCategory(b.category)}</span>
+                      <button onClick={() => onDeleteBudget(b.id)} className="text-slate-500 hover:text-rose-400">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
+                      <div className={`h-full ${used > b.limit ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-mono">{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</p>
                   </div>
-                  <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
-                    <div className={`h-full ${used > b.limit ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
+                );
+              })
+            ) : (
+              aggregatedBudgets.length === 0 ? (
+                <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có ngân sách nào trong kỳ này.</p>
+              ) : aggregatedBudgets.map(b => {
+                const used = budgetUsage[b.category] || 0;
+                const pct = Math.min(100, Math.round((used / b.limit) * 100));
+                return (
+                  <div key={b.category} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-200">{translateCategory(b.category)}</span>
+                      <span className="text-[10px] text-slate-500 font-mono">gộp {periodMonthsList.length} tháng</span>
+                    </div>
+                    <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
+                      <div className={`h-full ${used > b.limit ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-mono">{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</p>
                   </div>
-                  <p className="text-[10px] text-slate-500 font-mono">{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</p>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -920,12 +1206,12 @@ export function Finance({
       {/* Transactions Details List */}
       {filteredTransactions.length === 0 ? (
         <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl py-12 text-center" id="empty-transactions">
-          <p className="text-sm text-slate-500">Bộ lọc chi tiêu không chứa kết quả phù hợp nào.</p>
+          <p className="text-sm text-slate-500">Không có giao dịch nào trong <b className="text-slate-300">{periodLabel(periodMode, anchor)}</b> khớp bộ lọc.</p>
         </div>
       ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden" id="transactions-table">
           <div className="bg-slate-950 p-4 border-b border-slate-800 text-xs text-slate-400 font-semibold uppercase tracking-wider flex justify-between items-center gap-2">
-            <span>Dòng tiền chi tiết ({filteredTransactions.length} bản ghi)</span>
+            <span>Dòng tiền {periodLabel(periodMode, anchor)} ({filteredTransactions.length} bản ghi)</span>
             <button
               type="button"
               onClick={exportTransactionsCsv}

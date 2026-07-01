@@ -5,14 +5,17 @@
 //  - API GET: network-first, fall back to last-known-good cache (offline read).
 //  - API writes (POST/DELETE) and SSE (/api/realtime): not intercepted.
 
-const VERSION = "v3";
+const VERSION = "v4";
 const STATIC_CACHE = `family-static-${VERSION}`;
 const API_CACHE = `family-api-${VERSION}`;
 const APP_SHELL = ["/", "/manifest.webmanifest", "/pwa-icon.svg"];
 
 self.addEventListener("install", event => {
+  // Không tự skipWaiting: một SW mới sẽ CHỜ ở trạng thái "waiting" để người dùng
+  // chủ động bấm cập nhật (trang gửi "SKIP_WAITING"), tránh tự reload cắt ngang.
+  // Riêng lần cài đầu tiên trình duyệt vẫn kích hoạt ngay vì chưa có SW nào chạy.
   event.waitUntil(
-    caches.open(STATIC_CACHE).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches.open(STATIC_CACHE).then(cache => cache.addAll(APP_SHELL))
   );
 });
 
