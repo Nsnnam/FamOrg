@@ -285,9 +285,22 @@ export function Settings({
     setUpdateBusy("apply");
     setUpdateMsg("Đang gửi yêu cầu cập nhật…");
     try {
-      const res = await fetch("/api/update", { method: "POST", headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Cập nhật thất bại.");
+      // Kích hoạt update. Watchtower thường tải image mới & RESTART container app
+      // ngay trong lúc xử lý yêu cầu này → kết nối bị cắt và fetch ném
+      // TypeError("Failed to fetch") DÙ update đã chạy thành công. Vì vậy chỉ coi
+      // là lỗi thật khi server phản hồi rõ ràng (vd Watchtower chưa cấu hình);
+      // lỗi mạng thì xem như đã kích hoạt và chuyển sang chờ bản mới lên.
+      try {
+        const res = await fetch("/api/update", { method: "POST", headers: authHeaders() });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Cập nhật thất bại.");
+        }
+      } catch (err: any) {
+        // TypeError = lỗi mạng (kết nối bị cắt do container đang restart) → tiếp tục chờ.
+        // Lỗi khác (từ nhánh !res.ok ở trên) = lỗi thật → báo ra ngoài.
+        if (!(err instanceof TypeError)) throw err;
+      }
 
       setUpdateBusy("deploying");
       setUpdateMsg("Đã yêu cầu cập nhật. Đang chờ máy chủ tải bản mới…");
