@@ -31,6 +31,7 @@ import { useConfirm } from "./ConfirmDialog.js";
 import { Assets } from "./Assets.js";
 import { SavingsGoals } from "./SavingsGoals.js";
 import { DebtTracker } from "./DebtTracker.js";
+import { ShimmerLine, Reveal } from "./Lively.js";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
@@ -622,7 +623,8 @@ export function Finance({
 
   return (
     <div className="space-y-6" id="finance-module">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-xl flex flex-col sm:flex-row gap-2 text-xs font-bold">
+      <Reveal className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-xl flex flex-col sm:flex-row gap-2 text-xs font-bold">
+        <ShimmerLine accent="emerald" />
         <button
           type="button"
           onClick={() => setFinanceView("cashflow")}
@@ -637,7 +639,7 @@ export function Finance({
         >
           <FileText className="w-4 h-4" /> Tài sản gia đình
         </button>
-      </div>
+      </Reveal>
 
       {financeView === "assets" ? (
         <Assets
@@ -667,7 +669,8 @@ export function Finance({
       )}
 
       {/* Period control: chọn chế độ kỳ + điều hướng kỳ + bật so sánh */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl space-y-3" id="finance-period">
+      <Reveal delay={0.06} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl space-y-3" id="finance-period">
+        <ShimmerLine accent="sky" />
         <div className="flex items-center gap-2">
           <div className="flex-1 grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-bold">
             {(["month", "quarter", "year"] as PeriodMode[]).map(m => (
@@ -726,13 +729,14 @@ export function Finance({
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-      </div>
+      </Reveal>
 
       {/* Wallet Cards Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4" id="finance-summaries">
-        
+
         {/* Cân đối trong kỳ (Thu − Chi) */}
-        <div className="bg-radial from-slate-900 to-slate-950 border border-slate-850 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
+        <Reveal delay={0.1} className="relative overflow-hidden bg-radial from-slate-900 to-slate-950 border border-slate-850 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
+          <ShimmerLine via={metrics.balance >= 0 ? "via-emerald-500/50" : "via-rose-500/50"} />
           <div className="flex items-center justify-between">
             <span className="text-slate-400 text-xs font-semibold">Cân đối kỳ này</span>
             <div className={`p-2 rounded-xl ${metrics.balance >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
@@ -745,10 +749,11 @@ export function Finance({
             </h3>
             <DeltaBadge cur={metrics.balance} prev={prevMetrics.balance} higherIsGood={true} />
           </div>
-        </div>
+        </Reveal>
 
         {/* Thu nhập trong kỳ */}
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-md flex flex-col justify-between">
+        <Reveal delay={0.15} className="relative overflow-hidden bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-md flex flex-col justify-between">
+          <ShimmerLine accent="emerald" />
           <div className="flex items-center justify-between">
             <span className="text-slate-400 text-xs font-semibold">Nguồn thu trong kỳ</span>
             <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-400">
@@ -761,10 +766,11 @@ export function Finance({
             </h3>
             <DeltaBadge cur={metrics.totalIncome} prev={prevMetrics.totalIncome} higherIsGood={true} />
           </div>
-        </div>
+        </Reveal>
 
         {/* Chi tiêu trong kỳ */}
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-md flex flex-col justify-between">
+        <Reveal delay={0.2} className="relative overflow-hidden bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-md flex flex-col justify-between">
+          <ShimmerLine accent="rose" />
           <div className="flex items-center justify-between">
             <span className="text-slate-400 text-xs font-semibold">Chi tiêu trong kỳ</span>
             <div className="bg-rose-500/10 p-2 rounded-xl text-rose-400">
@@ -777,7 +783,7 @@ export function Finance({
             </h3>
             <DeltaBadge cur={metrics.totalExpense} prev={prevMetrics.totalExpense} higherIsGood={false} />
           </div>
-        </div>
+        </Reveal>
       </div>
 
       {/* Số dư theo từng ví (tính từ giao dịch) */}
@@ -863,7 +869,8 @@ export function Finance({
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4" id="finance-planning">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+        <Reveal delay={0.1} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+          <ShimmerLine accent="sky" />
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-200">Ngân sách {periodLabel(periodMode, anchor)}</h3>
             <span className="text-[10px] text-slate-500 font-mono">
@@ -952,9 +959,10 @@ export function Finance({
               })
             )}
           </div>
-        </div>
+        </Reveal>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+        <Reveal delay={0.16} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+          <ShimmerLine accent="emerald" />
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-200">Hóa đơn định kỳ</h3>
             <span className="text-[10px] text-slate-500 font-mono">{recurringBills.length} khoản</span>
@@ -1020,7 +1028,7 @@ export function Finance({
               </div>
             ))}
           </div>
-        </div>
+        </Reveal>
       </div>
 
       {/* Mục tiêu tiết kiệm (sinking fund) */}
@@ -1047,7 +1055,8 @@ export function Finance({
 
       {/* Advanced charts & breakdowns layout */}
       {chartCategoryDistribution.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl grid grid-cols-1 md:grid-cols-2 gap-6" id="finance-statistics">
+        <div className="relative overflow-hidden bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl grid grid-cols-1 md:grid-cols-2 gap-6" id="finance-statistics">
+          <ShimmerLine accent="violet" />
           
           {/* Custom animated category distribution list */}
           <div className="space-y-4">
@@ -1123,7 +1132,8 @@ export function Finance({
       )}
 
       {/* Query Filters blocks and create triggers row */}
-      <div className="bg-slate-900 border border-slate-800 p-4.5 rounded-2xl shadow-xl space-y-3" id="finance-filters">
+      <div className="relative overflow-hidden bg-slate-900 border border-slate-800 p-4.5 rounded-2xl shadow-xl space-y-3" id="finance-filters">
+        <ShimmerLine accent="emerald" />
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-500" />
@@ -1209,7 +1219,8 @@ export function Finance({
           <p className="text-sm text-slate-500">Không có giao dịch nào trong <b className="text-slate-300">{periodLabel(periodMode, anchor)}</b> khớp bộ lọc.</p>
         </div>
       ) : (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden" id="transactions-table">
+        <div className="relative bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden" id="transactions-table">
+          <ShimmerLine accent="sky" />
           <div className="bg-slate-950 p-4 border-b border-slate-800 text-xs text-slate-400 font-semibold uppercase tracking-wider flex justify-between items-center gap-2">
             <span>Dòng tiền {periodLabel(periodMode, anchor)} ({filteredTransactions.length} bản ghi)</span>
             <button

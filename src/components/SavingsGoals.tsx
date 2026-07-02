@@ -7,6 +7,7 @@ import React, { useMemo, useState } from "react";
 import { PiggyBank, Plus, Trash2, Target, Calendar, ChevronDown, ChevronUp, X } from "lucide-react";
 import { SavingsGoal, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
+import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 
 interface SavingsGoalsProps {
   currentUser: User;
@@ -108,10 +109,11 @@ export function SavingsGoals({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+    <Reveal delay={0.1} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+      <ShimmerLine accent="emerald" />
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-          <PiggyBank className="w-5 h-5 text-emerald-400" /> Mục tiêu tiết kiệm
+          <IconChip accent="emerald"><PiggyBank className="w-4 h-4" /></IconChip> Mục tiêu tiết kiệm
         </h3>
         <div className="flex items-center gap-2 flex-wrap">
           {savingsGoals.length > 0 && (
@@ -242,6 +244,6 @@ export function SavingsGoals({
           })}
         </div>
       )}
-    </div>
+    </Reveal>
   );
 }

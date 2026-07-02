@@ -25,6 +25,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
+import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 
 interface NotesProps {
   currentUser: User;
@@ -254,7 +255,8 @@ export function Notes({
     <div className="space-y-6" id="notes-module">
       
       {/* Note headers with search */}
-      <div className="bg-slate-900 border border-slate-800 p-4.5 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4" id="notes-control-header">
+      <Reveal className="relative overflow-hidden bg-slate-900 border border-slate-800 p-4.5 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4" id="notes-control-header">
+        <ShimmerLine accent="sky" />
         
         {/* Search & Tags triggers */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 flex-1">
@@ -292,7 +294,7 @@ export function Notes({
         >
           <Plus className="w-4 h-4" /> Viết ghi chú mới
         </button>
-      </div>
+      </Reveal>
 
       {/* Grid of Results: Pinned block at top, normal block underneath */}
       {filteredNotes.length === 0 ? (
@@ -308,14 +310,17 @@ export function Notes({
                 <Pin className="w-4 h-4 text-yellow-400" /> Được ghim ở đầu ({pinnedNotes.length})
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pinnedNotes.map(note => {
+                {pinnedNotes.map((note, noteIndex) => {
                   const creator = users.find(u => u.id === note.creatorId);
                   return (
-                    <div 
+                    <Reveal
                       key={note.id}
+                      delay={0.06 + staggerDelay(noteIndex)}
+                      hoverLift
                       onClick={() => handleReadNote(note)}
-                      className="bg-slate-900 border border-yellow-500/30 hover:border-yellow-500/50 hover:shadow-lg hover:shadow-yellow-500/2 px-4.5 py-4 rounded-2xl flex flex-col justify-between space-y-4 cursor-pointer relative group transition-all"
+                      className="bg-slate-900 border border-yellow-500/30 hover:border-yellow-500/50 hover:shadow-lg hover:shadow-yellow-500/10 px-4.5 py-4 rounded-2xl flex flex-col justify-between space-y-4 cursor-pointer relative group transition-[box-shadow,border-color] duration-300 overflow-hidden"
                     >
+                      <ShimmerLine accent="yellow" />
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <h4 className="text-sm font-bold text-slate-200 line-clamp-1 group-hover:text-sky-400 transition-colors">{note.title}</h4>
@@ -359,7 +364,7 @@ export function Notes({
                           </button>
                         )}
                       </div>
-                    </div>
+                    </Reveal>
                   );
                 })}
               </div>
@@ -373,13 +378,15 @@ export function Notes({
                 Ghi chú khác ({normalNotes.length})
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {normalNotes.map(note => {
+                {normalNotes.map((note, noteIndex) => {
                   const creator = users.find(u => u.id === note.creatorId);
                   return (
-                    <div 
+                    <Reveal
                       key={note.id}
+                      delay={0.1 + staggerDelay(noteIndex)}
+                      hoverLift
                       onClick={() => handleReadNote(note)}
-                      className="bg-slate-900 border border-slate-800 hover:border-slate-700 hover:shadow-lg px-4.5 py-4 rounded-2xl flex flex-col justify-between space-y-4 cursor-pointer relative group transition-all"
+                      className="bg-slate-900 border border-slate-800 hover:border-sky-500/30 hover:shadow-lg hover:shadow-sky-500/5 px-4.5 py-4 rounded-2xl flex flex-col justify-between space-y-4 cursor-pointer relative group transition-[box-shadow,border-color] duration-300"
                     >
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -427,7 +434,7 @@ export function Notes({
                           </button>
                         )}
                       </div>
-                    </div>
+                    </Reveal>
                   );
                 })}
               </div>

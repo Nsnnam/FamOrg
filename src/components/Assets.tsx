@@ -44,6 +44,7 @@ import { optimizeImageFile } from "../utils/image.js";
 import { uploadDataUrl } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
+import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
@@ -578,9 +579,10 @@ export function Assets({
   return (
     <div className="space-y-5" id="assets-module">
       {/* Market price widgets — BTC, ETH, Vàng, USD */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <Reveal className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Bitcoin */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[88px]">
+        <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[88px]">
+          <ShimmerLine accent="amber" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-amber-400">₿ Bitcoin</span>
             {widgetsOverview?.crypto?.bitcoin ? changeBadge(widgetsOverview.crypto.bitcoin.usd_24h_change) : null}
@@ -596,7 +598,8 @@ export function Assets({
         </div>
 
         {/* Ethereum */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[88px]">
+        <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-indigo-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[88px]">
+          <ShimmerLine accent="indigo" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-indigo-400">Ξ Ethereum</span>
             {widgetsOverview?.crypto?.ethereum ? changeBadge(widgetsOverview.crypto.ethereum.usd_24h_change) : null}
@@ -612,7 +615,8 @@ export function Assets({
         </div>
 
         {/* Vàng */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[88px]">
+        <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-yellow-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-yellow-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[88px]">
+          <ShimmerLine accent="yellow" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-yellow-500">🪙 {widgetsOverview?.gold?.source || "Vàng"}</span>
             {widgetsOverview?.gold ? changeBadge(widgetsOverview.gold.changePct) : null}
@@ -630,7 +634,8 @@ export function Assets({
         </div>
 
         {/* USD/VND */}
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[88px]">
+        <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-emerald-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[88px]">
+          <ShimmerLine accent="emerald" />
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-emerald-400">💵 USD/VND</span>
             {marketPricesStatus === "ok" && (
@@ -655,9 +660,9 @@ export function Assets({
             ) : <PriceSkeleton />}
           </div>
         </div>
-      </div>
+      </Reveal>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <Reveal delay={0.06} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <p className="text-[11px] text-slate-500">Tổng tài sản ước tính</p>
           <p className="mt-1 text-xl font-extrabold text-slate-100 tabular-nums">{formatMoney(stats.totalVnd)}</p>
@@ -678,9 +683,10 @@ export function Assets({
           <p className="mt-1 text-lg font-extrabold text-emerald-400 tabular-nums">{formatMoney(stats.landVnd)}</p>
           {stats.landUsd > 0 && <p className="text-xs font-bold text-emerald-400/70 tabular-nums">+ {formatMoney(stats.landUsd, "USD")}</p>}
         </div>
-      </div>
+      </Reveal>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3">
+      <Reveal delay={0.12} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3">
+        <ShimmerLine accent="emerald" />
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 size-4 text-slate-500" />
@@ -720,7 +726,7 @@ export function Assets({
             </select>
           </div>
         </div>
-      </div>
+      </Reveal>
 
       {filteredAssets.length === 0 ? (
         <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl py-12 text-center space-y-3">
@@ -731,14 +737,14 @@ export function Assets({
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {filteredAssets.map(asset => {
+          {filteredAssets.map((asset, assetIndex) => {
             const owner = users.find(u => u.id === asset.ownerId);
             const creator = users.find(u => u.id === asset.createdById);
             const firstPhoto = asset.photos?.[0];
             const Icon = asset.type === "land" ? Landmark : asset.type === "crypto" ? Coins : asset.type === "vehicle" ? Car : asset.type === "stock" ? LineChart : isGoldType(asset.type) ? Gem : Wallet;
 
             return (
-              <article key={asset.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-4">
+              <Reveal as="article" key={asset.id} delay={0.16 + staggerDelay(assetIndex)} hoverLift className="bg-slate-900 border border-slate-800 hover:border-emerald-500/25 rounded-2xl p-4 shadow-lg hover:shadow-emerald-500/5 transition-[box-shadow,border-color] duration-300 space-y-4">
                 <div className="flex gap-3">
                   <button
                     type="button"
@@ -883,7 +889,7 @@ export function Assets({
                   <span>Tạo bởi {creator ? creator.fullName : "thành viên"}</span>
                   <span className="tabular-nums">{new Date(asset.updatedAt).toLocaleDateString("vi-VN")}</span>
                 </div>
-              </article>
+              </Reveal>
             );
           })}
         </div>

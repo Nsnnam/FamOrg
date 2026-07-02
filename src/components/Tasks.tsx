@@ -25,6 +25,7 @@ import {
 import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, RecurrenceType, isLimitedViewer, isAdultRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { Avatar } from "./Avatar.js";
+import { ShimmerLine, Reveal, IconChip, staggerDelay } from "./Lively.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { DateTimePicker24 } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -470,7 +471,8 @@ export function Tasks({
   return (
     <div className="space-y-6" id="tasks-module">
       {/* Search and Quick Filters Header */}
-      <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-4" id="task-filter-panel">
+      <Reveal className="relative overflow-hidden bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-4" id="task-filter-panel">
+        <ShimmerLine accent="sky" />
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-500" />
@@ -571,10 +573,11 @@ export function Tasks({
             </button>
           </div>
         </div>
-      </div>
+      </Reveal>
 
       {childUsers.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4" id="child-reward-panel">
+        <Reveal delay={0.06} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4" id="child-reward-panel">
+          <ShimmerLine accent="amber" />
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
               <h3 className="text-sm font-bold text-slate-200">Điểm thưởng cho trẻ</h3>
@@ -614,7 +617,7 @@ export function Tasks({
               );
             })}
           </div>
-        </div>
+        </Reveal>
       )}
 
       {/* Tasks List Grid */}
@@ -625,10 +628,14 @@ export function Tasks({
       ) : (
         <>
           <div className="space-y-4" id="tasks-kanban-board">
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
-              <div>
-                <h3 className="text-sm font-bold text-slate-100 text-balance">Bảng công việc gia đình</h3>
-                <p className="text-[11px] text-slate-500 text-pretty">Sắp xếp theo trạng thái, ưu tiên và hạn xử lý để cả nhà nhìn là biết việc nào cần làm trước.</p>
+            <Reveal delay={0.1} className="relative overflow-hidden flex flex-col xl:flex-row xl:items-center justify-between gap-3 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+              <ShimmerLine accent="sky" />
+              <div className="flex items-center gap-2.5">
+                <IconChip accent="sky"><Layers className="w-4 h-4" /></IconChip>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-100 text-balance">Bảng công việc gia đình</h3>
+                  <p className="text-[11px] text-slate-500 text-pretty">Sắp xếp theo trạng thái, ưu tiên và hạn xử lý để cả nhà nhìn là biết việc nào cần làm trước.</p>
+                </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
                 <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
@@ -665,15 +672,15 @@ export function Tasks({
                   <p className="mt-1 text-[10px] text-slate-500 tabular-nums">Đang ẩn {hiddenCompletedCount} task cũ.</p>
                 )}
               </div>
-            </div>
+            </Reveal>
 
             <div className={`grid grid-cols-1 md:grid-cols-2 ${visibleKanbanColumns.length > 2 ? "2xl:grid-cols-4" : "xl:grid-cols-2"} gap-4`}>
-              {visibleKanbanColumns.map(column => {
+              {visibleKanbanColumns.map((column, columnIndex) => {
                 const Icon = column.icon;
                 const columnTasks = sortedTasks(boardTasks.filter(task => effectiveStatus(task) === column.status));
 
                 return (
-                  <section key={column.status} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/70 shadow-lg overflow-hidden">
+                  <Reveal as="section" key={column.status} delay={0.16 + columnIndex * 0.06} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/70 shadow-lg overflow-hidden">
                     <div className={`border-b ${column.headerClass} bg-slate-950/70 px-4 py-3`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-2 min-w-0">
@@ -711,8 +718,9 @@ export function Tasks({
                                 initial={{ opacity: 0, y: 6 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 6 }}
+                                whileHover={{ y: -2 }}
                                 transition={{ duration: 0.15 }}
-                                className={`rounded-xl border bg-slate-950/80 p-3 shadow-sm space-y-3 ${task.priority === TaskPriority.HIGH && task.status !== TaskStatus.COMPLETED ? "border-rose-500/35" : "border-slate-800"} ${savingId === task.id ? "opacity-60 pointer-events-none" : ""}`}
+                                className={`rounded-xl border bg-slate-950/80 p-3 shadow-sm space-y-3 hover:shadow-lg hover:shadow-sky-500/5 transition-[box-shadow,border-color] duration-300 ${task.priority === TaskPriority.HIGH && task.status !== TaskStatus.COMPLETED ? "border-rose-500/35" : "border-slate-800 hover:border-sky-500/25"} ${savingId === task.id ? "opacity-60 pointer-events-none" : ""}`}
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <span className={`text-[10px] font-bold px-2 py-0.5 border rounded-lg ${priorityColor(task.priority)}`}>
@@ -846,7 +854,7 @@ export function Tasks({
                         </AnimatePresence>
                       )}
                     </div>
-                  </section>
+                  </Reveal>
                 );
               })}
             </div>

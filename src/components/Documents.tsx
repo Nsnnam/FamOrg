@@ -11,6 +11,7 @@ import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useTabFab } from "./FabHost.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 
 interface DocumentsProps {
   currentUser: User;
@@ -236,10 +237,12 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
   return (
     <div className="space-y-6" id="documents-module">
       {/* Form thêm/sửa */}
-      <div ref={formRef} className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+      <Reveal>
+      <div ref={formRef} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+        <ShimmerLine accent="indigo" />
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-indigo-400" /> {editingId ? "Sửa giấy tờ" : "Kho giấy tờ gia đình"}
+            <IconChip accent="indigo"><FileText className="w-4 h-4" /></IconChip> {editingId ? "Sửa giấy tờ" : "Kho giấy tờ gia đình"}
           </h3>
           <div className="flex items-center gap-2 flex-wrap">
             {expiringCount > 0 && (
@@ -332,6 +335,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
         </form>
         {error && <p className="text-[11px] text-rose-400">{error}</p>}
       </div>
+      </Reveal>
 
       {/* Bộ lọc loại */}
       {documents.length > 0 && (
@@ -363,7 +367,8 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3"
+                  whileHover={{ y: -3 }}
+                  className="bg-slate-900 border border-slate-800 hover:border-indigo-500/30 rounded-2xl p-4 shadow-xl hover:shadow-indigo-500/10 transition-[box-shadow,border-color] duration-300 space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">

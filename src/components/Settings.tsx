@@ -55,6 +55,7 @@ import { optimizeImageFile } from "../utils/image.js";
 import { uploadDataUrl } from "../utils/uploadImage.js";
 import { reloadOnce, scheduleReloadFallback } from "../utils/appReload.js";
 import { PushNotificationsCard } from "./PushNotificationsCard.js";
+import { ShimmerLine, Reveal } from "./Lively.js";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
 
@@ -592,8 +593,9 @@ export function Settings({
   ];
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-6" id="settings-module">
-      
+    <Reveal className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-6" id="settings-module">
+      <ShimmerLine accent="indigo" />
+
       {/* Settings Navigation sub-header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-800 pb-4 gap-4" id="settings-sub-header">
         
@@ -1495,6 +1497,6 @@ export function Settings({
 
       {/* In-app confirmation dialog */}
       {ConfirmDialog}
-    </div>
+    </Reveal>
   );
 }
