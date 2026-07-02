@@ -1133,7 +1133,8 @@ app.delete("/api/documents/:id", requireAuth, requireRole([UserRole.ADMIN, UserR
 });
 
 // --- SỨC KHỎE TRẺ: TIÊM CHỦNG & TĂNG TRƯỞNG (chỉ Admin/Member) ---
-app.get("/api/child-health", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (_req: AuthRequest, res: Response) => {
+// Sổ sức khỏe cả nhà đều xem được; thêm/sửa/xóa vẫn giới hạn Admin/Member ở các route ghi bên dưới.
+app.get("/api/child-health", requireAuth, (_req: AuthRequest, res: Response) => {
   res.json({ vaccinations: FamilyDB.getVaccinations(), growthRecords: FamilyDB.getGrowthRecords() });
 });
 

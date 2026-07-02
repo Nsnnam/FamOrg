@@ -24,7 +24,6 @@ import {
   Moon,
   Lock,
   ShoppingCart,
-  Pill,
   FolderLock,
   HeartPulse
 } from "lucide-react";
@@ -60,7 +59,6 @@ import { Schedules } from "./components/Schedules.js";
 import { Notes } from "./components/Notes.js";
 import { Finance } from "./components/Finance.js";
 import { Shopping } from "./components/Shopping.js";
-import { Medication } from "./components/Medication.js";
 import { Documents } from "./components/Documents.js";
 import { ChildHealth } from "./components/ChildHealth.js";
 import { Assistant } from "./components/Assistant.js";
@@ -141,6 +139,17 @@ export default function App() {
     const KNOWN_TABS = ["dashboard", "tasks", "plans", "notes", "shopping", "medications", "child-health", "finance", "documents", "settings"];
     const clearBadge = () => { try { (navigator as any).clearAppBadge?.(); } catch (e) { /* ignore */ } };
 
+    // Lịch thuốc giờ nằm trong "Sức khỏe gia đình": deep-link "medications" → mở tab
+    // child-health và chọn sẵn sub-tab Lịch thuốc.
+    const navigateFromNotif = (t: string) => {
+      if (t === "medications") {
+        setHealthSectionRequest(prev => ({ section: "medication", seq: prev.seq + 1 }));
+        setActiveTab("child-health");
+      } else {
+        setActiveTab(t);
+      }
+    };
+
     clearBadge();
     const onVisible = () => { if (document.visibilityState === "visible") clearBadge(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -151,10 +160,14 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("notif_tab");
       if (t && KNOWN_TABS.includes(t)) {
-        setActiveTab(t);
+        navigateFromNotif(t);
         params.delete("notif_tab");
         const qs = params.toString();
         window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+      }
+      // PWA shortcut "Nhắc thuốc" mở /?tab=medications → chọn sẵn sub-tab Lịch thuốc.
+      if (params.get("tab") === "medications") {
+        setHealthSectionRequest(prev => ({ section: "medication", seq: prev.seq + 1 }));
       }
     } catch (e) { /* ignore */ }
 
@@ -164,7 +177,7 @@ export default function App() {
       onMsg = (e: MessageEvent) => {
         const d = e.data;
         if (d && d.type === "NOTIF_NAV" && typeof d.tab === "string" && KNOWN_TABS.includes(d.tab)) {
-          setActiveTab(d.tab);
+          navigateFromNotif(d.tab);
         }
       };
       navigator.serviceWorker.addEventListener("message", onMsg);
@@ -217,9 +230,13 @@ export default function App() {
   // Navigation layout state
   const [activeTab, setActiveTab] = useState<string>(() => {
     const fromQuery = new URLSearchParams(window.location.search).get("tab"); // PWA shortcuts deep-link here
-    return fromQuery || localStorage.getItem("family_active_tab") || "dashboard";
+    const raw = fromQuery || localStorage.getItem("family_active_tab") || "dashboard";
+    // "medications" giờ là sub-tab bên trong "Sức khỏe gia đình" — chuyển hướng tab cũ đã lưu/deep-link.
+    return raw === "medications" ? "child-health" : raw;
   });
   const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; seq: number }>({ tab: "profile", seq: 0 });
+  // Sub-tab đang yêu cầu bên trong "Sức khỏe gia đình" (deep-link từ thông báo thuốc → mục Lịch thuốc)
+  const [healthSectionRequest, setHealthSectionRequest] = useState<{ section: "growth" | "vaccination" | "medication"; seq: number }>({ section: "growth", seq: 0 });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
 
@@ -233,7 +250,7 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
-    if (!canAccessFinance(currentUser.role) && (activeTab === "finance" || activeTab === "documents" || activeTab === "child-health")) {
+    if (!canAccessFinance(currentUser.role) && (activeTab === "finance" || activeTab === "documents")) {
       setActiveTab("dashboard");
       return;
     }
@@ -459,8 +476,8 @@ export default function App() {
   };
 
   const fetchChildHealth = async () => {
-    // Tiêm chủng & tăng trưởng chỉ dành cho Admin/Member.
-    if (!currentUser || !canAccessFinance(currentUser.role)) return;
+    // Sổ sức khỏe cả nhà xem được; chỉ người lớn mới thêm/sửa (chặn ở route ghi).
+    if (!currentUser) return;
     try {
       const res = await fetch("/api/child-health", { headers: getAuthHeader() });
       if (res.ok) {
@@ -1390,13 +1407,13 @@ export default function App() {
   const navLinks = [
     { id: "dashboard", label: "Tổng quan", icon: Home },
     { id: "tasks", label: "Nhóm Task", icon: CheckSquare },
+    // Only show finance to Admin and Members; hidden from Child and Guest accounts
+    ...(canAccessFinance(currentUser.role) ? [{ id: "finance", label: "Chi tiêu", icon: Wallet }] : []),
     { id: "plans", label: "Lập Lịch", icon: Calendar },
     { id: "notes", label: "Ghi chú", icon: FileText },
     { id: "shopping", label: "Đi chợ", icon: ShoppingCart },
-    { id: "medications", label: "Thuốc", icon: Pill },
-    ...(canAccessFinance(currentUser.role) ? [{ id: "child-health", label: "Sức khỏe gia đình", icon: HeartPulse }] : []),
-    // Only show finance to Admin and Members; hidden from Child and Guest accounts
-    ...(canAccessFinance(currentUser.role) ? [{ id: "finance", label: "Chi tiêu", icon: Wallet }] : []),
+    // Sổ sức khỏe cả nhà (gồm Tăng trưởng, Tiêm chủng, Lịch thuốc) — mọi thành viên đều xem được
+    { id: "child-health", label: "Sức khỏe gia đình", icon: HeartPulse },
     ...(canAccessFinance(currentUser.role) ? [{ id: "documents", label: "Giấy tờ", icon: FolderLock }] : []),
     { id: "settings", label: "Thiết lập", icon: Settings2 }
   ];
@@ -1703,18 +1720,6 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "medications" && (
-                <Medication
-                  currentUser={currentUser}
-                  users={users}
-                  medications={medications}
-                  medicationLogs={medicationLogs}
-                  onSaveMedication={handleSaveMedication}
-                  onDeleteMedication={handleDeleteMedication}
-                  onLogDose={handleLogDose}
-                />
-              )}
-
               {activeTab === "finance" && canAccessFinance(currentUser.role) && (
                 <Finance
                   currentUser={currentUser}
@@ -1746,16 +1751,23 @@ export default function App() {
                 />
               )}
 
-              {activeTab === "child-health" && canAccessFinance(currentUser.role) && (
+              {activeTab === "child-health" && (
                 <ChildHealth
                   currentUser={currentUser}
                   users={users}
                   vaccinations={vaccinations}
                   growthRecords={growthRecords}
+                  medications={medications}
+                  medicationLogs={medicationLogs}
                   onSaveVaccination={handleSaveVaccination}
                   onDeleteVaccination={handleDeleteVaccination}
                   onSaveGrowth={handleSaveGrowth}
                   onDeleteGrowth={handleDeleteGrowth}
+                  onSaveMedication={handleSaveMedication}
+                  onDeleteMedication={handleDeleteMedication}
+                  onLogDose={handleLogDose}
+                  requestedSection={healthSectionRequest.section}
+                  requestedSectionSeq={healthSectionRequest.seq}
                 />
               )}
 
