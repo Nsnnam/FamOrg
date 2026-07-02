@@ -909,7 +909,7 @@ export function Finance({
             </p>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-80 overflow-y-auto pr-1 -mr-1 scrollbar-thin">
             {periodMode === "month" ? (
               monthBudgets.length === 0 ? (
                 <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có ngân sách cho kỳ này.</p>
@@ -974,7 +974,7 @@ export function Finance({
             <button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl px-3 py-2 font-bold">Thêm hóa đơn</button>
           </form>
           {billError && <p className="text-[11px] text-rose-400">{billError}</p>}
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-80 overflow-y-auto pr-1 -mr-1 scrollbar-thin">
             {recurringBills.length === 0 ? (
               <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có hóa đơn lặp lại.</p>
             ) : recurringBills.map(b => (
