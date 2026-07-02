@@ -18,9 +18,10 @@ import {
   Cake
 } from "lucide-react";
 import { Task, FamilyPlan, Note, FinancialTransaction, User, TaskStatus } from "../types.js";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { QuickNudge } from "./QuickNudge.js";
+import { ShimmerLine, IconChip } from "./Lively.js";
 
 interface DashboardProps {
   currentUser: User;
@@ -56,6 +57,29 @@ const WEATHER_CODES: Record<number, { label: string; icon: string }> = {
   99: { label: "Dông mạnh", icon: "⛈️" }
 };
 const describeWeather = (code: number) => WEATHER_CODES[code] || { label: "—", icon: "🌡️" };
+
+// Aurora look of the hero banner per time of day. Blob tints are fixed accents
+// at low opacity so they read as soft pastels on the light theme and as glow on dark.
+const AURORA = {
+  morning: {
+    message: "Chào buổi sáng, chúc gia đình ngày mới an lành! ☀️",
+    blobs: ["bg-amber-400/25", "bg-rose-400/20", "bg-orange-300/20"],
+    nameGradient: "from-amber-500 via-rose-500 to-orange-500",
+    shimmer: "via-amber-500/60"
+  },
+  afternoon: {
+    message: "Chào buổi chiều, chúc gia đình làm việc hiệu quả! 🌤️",
+    blobs: ["bg-sky-500/20", "bg-cyan-400/20", "bg-violet-500/20"],
+    nameGradient: "from-sky-500 via-violet-500 to-cyan-500",
+    shimmer: "via-sky-500/60"
+  },
+  evening: {
+    message: "Chúc gia đình buổi tối ấm áp và thư giãn! 🌙",
+    blobs: ["bg-violet-500/25", "bg-fuchsia-500/15", "bg-indigo-500/25"],
+    nameGradient: "from-violet-500 via-fuchsia-500 to-sky-500",
+    shimmer: "via-violet-500/60"
+  }
+} as const;
 
 // Smoothly counts from the previous value up to the target (easeOutCubic).
 function useCountUp(target: number | null | undefined, duration = 900): number {
@@ -104,6 +128,28 @@ export function Dashboard({
   widgets,
   onNavigate
 }: DashboardProps) {
+  const reduceMotion = useReducedMotion();
+
+  // Entrance animation preset: cards slide up in sequence; plain fade when the
+  // user prefers reduced motion.
+  const fadeUp = (delay = 0) =>
+    reduceMotion
+      ? { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.3, delay } }
+      : {
+          initial: { opacity: 0, y: 18 },
+          animate: { opacity: 1, y: 0 },
+          transition: { type: "spring" as const, stiffness: 260, damping: 26, delay }
+        };
+
+  // Slow drift for the aurora blobs in the hero banner (disabled under reduced motion).
+  const drift = (duration: number) =>
+    reduceMotion
+      ? {}
+      : {
+          animate: { x: [0, 24, -12, 0], y: [0, -18, 10, 0], scale: [1, 1.12, 0.94, 1] },
+          transition: { duration, repeat: Infinity, ease: "easeInOut" as const }
+        };
+
   // 1. Task calculations
   const myTasks = useMemo(() => {
     return tasks.filter(t => t.assigneeId === currentUser.id);
@@ -130,6 +176,10 @@ export function Dashboard({
     });
     return { income, expense, balance: income - expense };
   }, [transactions, currentMonth]);
+  const balancePositive = financialSummary.balance >= 0;
+  const financeTotal = financialSummary.income + financialSummary.expense;
+  const incomePct = financeTotal > 0 ? (financialSummary.income / financeTotal) * 100 : 0;
+  const expensePct = financeTotal > 0 ? (financialSummary.expense / financeTotal) * 100 : 0;
 
   // 3. Upcoming schedule events (next 20 days)
   const upcomingPlans = useMemo(() => {
@@ -175,12 +225,12 @@ export function Dashboard({
       .sort((a, b) => a.daysUntil - b.daysUntil);
   }, [users]);
 
-  // Welcome Greeting
-  const welcomeMessage = useMemo(() => {
+  // Time of day drives both the greeting and the hero's aurora palette.
+  const aurora = useMemo(() => {
     const hours = new Date().getHours();
-    if (hours < 12) return "Chào buổi sáng, chúc gia đình ngày mới an lành! ☀️";
-    if (hours < 18) return "Chào buổi chiều, chúc gia đình làm việc hiệu quả! 🌤️";
-    return "Chúc gia đình buổi tối ấm áp và thư giãn! 🌙";
+    if (hours >= 5 && hours < 12) return AURORA.morning;
+    if (hours >= 12 && hours < 18) return AURORA.afternoon;
+    return AURORA.evening;
   }, []);
 
   // Widget formatting helpers
@@ -198,30 +248,68 @@ export function Dashboard({
 
   return (
     <div className="space-y-6" id="dashboard-tab">
-      {/* Greetings Block */}
-      <motion.div 
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-radial from-slate-800 to-slate-900 border border-slate-700/60 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center md:justify-between gap-4"
+      {/* Greetings Block — aurora hero that shifts palette with the time of day */}
+      <motion.div
+        {...fadeUp(0)}
+        className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl"
         id="dashboard-header-banner"
       >
-        <div className="space-y-1">
-          <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-            Xin chào, <span className="text-sky-400 font-semibold">{currentUser.fullName}</span>!
-          </h2>
-          <p className="text-slate-400 text-sm md:text-base">{welcomeMessage}</p>
+        {/* Aurora backdrop: three drifting blurred blobs + twinkling sparkles */}
+        <div aria-hidden className="absolute inset-0 pointer-events-none">
+          <motion.div {...drift(16)} className={`absolute -top-24 -left-16 w-64 h-64 rounded-full blur-3xl ${aurora.blobs[0]}`} />
+          <motion.div {...drift(21)} className={`absolute -top-16 right-0 w-72 h-72 rounded-full blur-3xl ${aurora.blobs[1]}`} />
+          <motion.div {...drift(26)} className={`absolute -bottom-28 left-1/3 w-72 h-72 rounded-full blur-3xl ${aurora.blobs[2]}`} />
+          {!reduceMotion &&
+            [
+              { top: "18%", left: "38%", delay: 0 },
+              { top: "62%", left: "56%", delay: 1.6 },
+              { top: "28%", left: "82%", delay: 0.8 }
+            ].map((s, i) => (
+              <motion.span
+                key={i}
+                className="absolute text-slate-100/50 text-[10px] select-none"
+                style={{ top: s.top, left: s.left }}
+                animate={{ opacity: [0.1, 0.8, 0.1], scale: [0.7, 1.15, 0.7] }}
+                transition={{ duration: 3.6, repeat: Infinity, delay: s.delay, ease: "easeInOut" }}
+              >
+                ✦
+              </motion.span>
+            ))}
         </div>
-        <div className="bg-slate-800/80 px-4 py-2 rounded-xl border border-slate-700/50 flex items-center gap-3 self-start md:self-auto text-xs md:text-sm font-mono text-slate-300">
-          <Clock className="w-4 h-4 text-sky-400 animate-pulse" />
-          <span>{new Date().toLocaleDateString("vi-VN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+        <ShimmerLine via={aurora.shimmer} />
+
+        <div className="relative p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <Avatar
+              user={currentUser}
+              className="w-12 h-12 md:w-14 md:h-14 rounded-2xl text-lg"
+              extraClass="ring-2 ring-slate-800/80 shadow-lg"
+            />
+            <div className="space-y-1 min-w-0">
+              <h2 className="text-xl md:text-2xl font-extrabold text-slate-100 truncate">
+                Xin chào,{" "}
+                <span className={`bg-gradient-to-r ${aurora.nameGradient} bg-clip-text text-transparent`}>
+                  {currentUser.fullName}
+                </span>
+                !
+              </h2>
+              <p className="text-slate-400 text-sm md:text-base">{aurora.message}</p>
+            </div>
+          </div>
+          <div className="bg-slate-950/60 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800/80 flex items-center gap-3 self-start md:self-auto text-xs md:text-sm font-mono text-slate-300 shrink-0">
+            <Clock className="w-4 h-4 text-sky-400 animate-pulse" />
+            <span>{new Date().toLocaleDateString("vi-VN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</span>
+          </div>
         </div>
       </motion.div>
 
       {/* Quick nudge: send a notification (+ push) to a family member or everyone */}
-      <QuickNudge currentUser={currentUser} users={users} />
+      <motion.div {...fadeUp(0.06)}>
+        <QuickNudge currentUser={currentUser} users={users} />
+      </motion.div>
 
       {/* Weather + Markets widgets — always rendered (skeleton while loading) to avoid layout shift */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
+      <motion.div {...fadeUp(0.12)} className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
 
         {/* Weather */}
         {(() => {
@@ -229,8 +317,10 @@ export function Dashboard({
           const hasW = !!w?.current;
           const cur = hasW ? describeWeather(w.current.weather_code) : null;
           return (
-            <div className="lg:col-span-1 bg-gradient-to-br from-sky-500/10 to-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col min-h-[188px]">
-              <div className="flex items-start justify-between">
+            <div className="relative overflow-hidden lg:col-span-1 bg-gradient-to-br from-sky-500/15 via-slate-900 to-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col min-h-[188px]">
+              <ShimmerLine via="via-sky-500/60" />
+              <div aria-hidden className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-sky-500/10 blur-2xl" />
+              <div className="relative flex items-start justify-between">
                 <div className="min-w-0">
                   <p className="text-xs text-slate-400 font-semibold truncate">{hasW ? w.city : "Thời tiết"}</p>
                   {hasW ? (
@@ -248,7 +338,7 @@ export function Dashboard({
                 </div>
                 <span className="text-4xl leading-none">{hasW ? cur!.icon : "🌡️"}</span>
               </div>
-              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-800/60 text-[11px] text-slate-400">
+              <div className="relative flex items-center gap-4 mt-3 pt-3 border-t border-slate-800/60 text-[11px] text-slate-400">
                 {hasW ? (
                   <>
                     <span>💧 Độ ẩm {w.current.relative_humidity_2m}%</span>
@@ -258,13 +348,13 @@ export function Dashboard({
                   <Skeleton className="h-3 w-40" />
                 )}
               </div>
-              <div className="flex justify-between mt-3 gap-2">
+              <div className="relative flex justify-between mt-3 gap-2">
                 {hasW && w.daily?.time ? (
                   w.daily.time.slice(0, 3).map((d: string, i: number) => {
                     const dc = describeWeather(w.daily.weather_code[i]);
                     const dayLabel = i === 0 ? "Hôm nay" : new Date(d).toLocaleDateString("vi-VN", { weekday: "short" });
                     return (
-                      <div key={d} className="flex-1 text-center bg-slate-950/40 rounded-lg py-2">
+                      <div key={d} className="flex-1 text-center bg-slate-950/40 backdrop-blur-sm rounded-lg py-2 hover:bg-slate-950/60 transition-colors">
                         <p className="text-[10px] text-slate-500">{dayLabel}</p>
                         <p className="text-lg leading-tight">{dc.icon}</p>
                         <p className="text-[10px] text-slate-400 font-mono">{Math.round(w.daily.temperature_2m_min[i])}°/{Math.round(w.daily.temperature_2m_max[i])}°</p>
@@ -288,7 +378,8 @@ export function Dashboard({
         {/* Market mini-cards */}
         <div className="lg:col-span-2 grid grid-cols-2 gap-4">
           {/* Bitcoin */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[92px]">
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[92px]">
+            <ShimmerLine via="via-amber-500/50" />
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-amber-400">₿ Bitcoin</span>
               {widgets?.crypto?.bitcoin ? changeBadge(widgets.crypto.bitcoin.usd_24h_change) : null}
@@ -309,7 +400,8 @@ export function Dashboard({
           </div>
 
           {/* Ethereum */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[92px]">
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-indigo-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[92px]">
+            <ShimmerLine via="via-indigo-500/50" />
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-indigo-400">Ξ Ethereum</span>
               {widgets?.crypto?.ethereum ? changeBadge(widgets.crypto.ethereum.usd_24h_change) : null}
@@ -330,7 +422,8 @@ export function Dashboard({
           </div>
 
           {/* Gold */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[92px]">
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-yellow-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-yellow-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[92px]">
+            <ShimmerLine via="via-yellow-500/50" />
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-yellow-500">🪙 {widgets?.gold?.source || "Vàng"}</span>
               {widgets?.gold ? changeBadge(widgets.gold.changePct) : null}
@@ -363,7 +456,8 @@ export function Dashboard({
           </div>
 
           {/* USD/VND */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-md flex flex-col justify-between min-h-[92px]">
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-emerald-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[92px]">
+            <ShimmerLine via="via-emerald-500/50" />
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-400">💵 USD/VND</span>
             </div>
@@ -382,103 +476,120 @@ export function Dashboard({
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Main Stats Row */}
+      {/* Main Stats Row — glass cards with an accent glow that answers hover */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="dashboard-stats">
         {/* Card 1: My Remaining Tasks */}
-        <div 
-          onClick={() => onNavigate("tasks")} 
-          className="bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+        <motion.div
+          {...fadeUp(0.18)}
+          whileHover={reduceMotion ? undefined : { y: -4 }}
+          onClick={() => onNavigate("tasks")}
+          className="group relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-sky-500/40 p-4 rounded-2xl shadow-md hover:shadow-xl hover:shadow-sky-500/10 transition-[box-shadow,border-color] duration-300 cursor-pointer flex flex-col justify-between"
           id="stat-my-tasks"
         >
-          <div className="flex items-center justify-between">
+          <ShimmerLine via="via-sky-500/50" />
+          <div aria-hidden className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-sky-500/10 blur-2xl group-hover:bg-sky-500/20 transition-colors duration-500" />
+          <div className="relative flex items-center justify-between">
             <span className="text-slate-400 text-xs font-medium">Task của tôi</span>
-            <div className="bg-sky-500/10 p-2 rounded-xl text-sky-400 group-hover:scale-110 transition-transform">
+            <div className="bg-gradient-to-br from-sky-500/25 to-sky-500/5 ring-1 ring-sky-500/20 p-2 rounded-xl text-sky-400 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
               <CheckSquare className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-2xl md:text-3xl font-bold text-slate-100">{myRemainingTasks.length}</span>
+          <div className="relative mt-4">
+            <span className="text-2xl md:text-3xl font-bold text-slate-100 tabular-nums">{myRemainingTasks.length}</span>
             <p className="text-slate-500 text-xs mt-1">Đang cần giải quyết</p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Card 2: Urgent Tasks */}
-        <div 
-          onClick={() => onNavigate("tasks")} 
-          className="bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+        <motion.div
+          {...fadeUp(0.23)}
+          whileHover={reduceMotion ? undefined : { y: -4 }}
+          onClick={() => onNavigate("tasks")}
+          className="group relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-rose-500/40 p-4 rounded-2xl shadow-md hover:shadow-xl hover:shadow-rose-500/10 transition-[box-shadow,border-color] duration-300 cursor-pointer flex flex-col justify-between"
           id="stat-urgent-tasks"
         >
-          <div className="flex items-center justify-between">
+          <ShimmerLine via="via-rose-500/50" />
+          <div aria-hidden className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-rose-500/10 blur-2xl group-hover:bg-rose-500/20 transition-colors duration-500" />
+          <div className="relative flex items-center justify-between">
             <span className="text-slate-400 text-xs font-medium">Nhiệm vụ khẩn cấp</span>
-            <div className="bg-rose-500/15 p-2 rounded-xl text-rose-400 group-hover:scale-110 transition-transform">
-              <AlertCircle className="w-5 h-5 animate-bounce" />
+            <div className="bg-gradient-to-br from-rose-500/25 to-rose-500/5 ring-1 ring-rose-500/20 p-2 rounded-xl text-rose-400 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
+              <AlertCircle className={`w-5 h-5 ${urgentTasksCount > 0 && !reduceMotion ? "animate-bounce" : ""}`} />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-2xl md:text-3xl font-bold text-rose-400">{urgentTasksCount}</span>
+          <div className="relative mt-4">
+            <span className="text-2xl md:text-3xl font-bold text-rose-400 tabular-nums">{urgentTasksCount}</span>
             <p className="text-slate-500 text-xs mt-1">Mức ưu tiên cao</p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Card 3: Cash balance this month */}
-        <div 
-          onClick={() => onNavigate("finance")} 
-          className="bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+        <motion.div
+          {...fadeUp(0.28)}
+          whileHover={reduceMotion ? undefined : { y: -4 }}
+          onClick={() => onNavigate("finance")}
+          className={`group relative overflow-hidden bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-md hover:shadow-xl transition-[box-shadow,border-color] duration-300 cursor-pointer flex flex-col justify-between ${balancePositive ? "hover:border-emerald-500/40 hover:shadow-emerald-500/10" : "hover:border-rose-500/40 hover:shadow-rose-500/10"}`}
           id="stat-monthly-balance"
         >
-          <div className="flex items-center justify-between">
+          <ShimmerLine via={balancePositive ? "via-emerald-500/50" : "via-rose-500/50"} />
+          <div aria-hidden className={`absolute -top-8 -right-8 w-24 h-24 rounded-full blur-2xl transition-colors duration-500 ${balancePositive ? "bg-emerald-500/10 group-hover:bg-emerald-500/20" : "bg-rose-500/10 group-hover:bg-rose-500/20"}`} />
+          <div className="relative flex items-center justify-between">
             <span className="text-slate-400 text-xs font-medium">Số dư tháng này</span>
-            <div className={`p-2 rounded-xl group-hover:scale-110 transition-transform ${financialSummary.balance >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
+            <div className={`p-2 rounded-xl group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 ${balancePositive ? "bg-gradient-to-br from-emerald-500/25 to-emerald-500/5 ring-1 ring-emerald-500/20 text-emerald-400" : "bg-gradient-to-br from-rose-500/25 to-rose-500/5 ring-1 ring-rose-500/20 text-rose-400"}`}>
               <Wallet className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className={`text-xl md:text-2xl font-bold ${financialSummary.balance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+          <div className="relative mt-4">
+            <span className={`text-xl md:text-2xl font-bold tabular-nums ${balancePositive ? "text-emerald-400" : "text-rose-400"}`}>
               {financialSummary.balance.toLocaleString()}đ
             </span>
             <p className="text-slate-500 text-xs mt-1">Thu nhập trừ chi tiêu</p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Card 4: Upcoming Schedule */}
-        <div 
-          onClick={() => onNavigate("plans")} 
-          className="bg-slate-900 hover:bg-slate-800/90 border border-slate-800 hover:border-slate-700 p-4 rounded-2xl shadow-md transition-all cursor-pointer group flex flex-col justify-between"
+        <motion.div
+          {...fadeUp(0.33)}
+          whileHover={reduceMotion ? undefined : { y: -4 }}
+          onClick={() => onNavigate("plans")}
+          className="group relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-500/40 p-4 rounded-2xl shadow-md hover:shadow-xl hover:shadow-amber-500/10 transition-[box-shadow,border-color] duration-300 cursor-pointer flex flex-col justify-between"
           id="stat-schedules"
         >
-          <div className="flex items-center justify-between">
+          <ShimmerLine via="via-amber-500/50" />
+          <div aria-hidden className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-amber-500/10 blur-2xl group-hover:bg-amber-500/20 transition-colors duration-500" />
+          <div className="relative flex items-center justify-between">
             <span className="text-slate-400 text-xs font-medium">Lịch 20 ngày tới</span>
-            <div className="bg-amber-500/10 p-2 rounded-xl text-amber-400 group-hover:scale-110 transition-transform">
+            <div className="bg-gradient-to-br from-amber-500/25 to-amber-500/5 ring-1 ring-amber-500/20 p-2 rounded-xl text-amber-400 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
               <Calendar className="w-5 h-5" />
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-2xl md:text-3xl font-bold text-slate-100">{upcomingPlans.length}</span>
+          <div className="relative mt-4">
+            <span className="text-2xl md:text-3xl font-bold text-slate-100 tabular-nums">{upcomingPlans.length}</span>
             <p className="text-slate-500 text-xs mt-1">Sự kiện/Lịch trình</p>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Main Dashboard Bento Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" id="dashboard-grid">
-        
+
         {/* Left Column - Schedules & Notes (Col 7) */}
-        <div className="lg:col-span-7 space-y-6">
-          
+        <motion.div {...fadeUp(0.3)} className="lg:col-span-7 space-y-6">
+
           {/* Upcoming Schedule */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-upcoming-plans">
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-upcoming-plans">
+            <ShimmerLine via="via-amber-500/50" />
             <div className="flex items-center justify-between">
-              <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-amber-400" />
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <IconChip accent="amber"><Calendar className="w-4 h-4" /></IconChip>
                 Sự kiện sắp diễn ra
               </h3>
-              <button 
-                onClick={() => onNavigate("plans")} 
-                className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1 group"
+              <button
+                onClick={() => onNavigate("plans")}
+                className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1 group cursor-pointer"
               >
-                Xem chi tiết 
+                Xem chi tiết
                 <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </button>
             </div>
@@ -489,7 +600,7 @@ export function Dashboard({
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingPlans.map((plan, i) => {
+                {upcomingPlans.map((plan) => {
                   const sDate = plan.startDate.split(" ");
                   const colorMap: any = {
                     emerald: "border-l-4 border-emerald-500 bg-emerald-500/5",
@@ -498,16 +609,16 @@ export function Dashboard({
                     rose: "border-l-4 border-rose-500 bg-rose-500/5"
                   };
                   return (
-                    <div 
+                    <div
                       key={plan.id}
-                      className={`p-3 rounded-xl flex items-center justify-between ${colorMap[plan.color] || "border-l-4 border-slate-600 bg-slate-800/10"} hover:bg-slate-800/30 transition-all`}
+                      className={`p-3 rounded-xl flex items-center justify-between ${colorMap[plan.color] || "border-l-4 border-slate-600 bg-slate-800/10"} hover:bg-slate-800/30 hover:translate-x-1 transition-all duration-300`}
                     >
                       <div className="space-y-0.5 max-w-[70%]">
                         <span className="text-sm font-semibold text-slate-200 block truncate">{plan.title}</span>
                         <p className="text-xs text-slate-500 truncate">{plan.description || "Không có miêu tả"}</p>
                       </div>
                       <div className="text-right flex flex-col justify-center shrink-0">
-                        <span className="text-xs font-semibold text-slate-300">{sDate[0]}</span>
+                        <span className="text-xs font-semibold text-slate-300 font-mono">{sDate[0]}</span>
                         <span className="text-[10px] font-mono text-amber-400/80">{sDate[1]}</span>
                       </div>
                     </div>
@@ -518,9 +629,10 @@ export function Dashboard({
           </div>
 
           {/* Upcoming Birthdays */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-birthdays">
-            <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
-              <Cake className="w-5 h-5 text-pink-400" />
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-birthdays">
+            <ShimmerLine via="via-pink-500/50" />
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <IconChip accent="pink"><Cake className="w-4 h-4" /></IconChip>
               Sinh nhật sắp tới
             </h3>
 
@@ -531,7 +643,7 @@ export function Dashboard({
             ) : (
               <div className="space-y-2.5">
                 {upcomingBirthdays.map(b => (
-                  <div key={b.user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800/60 hover:bg-slate-800/30 transition-all">
+                  <div key={b.user.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all duration-300 hover:translate-x-1 ${b.daysUntil === 0 ? "bg-gradient-to-r from-pink-500/10 to-fuchsia-500/5 border-pink-500/20" : "bg-slate-950/60 border-slate-800/60 hover:bg-slate-800/30"}`}>
                     <div className="flex items-center gap-3 min-w-0">
                       <Avatar user={b.user} className="w-9 h-9 rounded-xl text-sm" extraClass="shrink-0" />
                       <div className="min-w-0">
@@ -549,17 +661,18 @@ export function Dashboard({
           </div>
 
           {/* Quick Pinned Notes */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-pinned-notes">
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-pinned-notes">
+            <ShimmerLine via="via-sky-500/50" />
             <div className="flex items-center justify-between">
-              <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-sky-400" />
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <IconChip accent="sky"><FileText className="w-4 h-4" /></IconChip>
                 Ghi chú gia đình nổi bật
               </h3>
-              <button 
-                onClick={() => onNavigate("notes")} 
-                className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1 group"
+              <button
+                onClick={() => onNavigate("notes")}
+                className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1 group cursor-pointer"
               >
-                Tất cả ghi chú 
+                Tất cả ghi chú
                 <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </button>
             </div>
@@ -573,10 +686,10 @@ export function Dashboard({
                 {pinnedNotes.map((note) => {
                   const creator = users.find(u => u.id === note.creatorId);
                   return (
-                    <div 
-                      key={note.id} 
+                    <div
+                      key={note.id}
                       onClick={() => onNavigate("notes")}
-                      className="bg-slate-950 hover:bg-slate-800/40 border border-slate-800/80 p-3.5 rounded-xl cursor-pointer transition-all flex flex-col justify-between min-h-[140px] shadow-sm relative group"
+                      className="bg-slate-950 hover:bg-slate-800/40 border border-slate-800/80 hover:border-sky-500/30 p-3.5 rounded-xl cursor-pointer transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-sky-500/5 flex flex-col justify-between min-h-[140px] shadow-sm relative group"
                     >
                       <div className="space-y-1.5 overflow-hidden">
                         <div className="flex items-center justify-between">
@@ -597,23 +710,24 @@ export function Dashboard({
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Right Column - Finances (Month Breakdown) & Activities Logger (Col 5) */}
-        <div className="lg:col-span-5 space-y-6">
-          
+        <motion.div {...fadeUp(0.38)} className="lg:col-span-5 space-y-6">
+
           {/* Recent Money Widget */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-finance-overview">
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-finance-overview">
+            <ShimmerLine via="via-emerald-500/50" />
             <div className="flex items-center justify-between">
-              <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-emerald-400" />
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <IconChip accent="emerald"><Wallet className="w-4 h-4" /></IconChip>
                 Tài chính chi tiêu tháng {new Date().getMonth() + 1}
               </h3>
-              <button 
-                onClick={() => onNavigate("finance")} 
-                className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1 group"
+              <button
+                onClick={() => onNavigate("finance")}
+                className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1 group cursor-pointer"
               >
-                Xem quỹ 
+                Xem quỹ
                 <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </button>
             </div>
@@ -623,26 +737,30 @@ export function Dashboard({
               <div className="flex items-center justify-between text-xs text-slate-400">
                 <div className="space-y-1">
                   <span className="flex items-center gap-1 text-[11px]"><TrendingUp className="w-3 h-3 text-emerald-400" /> Tổng Thu</span>
-                  <p className="text-sm font-bold text-slate-200">{financialSummary.income.toLocaleString()}đ</p>
+                  <p className="text-sm font-bold text-slate-200 font-mono">{financialSummary.income.toLocaleString()}đ</p>
                 </div>
                 <div className="text-right space-y-1">
                   <span className="flex items-center gap-1 justify-end text-[11px]"><TrendingDown className="w-3 h-3 text-rose-400" /> Tổng Chi</span>
-                  <p className="text-sm font-bold text-slate-200">{financialSummary.expense.toLocaleString()}đ</p>
+                  <p className="text-sm font-bold text-slate-200 font-mono">{financialSummary.expense.toLocaleString()}đ</p>
                 </div>
               </div>
 
-              {/* Graphical Bar */}
+              {/* Graphical Bar — fills up from 0 once the page enters */}
               <div className="space-y-1.5">
                 <div className="h-2.5 w-full bg-slate-800 rounded-full overflow-hidden flex">
-                  {financialSummary.income + financialSummary.expense > 0 ? (
+                  {financeTotal > 0 ? (
                     <>
-                      <div 
-                        style={{ width: `${(financialSummary.income / (financialSummary.income + financialSummary.expense)) * 100}%` }}
-                        className="h-full bg-emerald-500" 
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${incomePct}%` }}
+                        transition={reduceMotion ? { duration: 0 } : { duration: 1, delay: 0.5, ease: "easeOut" }}
+                        className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400"
                       />
-                      <div 
-                        style={{ width: `${(financialSummary.expense / (financialSummary.income + financialSummary.expense)) * 100}%` }}
-                        className="h-full bg-rose-500" 
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${expensePct}%` }}
+                        transition={reduceMotion ? { duration: 0 } : { duration: 1, delay: 0.5, ease: "easeOut" }}
+                        className="h-full bg-gradient-to-r from-rose-400 to-rose-500"
                       />
                     </>
                   ) : (
@@ -650,17 +768,18 @@ export function Dashboard({
                   )}
                 </div>
                 <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                  <span>{financialSummary.income + financialSummary.expense > 0 ? `${Math.round(financialSummary.income / (financialSummary.income + financialSummary.expense) * 100)}% Thu` : "0% Thu"}</span>
-                  <span>{financialSummary.income + financialSummary.expense > 0 ? `${Math.round(financialSummary.expense / (financialSummary.income + financialSummary.expense) * 100)}% Chi` : "0% Chi"}</span>
+                  <span>{financeTotal > 0 ? `${Math.round(incomePct)}% Thu` : "0% Thu"}</span>
+                  <span>{financeTotal > 0 ? `${Math.round(expensePct)}% Chi` : "0% Chi"}</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Activity Logs inside family */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-activity-logs">
-            <h3 className="text-md font-bold text-slate-200 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-indigo-400" />
+          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-activity-logs">
+            <ShimmerLine via="via-indigo-500/50" />
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <IconChip accent="indigo"><Activity className="w-4 h-4" /></IconChip>
               Nhật ký gia đình
             </h3>
 
@@ -674,7 +793,7 @@ export function Dashboard({
                     return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
                   };
                   return (
-                    <div key={log.id} className="text-[11px] p-2 hover:bg-slate-900/50 rounded transition-all text-slate-300 border-l border-slate-800/80">
+                    <div key={log.id} className="text-[11px] p-2 hover:bg-slate-900/50 rounded transition-all text-slate-300 border-l border-slate-800/80 hover:border-indigo-500/50">
                       <div className="flex items-center justify-between text-slate-500 text-[10px] pb-0.5">
                         <span className="font-semibold text-sky-400/90">@{log.username}</span>
                         <span>{formatTime(log.createdAt)}</span>
@@ -688,7 +807,7 @@ export function Dashboard({
             </div>
           </div>
 
-        </div>
+        </motion.div>
       </div>
     </div>
   );

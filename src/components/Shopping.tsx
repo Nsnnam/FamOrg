@@ -9,6 +9,7 @@ import { ShoppingItem, User, UserRole, StoredMealPlan } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { useTabFab } from "./FabHost.js";
+import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { generateMealPlan, FOOD_CATEGORY_ORDER, GroceryLine, FoodCategory } from "../utils/mealPlan.js";
 
 const WEEKDAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
@@ -337,9 +338,10 @@ export function Shopping({
   return (
     <div className="space-y-6" id="shopping-module">
       {/* Add item bar */}
-      <div className="bg-slate-900 border border-slate-800 p-4.5 rounded-2xl shadow-xl space-y-3" id="shopping-add">
+      <Reveal className="relative overflow-hidden bg-slate-900 border border-slate-800 p-4.5 rounded-2xl shadow-xl space-y-3" id="shopping-add">
+        <ShimmerLine accent="emerald" />
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-          <ShoppingCart className="w-5 h-5 text-emerald-400" /> Danh sách đi chợ chung
+          <IconChip accent="emerald"><ShoppingCart className="w-4 h-4" /></IconChip> Danh sách đi chợ chung
         </h3>
         <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2.5">
           <input
@@ -366,12 +368,13 @@ export function Shopping({
           </button>
         </form>
         {error && <p className="text-rose-400 text-[11px] font-medium">{error}</p>}
-      </div>
+      </Reveal>
 
       {/* Weekly menu planner — inline (no popup): shared, persisted, re-randomizable + add to cart */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-4.5 space-y-3 text-xs" id="shopping-weekly-menu">
+      <Reveal delay={0.06} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-4.5 space-y-3 text-xs" id="shopping-weekly-menu">
+        <ShimmerLine accent="violet" />
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-          <ChefHat className="w-5 h-5 text-emerald-400" /> Thực đơn tuần
+          <IconChip accent="violet"><ChefHat className="w-4 h-4" /></IconChip> Thực đơn tuần
         </h3>
 
         {/* Khẩu phần */}
@@ -492,10 +495,11 @@ export function Shopping({
             <p className="text-sm text-slate-500">Chưa có thực đơn tuần. Bấm <span className="text-emerald-400 font-semibold">"Tạo thực đơn"</span> để bốc ngẫu nhiên từ thư viện món.</p>
           </div>
         )}
-      </div>
+      </Reveal>
 
       {/* Pending items */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3" id="shopping-pending">
+      <Reveal delay={0.12} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3" id="shopping-pending">
+        <ShimmerLine accent="emerald" />
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cần mua ({pending.length})</h4>
           {shoppingItems.length > 0 && (
@@ -517,11 +521,12 @@ export function Shopping({
             <AnimatePresence>{pending.map(item => renderItem(item, false))}</AnimatePresence>
           </div>
         )}
-      </div>
+      </Reveal>
 
       {/* Purchased items */}
       {purchased.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3" id="shopping-purchased">
+        <Reveal delay={0.18} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3" id="shopping-purchased">
+          <ShimmerLine accent="sky" />
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Đã mua ({purchased.length})</h4>
             <button
@@ -534,7 +539,7 @@ export function Shopping({
           <div className="space-y-2">
             <AnimatePresence>{purchased.map(item => renderItem(item, true))}</AnimatePresence>
           </div>
-        </div>
+        </Reveal>
       )}
 
       {ConfirmDialog}

@@ -157,6 +157,40 @@ viền `color-500/20` → `color-500/30`. Ví dụ badge:
 
 ---
 
+## 4b. Lively — bộ hiệu ứng "lung linh" dùng chung
+
+Mọi tab dùng chung các primitive trong
+[src/components/Lively.tsx](src/components/Lively.tsx) — **không tự chế lại**:
+
+- **`<ShimmerLine accent="sky" />`** — đường gradient mảnh 1px ôm mép trên thẻ.
+  Thẻ cha cần `relative overflow-hidden`. Chọn accent theo ngữ nghĩa của khối
+  (emerald=tiền/thêm, rose=thuốc/nguy hiểm, amber=lịch/vàng, pink=sức khỏe/sinh nhật,
+  sky/indigo=trung tính, violet=AI). Có thể truyền `via="via-emerald-500/50"` khi cần động.
+- **`<IconChip accent="amber"><Calendar className="w-4 h-4" /></IconChip>`** —
+  icon tiêu đề section nằm trong chip gradient có ring; dùng cạnh chữ
+  `text-sm font-bold text-slate-200`. Icon trong chip luôn `w-4 h-4`.
+- **`<Reveal delay={0.06}>`** — khối trượt vào khi mount (spring), fade khi
+  `useReducedMotion`. Stagger giữa các khối lớn bằng bước ~0.06s; danh sách dài dùng
+  `staggerDelay(i)` (mặc định 0.05s/mục, chặn trần ở mục thứ 8). Nhận `as`, `id`,
+  `onClick`, `hoverLift`.
+- **Hover-lift:** phần tử do motion điều khiển transform (Reveal, motion.div có
+  initial/animate y) **KHÔNG dùng CSS `hover:-translate-y`** — inline transform của
+  motion đè class. Dùng `hoverLift` của Reveal hoặc `whileHover={{ y: -3 }}`.
+  Cũng **không dùng `transition-all`** trên các phần tử đó (CSS transition đánh nhau
+  với motion) — chỉ transition thuộc tính cụ thể:
+  `transition-[box-shadow,border-color] duration-300`.
+  Phần tử tĩnh (không motion) vẫn dùng CSS hover bình thường.
+- **Quầng glow góc thẻ (tùy chọn, thẻ stat):**
+  `absolute -top-8 -right-8 w-24 h-24 rounded-full bg-{accent}-500/10 blur-2xl` +
+  `group-hover:bg-{accent}-500/20`.
+- **Hero Tổng quan:** banner aurora đổi bảng màu theo buổi (sáng/chiều/tối) — cấu
+  hình trong `AURORA` ở [src/components/Dashboard.tsx](src/components/Dashboard.tsx):
+  3 blob `blur-3xl` trôi chậm + sparkle ✦; tên người dùng chữ gradient
+  `bg-clip-text text-transparent`. Blob dùng accent cố định ở /15–/25 để đẹp cả 2 theme.
+- Mọi animation đều phải có fallback `useReducedMotion` (Lively đã tự xử lý).
+
+---
+
 ## 5. States & Feedback
 
 - **Loading (toàn trang / hành động lớn):** vòng xoay

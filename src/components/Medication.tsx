@@ -9,6 +9,7 @@ import { MedicationReminder, MedicationLog, User, canManageMedication } from "..
 import { motion, AnimatePresence } from "motion/react";
 import { TimeSelect24 } from "./DateTimePicker24.js";
 import { useTabFab } from "./FabHost.js";
+import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 
 interface MedicationProps {
   currentUser: User;
@@ -163,10 +164,11 @@ export function Medication({
 
   return (
     <div className="space-y-6" id="medication-module">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+      <Reveal delay={0.06} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+        <ShimmerLine accent="rose" />
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-            <Pill className="w-5 h-5 text-rose-400" /> Nhắc thuốc gia đình
+            <IconChip accent="rose"><Pill className="w-4 h-4" /></IconChip> Nhắc thuốc gia đình
           </h3>
           <div className="flex items-center gap-2 flex-wrap">
             {canManage && todayProgress.total > 0 && (
@@ -221,7 +223,7 @@ export function Medication({
           </form>
         )}
         {error && <p className="text-[11px] text-rose-400">{error}</p>}
-      </div>
+      </Reveal>
 
       {sorted.length === 0 ? (
         <div className="bg-slate-900/40 border border-dashed border-slate-800 rounded-2xl py-12 text-center">
@@ -239,7 +241,8 @@ export function Medication({
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3"
+                  whileHover={{ y: -3 }}
+                  className="bg-slate-900 border border-slate-800 hover:border-rose-500/30 rounded-2xl p-4 shadow-xl hover:shadow-rose-500/10 transition-[box-shadow,border-color] duration-300 space-y-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>

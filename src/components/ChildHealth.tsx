@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { assessBmi, ageFromDob, BmiAssessment } from "../utils/bmi.js";
 import { Avatar } from "./Avatar.js";
 import { Medication } from "./Medication.js";
+import { ShimmerLine, Reveal, IconChip, staggerDelay } from "./Lively.js";
 
 type HealthSection = "growth" | "vaccination" | "medication";
 
@@ -258,9 +259,10 @@ export function ChildHealth({
   return (
     <div className="space-y-6" id="child-health-module">
       {/* Tiêu đề + thanh sub-tab */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-3 space-y-3">
+      <Reveal className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-3 space-y-3">
+        <ShimmerLine accent="pink" />
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2 px-1">
-          <HeartPulse className="w-5 h-5 text-pink-400" /> Sức khỏe gia đình
+          <IconChip accent="pink"><HeartPulse className="w-4 h-4" /></IconChip> Sức khỏe gia đình
         </h3>
         <div className="grid grid-cols-3 gap-2 text-xs font-bold">
           {subTabs.map(t => {
@@ -278,14 +280,15 @@ export function ChildHealth({
             );
           })}
         </div>
-      </div>
+      </Reveal>
 
       {/* ─── TĂNG TRƯỞNG ─────────────────────────────────────────────── */}
       {section === "growth" && (
         <div className="space-y-5">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+          <Reveal delay={0.06} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+            <ShimmerLine accent="emerald" />
             <h4 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <Ruler className="w-4.5 h-4.5 text-emerald-400" /> Ghi số đo (chiều cao / cân nặng)
+              <IconChip accent="emerald"><Ruler className="w-4 h-4" /></IconChip> Ghi số đo (chiều cao / cân nặng)
             </h4>
             <form onSubmit={handleAddGrowth} className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               {renderMemberSelect("focus:border-emerald-500", "col-span-2 sm:col-span-4")}
@@ -304,15 +307,15 @@ export function ChildHealth({
               <button type="submit" className="col-span-2 sm:col-span-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-lg px-3 py-2 font-bold flex items-center justify-center gap-1 cursor-pointer self-end"><Plus className="w-4 h-4" /> Ghi</button>
               {gError && <p className="col-span-2 sm:col-span-4 text-[11px] text-rose-400">{gError}</p>}
             </form>
-          </div>
+          </Reveal>
 
           {sortedMembers.length === 0 ? (
             <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có thành viên nào.</p>
-          ) : sortedMembers.map(member => {
+          ) : sortedMembers.map((member, memberIndex) => {
             const records = growthByChild.get(member.id) ?? [];
             const bmi = bmiFor(member, records);
             return (
-              <div key={member.id} className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
+              <Reveal key={member.id} delay={0.12 + staggerDelay(memberIndex, 0.06, 5)} className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
                 {renderMemberHeader(member, bmi ? (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-lg border shrink-0 ${bmiBadgeClass(bmi.color)}`}>
                     BMI {bmi.bmi.toFixed(1)} · {bmi.label}
@@ -350,7 +353,7 @@ export function ChildHealth({
                     </div>
                   </>
                 )}
-              </div>
+              </Reveal>
             );
           })}
         </div>
@@ -359,9 +362,10 @@ export function ChildHealth({
       {/* ─── TIÊM CHỦNG ──────────────────────────────────────────────── */}
       {section === "vaccination" && (
         <div className="space-y-5">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+          <Reveal delay={0.06} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-4">
+            <ShimmerLine accent="sky" />
             <h4 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <Syringe className="w-4.5 h-4.5 text-sky-400" /> Thêm mũi tiêm
+              <IconChip accent="sky"><Syringe className="w-4 h-4" /></IconChip> Thêm mũi tiêm
             </h4>
             <form onSubmit={handleAddVaccine} className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               {renderMemberSelect("focus:border-sky-500", "col-span-1 sm:col-span-2")}
@@ -376,14 +380,14 @@ export function ChildHealth({
               {vError && <p className="sm:col-span-2 text-[11px] text-rose-400">{vError}</p>}
               <button type="submit" className="sm:col-span-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-lg px-3 py-2 font-bold flex items-center justify-center gap-1 cursor-pointer"><Plus className="w-4 h-4" /> Thêm mũi tiêm</button>
             </form>
-          </div>
+          </Reveal>
 
           {sortedMembers.length === 0 ? (
             <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có thành viên nào.</p>
-          ) : sortedMembers.map(member => {
+          ) : sortedMembers.map((member, memberIndex) => {
             const list = vaccinesByChild.get(member.id) ?? [];
             return (
-              <div key={member.id} className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
+              <Reveal key={member.id} delay={0.12 + staggerDelay(memberIndex, 0.06, 5)} className="bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
                 {renderMemberHeader(member, <span className="text-[10px] text-slate-500 font-mono shrink-0">{list.length} mũi</span>)}
                 {list.length === 0 ? (
                   <p className="text-[11px] text-slate-500 border border-dashed border-slate-800 rounded-lg px-3 py-2 text-center">Chưa có mũi tiêm nào.</p>
@@ -419,7 +423,7 @@ export function ChildHealth({
                     </AnimatePresence>
                   </div>
                 )}
-              </div>
+              </Reveal>
             );
           })}
         </div>

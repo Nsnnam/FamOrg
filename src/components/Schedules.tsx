@@ -30,6 +30,7 @@ import { DateTimePicker24 } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { Avatar } from "./Avatar.js";
+import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 
 interface SchedulesProps {
   currentUser: User;
@@ -448,7 +449,8 @@ export function Schedules({
     <div className="space-y-6" id="schedules-module">
       
       {/* Filters and mode change panel */}
-      <div className="bg-slate-900 border border-slate-800 p-4.5 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4" id="plans-control-header">
+      <Reveal className="relative overflow-hidden bg-slate-900 border border-slate-800 p-4.5 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4" id="plans-control-header">
+        <ShimmerLine accent="sky" />
         
         {/* Toggle shared scopes buttons */}
         <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800 self-start md:self-auto gap-1 text-xs">
@@ -512,12 +514,13 @@ export function Schedules({
             <Plus className="w-4 h-4" /> Lên lịch sự kiện
           </button>
         </div>
-      </div>
+      </Reveal>
 
       {/* Main View Display AREA */}
       {viewMode === "board" ? (
         /* Monthly style responsive Grid */
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden" id="calendar-monthly-grid-view">
+        <Reveal delay={0.08} className="relative bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden" id="calendar-monthly-grid-view">
+          <ShimmerLine accent="amber" />
           
           <div className="bg-slate-950 p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2 capitalize">
@@ -653,7 +656,7 @@ export function Schedules({
               );
             })}
           </div>
-        </div>
+        </Reveal>
       ) : (
         /* Agenda List View Details list */
         <div className="space-y-3" id="calendar-agenda-list-view">
@@ -663,15 +666,17 @@ export function Schedules({
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredPlans.map(plan => {
+              {filteredPlans.map((plan, planIndex) => {
                 const creator = users.find(u => u.id === plan.creatorId);
                 const canManage = canManagePlan(plan);
                 const sDate = plan.startDate.split(" ");
                 const eDate = plan.endDate.split(" ");
                 return (
-                  <div 
+                  <Reveal
                     key={plan.id}
-                    className={`bg-slate-900 border border-slate-800 ${borderLeftColor(plan.color)} rounded-2xl p-4 flex flex-col justify-between space-y-3 shadow-md relative group`}
+                    delay={0.06 + staggerDelay(planIndex)}
+                    hoverLift
+                    className={`bg-slate-900 border border-slate-800 ${borderLeftColor(plan.color)} rounded-2xl p-4 flex flex-col justify-between space-y-3 shadow-md relative group hover:shadow-xl transition-[box-shadow] duration-300`}
                   >
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-[11px]">
@@ -742,7 +747,7 @@ export function Schedules({
                         </button>
                       </div>
                     )}
-                  </div>
+                  </Reveal>
                 );
               })}
             </div>
