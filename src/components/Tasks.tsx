@@ -697,7 +697,8 @@ export function Tasks({
                       </div>
                     </div>
 
-                    <div className="p-3 space-y-3 min-h-[220px]">
+                    {/* Thân cột: cao tối đa ~3 thẻ task, dài hơn thì cuộn bên trong cột */}
+                    <div className="p-3 space-y-3 min-h-[220px] max-h-[660px] overflow-y-auto overscroll-contain scrollbar-thin">
                       {columnTasks.length === 0 ? (
                         <div className="h-32 border border-dashed border-slate-800 rounded-xl flex items-center justify-center px-4 text-center">
                           <p className="text-[11px] text-slate-500">Không có task ở cột này.</p>
