@@ -6,6 +6,8 @@
 import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
+import os from "os";
+import fsp from "fs/promises";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret, getAppSettings, setAppSetting } from "./server/db.js";
@@ -371,6 +373,105 @@ app.post("/api/update", requireAuth, requireRole([UserRole.ADMIN]), async (_req:
     res.json({ success: true, message: "Đã yêu cầu cập nhật. Ứng dụng sẽ tải bản mới và khởi động lại trong giây lát." });
   } catch (err: any) {
     res.status(502).json({ error: err.message || "Không kích hoạt được cập nhật tự động." });
+  }
+});
+
+// --- SERVER MONITOR (thông số máy chủ realtime, admin only) ---
+// Chạy trong Docker trên Pi: /proc & /sys phản ánh máy chủ thật nên CPU/RAM/nhiệt độ
+// là số liệu của cả con Pi, không phải riêng container.
+
+let lastCpuSample: { idle: number; total: number; at: number } | null = null;
+
+const readCpuTimes = () => {
+  let idle = 0;
+  let total = 0;
+  for (const cpu of os.cpus()) {
+    idle += cpu.times.idle;
+    total += cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.idle + cpu.times.irq;
+  }
+  return { idle, total, at: Date.now() };
+};
+
+// % CPU trung bình giữa 2 lần gọi (client poll ~2s nên delta rất mượt).
+// Lần đầu (hoặc mẫu quá cũ) thì tự lấy 2 mẫu cách nhau 300ms.
+const readCpuPercent = async (): Promise<number | null> => {
+  let prev = lastCpuSample;
+  if (!prev || Date.now() - prev.at > 30000) {
+    prev = readCpuTimes();
+    await new Promise(r => setTimeout(r, 300));
+  }
+  const cur = readCpuTimes();
+  lastCpuSample = cur;
+  const dTotal = cur.total - prev.total;
+  const dIdle = cur.idle - prev.idle;
+  if (dTotal <= 0) return null;
+  return Math.min(100, Math.max(0, (1 - dIdle / dTotal) * 100));
+};
+
+// Nhiệt độ CPU từ thermal zone (Pi/Linux, giá trị millidegree); nơi khác trả null.
+const readCpuTempC = async (): Promise<number | null> => {
+  try {
+    const base = "/sys/class/thermal";
+    for (const zone of await fsp.readdir(base)) {
+      if (!zone.startsWith("thermal_zone")) continue;
+      try {
+        const raw = await fsp.readFile(path.join(base, zone, "temp"), "utf8");
+        const value = Number(raw.trim());
+        if (Number.isFinite(value) && value > 0) return value >= 1000 ? value / 1000 : value;
+      } catch { /* zone không đọc được → thử zone kế */ }
+    }
+  } catch { /* không phải Linux hoặc /sys bị ẩn */ }
+  return null;
+};
+
+// RAM: ưu tiên MemAvailable trong /proc/meminfo (sát thực tế hơn os.freemem trên Linux).
+const readMemory = async () => {
+  const totalBytes = os.totalmem();
+  let availableBytes = os.freemem();
+  try {
+    const info = await fsp.readFile("/proc/meminfo", "utf8");
+    const m = info.match(/MemAvailable:\s+(\d+)\s*kB/);
+    if (m) availableBytes = Number(m[1]) * 1024;
+  } catch { /* Windows/macOS: dùng os.freemem() */ }
+  return { totalBytes, usedBytes: Math.max(0, totalBytes - availableBytes), availableBytes };
+};
+
+// Dung lượng phân vùng chứa app (trong container = ổ đĩa thật của máy chủ).
+const readDisk = async () => {
+  try {
+    if (typeof fsp.statfs !== "function") return null; // Node < 18.15
+    const st = await fsp.statfs(process.cwd());
+    const totalBytes = Number(st.blocks) * Number(st.bsize);
+    const freeBytes = Number(st.bavail) * Number(st.bsize);
+    if (!Number.isFinite(totalBytes) || totalBytes <= 0) return null;
+    return { totalBytes, usedBytes: totalBytes - freeBytes, freeBytes };
+  } catch {
+    return null;
+  }
+};
+
+app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
+  try {
+    const [cpuPercent, tempC, memory, disk] = await Promise.all([
+      readCpuPercent(),
+      readCpuTempC(),
+      readMemory(),
+      readDisk()
+    ]);
+    const cpus = os.cpus();
+    res.json({
+      at: new Date().toISOString(),
+      hostname: os.hostname(),
+      platform: `${os.type()} ${os.arch()}`,
+      uptimeSec: Math.round(os.uptime()),
+      loadAvg: os.loadavg(),
+      cpu: { percent: cpuPercent, cores: cpus.length, model: cpus[0]?.model || "" },
+      tempC,
+      memory,
+      disk
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Không đọc được thông số máy chủ." });
   }
 });
 
@@ -1972,6 +2073,42 @@ app.get("/api/widgets/overview", requireAuth, async (req: AuthRequest, res: Resp
   const fx = await cachedFetch("fx", 30 * 60 * 1000, fetchFx);
   const gold = await cachedFetch("gold", 30 * 60 * 1000, () => fetchGold(fx?.usdVnd ?? null));
   res.json({ weather, crypto: cryptoPrices, fx, gold });
+});
+
+// --- LỊCH SỬ GIÁ THỊ TRƯỜNG (sparkline BTC/ETH/Vàng/USD ở Tổng quan) ---
+
+// Chụp một điểm giá vào CSDL (dedupe/prune nằm trong FamilyDB.appendMarketHistory).
+async function recordMarketSnapshot() {
+  try {
+    const fx = await cachedFetch("fx", 30 * 60 * 1000, fetchFx);
+    const [cryptoPrices, gold] = await Promise.all([
+      cachedFetch("crypto", 5 * 60 * 1000, fetchCrypto),
+      cachedFetch("gold", 30 * 60 * 1000, () => fetchGold(fx?.usdVnd ?? null))
+    ]);
+    FamilyDB.appendMarketHistory({
+      btcUsd: marketNumber(cryptoPrices?.bitcoin?.usd),
+      ethUsd: marketNumber(cryptoPrices?.ethereum?.usd),
+      goldSell: marketNumber(gold?.sell) ?? marketNumber(gold?.vndPerTael),
+      usdVnd: marketNumber(fx?.usdVnd)
+    });
+  } catch (e) {
+    console.error("Không ghi được lịch sử giá thị trường:", e);
+  }
+}
+
+// Server chạy 24/7 trên Pi nên tự chụp ~10 phút/lần, không phụ thuộc ai mở app.
+setTimeout(recordMarketSnapshot, 20 * 1000);
+setInterval(recordMarketSnapshot, 10 * 60 * 1000);
+
+// Trả lịch sử trong N ngày (mặc định 7, tối đa 30), downsample còn ≤200 điểm.
+app.get("/api/widgets/history", requireAuth, (req: AuthRequest, res: Response) => {
+  const days = Math.min(30, Math.max(1, Number(req.query.days) || 7));
+  const cutoff = Date.now() - days * 86400000;
+  const all = FamilyDB.getMarketHistory().filter(p => new Date(p.at).getTime() >= cutoff);
+  const MAX_POINTS = 200;
+  const step = Math.ceil(all.length / MAX_POINTS);
+  const points = step > 1 ? all.filter((_, i) => i % step === 0 || i === all.length - 1) : all;
+  res.json({ days, points });
 });
 
 // --- VITE MIDDLEWARE SETUP & STATIC SERVING ---

@@ -513,6 +513,16 @@ export interface StoredMealPlan {
   updatedById: string;
 }
 
+// Một điểm lịch sử giá thị trường (chụp ~10 phút/lần trên server).
+export interface MarketHistoryPoint {
+  id: string;
+  at: string;               // ISO timestamp
+  btcUsd: number | null;
+  ethUsd: number | null;
+  goldSell: number | null;  // VND/lượng (SJC bán ra; fallback quy đổi từ XAU)
+  usdVnd: number | null;
+}
+
 // Database schema container
 export interface FamilyOrganizerDB {
   users: (User & { passwordHash: string })[];
@@ -534,6 +544,7 @@ export interface FamilyOrganizerDB {
   shoppingItems: ShoppingItem[];
   dishLibrary: StoredDish[];
   mealPlan?: StoredMealPlan | null;
+  marketHistory: MarketHistoryPoint[];
   notifications: Notification[];
   pushSubscriptions: PushSubscriptionRecord[];
   activityLogs: {

@@ -17,7 +17,7 @@ import {
   AlertCircle,
   Cake
 } from "lucide-react";
-import { Task, FamilyPlan, Note, FinancialTransaction, User, TaskStatus } from "../types.js";
+import { Task, FamilyPlan, Note, FinancialTransaction, User, TaskStatus, MarketHistoryPoint } from "../types.js";
 import { motion, useReducedMotion } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { QuickNudge } from "./QuickNudge.js";
@@ -116,6 +116,35 @@ function AnimatedNumber({ value, format }: { value: number; format: (n: number) 
 const Skeleton = ({ className = "" }: { className?: string }) => (
   <span className={`inline-block bg-slate-700/40 rounded-md animate-pulse align-middle ${className}`} />
 );
+
+// Sparkline + % tăng trưởng 7 ngày cho card giá (ẩn khi lịch sử chưa đủ 2 điểm).
+function TrendRow({ values }: { values: number[] }) {
+  if (values.length < 2) return null;
+  const first = values[0];
+  const last = values[values.length - 1];
+  const up = last >= first;
+  const pct = first !== 0 ? ((last - first) / first) * 100 : 0;
+  const W = 120, H = 30, pad = 2;
+  const min = Math.min(...values);
+  const range = (Math.max(...values) - min) || 1;
+  const pts = values.map((v, i) => {
+    const x = pad + (i / (values.length - 1)) * (W - 2 * pad);
+    const y = H - pad - ((v - min) / range) * (H - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const stroke = up ? "#34d399" : "#fb7185";
+  return (
+    <div className="mt-2 space-y-1">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-7" preserveAspectRatio="none" aria-hidden>
+        <polygon points={`${pad},${H - pad} ${pts.join(" ")} ${W - pad},${H - pad}`} fill={stroke} opacity="0.12" />
+        <polyline points={pts.join(" ")} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      </svg>
+      <p className={`text-[9px] font-mono ${up ? "text-emerald-400" : "text-rose-400"}`}>
+        {up ? "▲" : "▼"} {pct >= 0 ? "+" : ""}{pct.toFixed(1).replace(".", ",")}% · 7 ngày
+      </p>
+    </div>
+  );
+}
 
 export function Dashboard({
   currentUser,
@@ -232,6 +261,14 @@ export function Dashboard({
     if (hours >= 12 && hours < 18) return AURORA.afternoon;
     return AURORA.evening;
   }, []);
+
+  // Chuỗi giá 7 ngày cho sparkline từng card (server chụp ~10 phút/lần).
+  const marketSeries = useMemo(() => {
+    const history: MarketHistoryPoint[] = widgets?.history || [];
+    const pick = (key: "btcUsd" | "ethUsd" | "goldSell" | "usdVnd") =>
+      history.map(p => p[key]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    return { btc: pick("btcUsd"), eth: pick("ethUsd"), gold: pick("goldSell"), fx: pick("usdVnd") };
+  }, [widgets?.history]);
 
   // Widget formatting helpers
   const fmtUsd = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
@@ -396,6 +433,7 @@ export function Dashboard({
                   <Skeleton className="h-2.5 w-20 mt-1.5" />
                 </>
               )}
+              <TrendRow values={marketSeries.btc} />
             </div>
           </div>
 
@@ -418,6 +456,7 @@ export function Dashboard({
                   <Skeleton className="h-2.5 w-20 mt-1.5" />
                 </>
               )}
+              <TrendRow values={marketSeries.eth} />
             </div>
           </div>
 
@@ -452,6 +491,7 @@ export function Dashboard({
                   <Skeleton className="h-2.5 w-20 mt-1.5" />
                 </>
               )}
+              <TrendRow values={marketSeries.gold} />
             </div>
           </div>
 
@@ -473,6 +513,7 @@ export function Dashboard({
                   <Skeleton className="h-2.5 w-20 mt-1.5" />
                 </>
               )}
+              <TrendRow values={marketSeries.fx} />
             </div>
           </div>
         </div>

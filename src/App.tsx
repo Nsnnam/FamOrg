@@ -25,7 +25,8 @@ import {
   Lock,
   ShoppingCart,
   FolderLock,
-  HeartPulse
+  HeartPulse,
+  Cpu
 } from "lucide-react";
 import {
   User,
@@ -64,6 +65,7 @@ import { ChildHealth } from "./components/ChildHealth.js";
 import { Assistant } from "./components/Assistant.js";
 import { FabProvider } from "./components/FabHost.js";
 import { Settings } from "./components/Settings.js";
+import { ServerMonitor } from "./components/ServerMonitor.js";
 import { useModalA11y } from "./hooks/useModalA11y.js";
 import { reloadOnce, scheduleReloadFallback } from "./utils/appReload.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -136,7 +138,7 @@ export default function App() {
   // Push notifications: clear the app-icon badge when the app is opened/focused,
   // and deep-link to the right tab when a push notification is tapped.
   useEffect(() => {
-    const KNOWN_TABS = ["dashboard", "tasks", "plans", "notes", "shopping", "medications", "child-health", "finance", "documents", "settings"];
+    const KNOWN_TABS = ["dashboard", "tasks", "plans", "notes", "shopping", "medications", "child-health", "finance", "documents", "server", "settings"];
     const clearBadge = () => { try { (navigator as any).clearAppBadge?.(); } catch (e) { /* ignore */ } };
 
     // Lịch thuốc giờ nằm trong "Sức khỏe gia đình": deep-link "medications" → mở tab
@@ -251,6 +253,11 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     if (!canAccessFinance(currentUser.role) && (activeTab === "finance" || activeTab === "documents")) {
+      setActiveTab("dashboard");
+      return;
+    }
+    // Tab quản lý server chỉ dành cho Admin
+    if (currentUser.role !== UserRole.ADMIN && activeTab === "server") {
       setActiveTab("dashboard");
       return;
     }
@@ -554,10 +561,15 @@ export default function App() {
   const fetchWidgets = async () => {
     if (!currentUser) return;
     try {
-      const res = await fetch("/api/widgets/overview", { headers: getAuthHeader() });
+      // Lấy giá hiện tại + lịch sử 7 ngày (cho sparkline tăng trưởng ở Tổng quan)
+      const [res, histRes] = await Promise.all([
+        fetch("/api/widgets/overview", { headers: getAuthHeader() }),
+        fetch("/api/widgets/history?days=7", { headers: getAuthHeader() })
+      ]);
       if (res.ok) {
         const data = await res.json();
-        setWidgets(data);
+        const hist = histRes.ok ? await histRes.json() : null;
+        setWidgets({ ...data, history: hist?.points || [] });
       }
     } catch (e) {
       console.error(e);
@@ -1415,6 +1427,8 @@ export default function App() {
     // Sổ sức khỏe cả nhà (gồm Tăng trưởng, Tiêm chủng, Lịch thuốc) — mọi thành viên đều xem được
     { id: "child-health", label: "Sức khỏe gia đình", icon: HeartPulse },
     ...(canAccessFinance(currentUser.role) ? [{ id: "documents", label: "Giấy tờ", icon: FolderLock }] : []),
+    // Theo dõi sức khỏe máy chủ (CPU/RAM/nhiệt độ/ổ đĩa) — chỉ Admin thấy
+    ...(currentUser.role === UserRole.ADMIN ? [{ id: "server", label: "Quản lý Server", icon: Cpu }] : []),
     { id: "settings", label: "Thiết lập", icon: Settings2 }
   ];
 
@@ -1779,6 +1793,10 @@ export default function App() {
                   onSaveDocument={handleSaveDocument}
                   onDeleteDocument={handleDeleteDocument}
                 />
+              )}
+
+              {activeTab === "server" && currentUser.role === UserRole.ADMIN && (
+                <ServerMonitor authHeaders={getAuthHeader()} />
               )}
 
               {activeTab === "settings" && (

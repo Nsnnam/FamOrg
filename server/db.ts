@@ -34,6 +34,7 @@ import {
   PushSubscriptionRecord,
   StoredDish,
   StoredMealPlan,
+  MarketHistoryPoint,
   MealIngredient,
   DishSlot
 } from "../src/types.js";
@@ -180,6 +181,7 @@ const initialDBState = (): FamilyOrganizerDB => {
     shoppingItems: [],
     dishLibrary: [],
     mealPlan: null,
+    marketHistory: [],
     notifications: [],
     pushSubscriptions: [],
     activityLogs: [],
@@ -208,6 +210,7 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.shoppingItems = db.shoppingItems || [];
   db.dishLibrary = db.dishLibrary || [];
   db.mealPlan = db.mealPlan || null;
+  db.marketHistory = db.marketHistory || [];
   db.notifications = db.notifications || [];
   db.pushSubscriptions = db.pushSubscriptions || [];
   db.activityLogs = db.activityLogs || [];
@@ -1730,6 +1733,41 @@ export class FamilyDB {
     const db = this.readRaw();
     db.mealPlan = plan;
     this.writeRaw(db);
+  }
+
+  // --- Lịch sử giá thị trường (BTC/ETH/Vàng/USD) cho sparkline ở Tổng quan ---
+
+  public static getMarketHistory(): MarketHistoryPoint[] {
+    return this.readRaw().marketHistory || [];
+  }
+
+  /**
+   * Ghi một điểm giá mới. Bỏ qua nếu điểm gần nhất còn "tươi" (< minGapMs) để
+   * nhiều client cùng mở app không làm phình dữ liệu. Tự cắt lịch sử > 30 ngày.
+   */
+  public static appendMarketHistory(
+    point: Omit<MarketHistoryPoint, "id" | "at">,
+    minGapMs = 9 * 60 * 1000
+  ): boolean {
+    // Không có số liệu nào thì khỏi ghi (upstream lỗi toàn bộ).
+    if (point.btcUsd === null && point.ethUsd === null && point.goldSell === null && point.usdVnd === null) {
+      return false;
+    }
+    const db = this.readRaw();
+    if (!db.marketHistory) db.marketHistory = [];
+    const last = db.marketHistory[db.marketHistory.length - 1];
+    const now = Date.now();
+    if (last && now - new Date(last.at).getTime() < minGapMs) return false;
+
+    db.marketHistory.push({
+      id: `mkt_${now}`,
+      at: new Date(now).toISOString(),
+      ...point
+    });
+    const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+    db.marketHistory = db.marketHistory.filter(p => new Date(p.at).getTime() >= cutoff);
+    this.writeRaw(db);
+    return true;
   }
 
   // Add AI-suggested dishes, skipping ones already known (same name + slot).

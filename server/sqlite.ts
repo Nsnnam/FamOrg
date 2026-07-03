@@ -34,6 +34,7 @@ const COLLECTIONS: { key: keyof FamilyOrganizerDB; table: string }[] = [
   { key: "documents", table: "documents" },
   { key: "shoppingItems", table: "shopping_items" },
   { key: "dishLibrary", table: "dish_library" },
+  { key: "marketHistory", table: "market_history" },
   { key: "notifications", table: "notifications" },
   { key: "pushSubscriptions", table: "push_subscriptions" },
   { key: "activityLogs", table: "activity_logs" },
