@@ -332,6 +332,50 @@ export function ChildHealth({
                         {bmi.note}
                       </p>
                     )}
+                    {/* Số đo mới nhất — hiện TO rõ, kèm chênh lệch so lần đo trước */}
+                    {(() => {
+                      const heights = records.filter(g => g.heightCm != null);
+                      const weights = records.filter(g => g.weightKg != null);
+                      const lastH = heights[heights.length - 1];
+                      const prevH = heights[heights.length - 2];
+                      const lastW = weights[weights.length - 1];
+                      const prevW = weights[weights.length - 2];
+                      const fmt = (n: number) => String(Math.round(n * 10) / 10).replace(".", ",");
+                      const deltaText = (cur?: number, prev?: number, unit = "") => {
+                        if (cur == null || prev == null) return null;
+                        const d = Math.round((cur - prev) * 10) / 10;
+                        if (d === 0) return <span className="text-slate-500">· không đổi</span>;
+                        return (
+                          <span className="text-slate-400">
+                            · {d > 0 ? "▲ +" : "▼ "}{fmt(d)} {unit}
+                          </span>
+                        );
+                      };
+                      return (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5">
+                            <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Chiều cao</p>
+                            <p className="mt-1.5 text-3xl md:text-4xl font-extrabold text-emerald-400 tabular-nums leading-none">
+                              {lastH ? fmt(lastH.heightCm!) : "—"}
+                              <span className="text-sm font-bold text-slate-400 ml-1.5">cm</span>
+                            </p>
+                            <p className="mt-2 text-[10px] text-slate-500 font-mono">
+                              {lastH ? <>đo {lastH.date} {deltaText(lastH.heightCm!, prevH?.heightCm ?? undefined, "cm")}</> : "Chưa có số đo"}
+                            </p>
+                          </div>
+                          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5">
+                            <p className="text-[10px] text-sky-400 font-bold uppercase tracking-wider">Cân nặng</p>
+                            <p className="mt-1.5 text-3xl md:text-4xl font-extrabold text-sky-400 tabular-nums leading-none">
+                              {lastW ? fmt(lastW.weightKg!) : "—"}
+                              <span className="text-sm font-bold text-slate-400 ml-1.5">kg</span>
+                            </p>
+                            <p className="mt-2 text-[10px] text-slate-500 font-mono">
+                              {lastW ? <>đo {lastW.date} {deltaText(lastW.weightKg!, prevW?.weightKg ?? undefined, "kg")}</> : "Chưa có số đo"}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3">
                         <p className="text-[10px] text-emerald-400 font-bold uppercase mb-1">Chiều cao (cm)</p>
@@ -344,9 +388,11 @@ export function ChildHealth({
                     </div>
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
                       {[...records].reverse().map(g => (
-                        <div key={g.id} className="flex items-center justify-between text-[11px] bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-1.5">
+                        <div key={g.id} className="flex items-center justify-between text-xs bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2">
                           <span className="font-mono text-slate-400">{g.date}</span>
-                          <span className="text-slate-200">{g.heightCm != null ? `${g.heightCm} cm` : "—"} · {g.weightKg != null ? `${g.weightKg} kg` : "—"}</span>
+                          <span className="text-slate-100 font-bold tabular-nums">
+                            {g.heightCm != null ? `${g.heightCm} cm` : "—"} <span className="text-slate-500 font-normal">·</span> {g.weightKg != null ? `${g.weightKg} kg` : "—"}
+                          </span>
                           <button onClick={() => onDeleteGrowth(g.id)} className="text-slate-600 hover:text-rose-400 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
                         </div>
                       ))}

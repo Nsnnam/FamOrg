@@ -409,16 +409,46 @@ const readCpuPercent = async (): Promise<number | null> => {
 };
 
 // Nhiệt độ CPU từ thermal zone (Pi/Linux, giá trị millidegree); nơi khác trả null.
+// Ưu tiên zone có type cpu/soc (Pi 5 = "cpu-thermal"), nếu không thì lấy zone đầu tiên đọc được.
 const readCpuTempC = async (): Promise<number | null> => {
   try {
     const base = "/sys/class/thermal";
+    let fallback: number | null = null;
     for (const zone of await fsp.readdir(base)) {
       if (!zone.startsWith("thermal_zone")) continue;
       try {
         const raw = await fsp.readFile(path.join(base, zone, "temp"), "utf8");
         const value = Number(raw.trim());
-        if (Number.isFinite(value) && value > 0) return value >= 1000 ? value / 1000 : value;
+        if (!Number.isFinite(value) || value <= 0) continue;
+        const celsius = value >= 1000 ? value / 1000 : value;
+        let type = "";
+        try { type = (await fsp.readFile(path.join(base, zone, "type"), "utf8")).trim().toLowerCase(); } catch { /* zone không có type */ }
+        if (/cpu|soc|core|x86/.test(type)) return celsius;
+        if (fallback === null) fallback = celsius;
       } catch { /* zone không đọc được → thử zone kế */ }
+    }
+    return fallback;
+  } catch { /* không phải Linux hoặc /sys bị ẩn */ }
+  return null;
+};
+
+// Nhiệt độ SSD NVMe qua hwmon (Pi 5 + SSD có cảm biến: name = "nvme",
+// temp1_input thường là "Composite" — nhiệt độ tổng của ổ, đơn vị millidegree).
+const readSsdTempC = async (): Promise<number | null> => {
+  try {
+    const base = "/sys/class/hwmon";
+    for (const dev of await fsp.readdir(base)) {
+      try {
+        const name = (await fsp.readFile(path.join(base, dev, "name"), "utf8")).trim().toLowerCase();
+        if (!name.includes("nvme")) continue;
+        for (const file of ["temp1_input", "temp2_input", "temp3_input"]) {
+          try {
+            const raw = await fsp.readFile(path.join(base, dev, file), "utf8");
+            const value = Number(raw.trim());
+            if (Number.isFinite(value) && value > 0) return value >= 1000 ? value / 1000 : value;
+          } catch { /* sensor này không có → thử sensor kế */ }
+        }
+      } catch { /* hwmon không đọc được → thử cái kế */ }
     }
   } catch { /* không phải Linux hoặc /sys bị ẩn */ }
   return null;
@@ -452,9 +482,10 @@ const readDisk = async () => {
 
 app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
   try {
-    const [cpuPercent, tempC, memory, disk] = await Promise.all([
+    const [cpuPercent, tempC, ssdTempC, memory, disk] = await Promise.all([
       readCpuPercent(),
       readCpuTempC(),
+      readSsdTempC(),
       readMemory(),
       readDisk()
     ]);
@@ -467,6 +498,7 @@ app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (
       loadAvg: os.loadavg(),
       cpu: { percent: cpuPercent, cores: cpus.length, model: cpus[0]?.model || "" },
       tempC,
+      ssdTempC,
       memory,
       disk
     });
