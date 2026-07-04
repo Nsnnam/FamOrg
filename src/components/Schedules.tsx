@@ -676,16 +676,22 @@ export function Schedules({
               return (
                 <div
                   key={`day-${day.dayNum}`}
-                  className={`p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isWeekend ? "bg-slate-950/15" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
+                  className={`p-1.5 sm:p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isWeekend ? "bg-slate-950/15" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
                 >
                   <div className="flex justify-between items-start gap-1.5 min-h-9">
                     <div className="min-w-0">
-                      <span className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-1.5 text-base sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
+                      <span className={`inline-flex h-7 min-w-7 sm:h-8 sm:min-w-8 items-center justify-center rounded-lg border px-1 sm:px-1.5 text-sm sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
                         {day.dayNum}
                       </span>
+                      {/* "Hôm nay" xuống dòng dưới số — chỉ mobile (desktop hiện bên phải) */}
+                      {isToday && (
+                        <div className="sm:hidden mt-0.5 flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide text-sky-400 leading-none">
+                          <span className="w-1 h-1 rounded-full bg-sky-400 animate-pulse" /> Hôm nay
+                        </div>
+                      )}
                       {lunarDate && (
                         <div
-                          className={`mt-1 text-[9px] leading-none font-mono font-semibold ${lunarDate.day === 1 ? "text-emerald-400" : "text-slate-500"}`}
+                          className={`mt-1 text-[8px] sm:text-[9px] leading-none font-mono font-semibold ${lunarDate.day === 1 ? "text-emerald-400" : "text-slate-500"}`}
                           title={lunarCellTitle(lunarDate)}
                         >
                           âm {lunarCellLabel(lunarDate)}
@@ -696,7 +702,7 @@ export function Schedules({
                       )}
                     </div>
                     {(isToday || hasEvents) && (
-                      <div className="flex items-center gap-1.5 h-8 shrink-0">
+                      <div className="hidden sm:flex items-center gap-1.5 h-8 shrink-0">
                         {isToday && (
                           <span className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide text-sky-400 leading-none">
                             <span className="w-1 h-1 rounded-full bg-sky-400 animate-pulse" /> Hôm nay
@@ -722,7 +728,7 @@ export function Schedules({
                         onClick={() => setViewingHoliday({ holiday, day: day.dayNum })}
                         title={`${holiday.title}${holiday.lunarDate ? ` (${holiday.lunarDate})` : ""}`}
                         aria-label={`Xem ý nghĩa ${holiday.title}`}
-                        className={`w-full text-left text-[10px] px-1.5 py-1 rounded-md font-semibold flex items-center gap-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${holidayBadgeClass(holiday.tone)}`}
+                        className={`w-full text-left text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-md font-semibold flex items-center gap-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${holidayBadgeClass(holiday.tone)}`}
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75 shrink-0" />
                         <span className="truncate min-w-0 flex-1">{holiday.shortTitle}</span>
@@ -736,7 +742,7 @@ export function Schedules({
                           type="button"
                           onClick={() => bUser && setViewingBirthday({ user: bUser, day: day.dayNum })}
                           title={`🎂 Sinh nhật ${b.name} — bấm để xem chi tiết`}
-                          className="w-full text-left text-[10px] px-1.5 py-1 rounded-md font-medium flex items-center gap-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity bg-pink-500/10 text-pink-400 border border-pink-500/20"
+                          className="w-full text-left text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-md font-medium flex items-center gap-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity bg-pink-500/10 text-pink-400 border border-pink-500/20"
                         >
                           <span className="shrink-0">🎂</span>
                           <span className="truncate min-w-0 flex-1">{b.name}</span>
@@ -751,12 +757,12 @@ export function Schedules({
                           type="button"
                           onClick={() => setViewingPlan(plan)}
                           title={`${plan.title}\n(${plan.startDate} → ${plan.endDate || plan.startDate})`}
-                          className={`w-full text-left text-[10px] px-1.5 py-1 rounded-md font-medium flex items-center gap-0.5 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${badgeColorClass(plan.color)}`}
+                          className={`w-full text-left text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-md font-medium flex items-center gap-0.5 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${badgeColorClass(plan.color)}`}
                         >
                           {meta.contFrom && <ChevronLeft className="w-2.5 h-2.5 shrink-0 opacity-60" />}
-                          {meta.startTime && <span className="shrink-0 text-[8px] font-mono opacity-80">{meta.startTime}</span>}
+                          {meta.startTime && <span className="hidden sm:inline shrink-0 text-[8px] font-mono opacity-80">{meta.startTime}</span>}
                           <span className="truncate min-w-0 flex-1">{plan.title}</span>
-                          {meta.endTime && <span className="shrink-0 text-[8px] font-mono opacity-80">{meta.endTime}</span>}
+                          {meta.endTime && <span className="hidden sm:inline shrink-0 text-[8px] font-mono opacity-80">{meta.endTime}</span>}
                           {meta.contTo && <ChevronRight className="w-2.5 h-2.5 shrink-0 opacity-60" />}
                         </button>
                       );
