@@ -73,7 +73,7 @@ export function FancySelect({
 
   const close = useCallback(() => setOpen(false), []);
 
-  // Đóng khi bấm ngoài / cuộn / đổi cỡ màn
+  // Đóng khi bấm ngoài / cuộn nền / đổi cỡ màn
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
@@ -81,14 +81,21 @@ export function FancySelect({
       if (triggerRef.current?.contains(t) || listRef.current?.contains(t)) return;
       close();
     };
-    const onLeave = () => close();
+    const onScroll = (e: Event) => {
+      // Cuộn BÊN TRONG dropdown (con lăn/kéo thanh cuộn) → giữ nguyên;
+      // chỉ đóng khi nền/trang phía sau cuộn khiến nút trigger trôi đi.
+      const t = e.target as Node;
+      if (listRef.current && (listRef.current === t || listRef.current.contains(t))) return;
+      close();
+    };
+    const onResize = () => close();
     window.addEventListener("pointerdown", onDown, true);
-    window.addEventListener("scroll", onLeave, true);
-    window.addEventListener("resize", onLeave);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("pointerdown", onDown, true);
-      window.removeEventListener("scroll", onLeave, true);
-      window.removeEventListener("resize", onLeave);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
     };
   }, [open, close]);
 
