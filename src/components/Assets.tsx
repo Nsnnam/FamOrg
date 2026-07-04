@@ -896,7 +896,7 @@ export function Assets({
       )}
 
       {isFormOpen && (
-        <div onClick={closeForm} className="fixed inset-0 bg-slate-950/85 flex items-center justify-center z-50 p-4" id="asset-form-modal">
+        <div className="fixed inset-0 bg-slate-950/85 flex items-center justify-center z-50 p-4" id="asset-form-modal">
           <motion.div
             ref={formRef}
             tabIndex={-1}
@@ -1186,7 +1186,7 @@ export function Assets({
       )}
 
       {sellingAsset && (
-        <div onClick={closeSell} className="fixed inset-0 bg-slate-950/85 flex items-center justify-center z-50 p-4" id="asset-sell-modal">
+        <div className="fixed inset-0 bg-slate-950/85 flex items-center justify-center z-50 p-4" id="asset-sell-modal">
           <motion.div
             ref={sellRef}
             tabIndex={-1}

@@ -445,8 +445,7 @@ export function Notes({
 
       {/* Editor Modal for Writing / Modifying */}
       {isEditorOpen && (
-        <div 
-          onClick={() => setIsEditorOpen(false)}
+        <div
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="note-editor-modal"
         >
@@ -620,8 +619,7 @@ export function Notes({
 
       {/* Reader Modal for viewing Markdown notes */}
       {readingNote && (
-        <div 
-          onClick={() => setReadingNote(null)}
+        <div
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="note-reader-modal"
         >

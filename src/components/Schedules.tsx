@@ -762,7 +762,6 @@ export function Schedules({
         const canManage = canManagePlan(viewingPlan);
         return (
           <div
-            onClick={() => setViewingPlan(null)}
             className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           >
             <motion.div
@@ -873,7 +872,6 @@ export function Schedules({
         const dateLabel = bdDate.toLocaleDateString("vi-VN", { day: "numeric", month: "long" });
         return (
           <div
-            onClick={() => setViewingBirthday(null)}
             className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           >
             <motion.div
@@ -948,8 +946,7 @@ export function Schedules({
       })()}
 
       {isFormOpen && (
-        <div 
-          onClick={handleClosePlanForm}
+        <div
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id={editingPlan ? "plan-edit-modal" : "plan-create-modal"}
         >
