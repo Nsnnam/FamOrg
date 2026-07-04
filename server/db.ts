@@ -1093,11 +1093,11 @@ export class FamilyDB {
   public static saveBudget(data: Partial<BudgetLimit>, userId: string, username: string): BudgetLimit {
     const db = this.readRaw();
     const now = new Date().toISOString();
-    if (!data.month || !data.category || !data.limit) throw new Error("Thieu thang, hang muc hoac han muc ngan sach");
+    if (!data.month || !data.category || !data.limit) throw new Error("Thiếu tháng, hạng mục hoặc hạn mức ngân sách");
 
     if (data.id) {
       const idx = db.budgets.findIndex(b => b.id === data.id);
-      if (idx === -1) throw new Error("Khong tim thay ngan sach");
+      if (idx === -1) throw new Error("Không tìm thấy ngân sách");
       const updated = { ...db.budgets[idx], ...data, limit: Number(data.limit), updatedAt: now } as BudgetLimit;
       db.budgets[idx] = updated;
       this.writeRaw(db);
@@ -1131,7 +1131,7 @@ export class FamilyDB {
    * chép toàn bộ từ tháng gần nhất trước đó. Idempotent — gọi lại không nhân đôi.
    */
   public static carryForwardBudgets(targetMonth: string, userId: string, username: string): BudgetLimit[] {
-    if (!targetMonth || !/^\d{4}-\d{2}$/.test(targetMonth)) throw new Error("Thang khong hop le");
+    if (!targetMonth || !/^\d{4}-\d{2}$/.test(targetMonth)) throw new Error("Tháng không hợp lệ");
     const db = this.readRaw();
     // Đã có hạn mức cho tháng đích → không làm gì
     if (db.budgets.some(b => b.month === targetMonth)) {
@@ -1164,11 +1164,11 @@ export class FamilyDB {
   public static saveRecurringBill(data: Partial<RecurringBill>, userId: string, username: string): RecurringBill {
     const db = this.readRaw();
     const now = new Date().toISOString();
-    if (!data.title || !data.amount || !data.nextDueDate) throw new Error("Thieu ten hoa don, so tien hoac ngay den han");
+    if (!data.title || !data.amount || !data.nextDueDate) throw new Error("Thiếu tên hóa đơn, số tiền hoặc ngày đến hạn");
 
     if (data.id) {
       const idx = db.recurringBills.findIndex(b => b.id === data.id);
-      if (idx === -1) throw new Error("Khong tim thay hoa don dinh ky");
+      if (idx === -1) throw new Error("Không tìm thấy hóa đơn định kỳ");
       const updated = {
         ...db.recurringBills[idx],
         ...data,
@@ -1216,7 +1216,7 @@ export class FamilyDB {
     const now = new Date().toISOString();
     if (!data.name || !data.name.trim()) throw new Error("Thieu ten muc tieu tiet kiem");
     const target = Number(data.targetAmount) || 0;
-    if (target <= 0) throw new Error("So tien muc tieu phai lon hon 0");
+    if (target <= 0) throw new Error("Số tiền mục tiêu phải lớn hơn 0");
 
     if (data.id) {
       const idx = db.savingsGoals.findIndex(g => g.id === data.id);
@@ -1274,7 +1274,7 @@ export class FamilyDB {
     const goal = db.savingsGoals.find(g => g.id === goalId);
     if (!goal) throw new Error("Khong tim thay muc tieu tiet kiem");
     const amount = Number(data.amount) || 0;
-    if (amount === 0) throw new Error("So tien dong gop phai khac 0");
+    if (amount === 0) throw new Error("Số tiền đóng góp phải khác 0");
     const contribution: SavingsContribution = {
       id: `contrib_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       amount,
@@ -1309,7 +1309,7 @@ export class FamilyDB {
     const now = new Date().toISOString();
     if (!data.counterparty || !data.counterparty.trim()) throw new Error("Thieu ten nguoi/ngan hang");
     const amount = Number(data.amount) || 0;
-    if (amount <= 0) throw new Error("So tien no phai lon hon 0");
+    if (amount <= 0) throw new Error("Số tiền nợ phải lớn hơn 0");
     const direction = data.direction === "lent" ? "lent" : "borrowed";
     // Thông tin liên hệ (tùy chọn) + ảnh đính kèm (giấy tờ, biên nhận chuyển khoản)
     const address = data.address?.trim() || undefined;
@@ -1386,7 +1386,7 @@ export class FamilyDB {
     const debt = db.debts.find(d => d.id === debtId);
     if (!debt) throw new Error("Khong tim thay khoan no");
     const amount = Number(data.amount) || 0;
-    if (amount <= 0) throw new Error("So tien tra phai lon hon 0");
+    if (amount <= 0) throw new Error("Số tiền trả phải lớn hơn 0");
     const payment: DebtPayment = {
       id: `pay_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       amount,
@@ -1534,7 +1534,7 @@ export class FamilyDB {
   public static payRecurringBill(id: string, userId: string, username: string): { bill: RecurringBill; transaction: FinancialTransaction } {
     const db = this.readRaw();
     const idx = db.recurringBills.findIndex(b => b.id === id);
-    if (idx === -1) throw new Error("Khong tim thay hoa don dinh ky");
+    if (idx === -1) throw new Error("Không tìm thấy hóa đơn định kỳ");
     const bill = db.recurringBills[idx];
     const paidDate = new Date().toISOString().slice(0, 10);
     const tx: FinancialTransaction = {
