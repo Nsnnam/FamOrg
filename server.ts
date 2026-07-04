@@ -959,11 +959,11 @@ app.post("/api/finance/savings-goals", requireAuth, requireRole([UserRole.ADMIN,
   if (req.body?.id) {
     const existing = FamilyDB.getSavingsGoals().find(g => g.id === req.body.id);
     if (!existing) {
-      res.status(404).json({ error: "Khong tim thay muc tieu tiet kiem" });
+      res.status(404).json({ error: "Không tìm thấy mục tiêu tiết kiệm" });
       return;
     }
     if (!canManageSavingsGoal(existing, session)) {
-      res.status(403).json({ error: "Ban khong co quyen sua muc tieu tiet kiem nay." });
+      res.status(403).json({ error: "Bạn không có quyền sửa mục tiêu tiết kiệm này." });
       return;
     }
   }
@@ -980,7 +980,7 @@ app.delete("/api/finance/savings-goals/:id", requireAuth, requireRole([UserRole.
   const session = req.userSession!;
   const existing = FamilyDB.getSavingsGoals().find(g => g.id === req.params.id);
   if (existing && !canManageSavingsGoal(existing, session)) {
-    res.status(403).json({ error: "Ban khong co quyen xoa muc tieu tiet kiem nay." });
+    res.status(403).json({ error: "Bạn không có quyền xóa mục tiêu tiết kiệm này." });
     return;
   }
   try {
@@ -996,7 +996,7 @@ app.post("/api/finance/savings-goals/:id/contributions", requireAuth, requireRol
   const session = req.userSession!;
   const existing = FamilyDB.getSavingsGoals().find(g => g.id === req.params.id);
   if (existing && !canViewSavingsGoal(existing, session)) {
-    res.status(403).json({ error: "Ban khong co quyen ghi nhan muc tieu tiet kiem nay." });
+    res.status(403).json({ error: "Bạn không có quyền ghi nhận mục tiêu tiết kiệm này." });
     return;
   }
   try {
@@ -1013,7 +1013,7 @@ app.delete("/api/finance/savings-goals/:id/contributions/:cid", requireAuth, req
   const existing = FamilyDB.getSavingsGoals().find(g => g.id === req.params.id);
   const contribution = existing?.contributions.find(c => c.id === req.params.cid);
   if (existing && (!canViewSavingsGoal(existing, session) || (!canManageSavingsGoal(existing, session) && contribution?.byId !== session.userId))) {
-    res.status(403).json({ error: "Ban khong co quyen xoa lan ghi nhan nay." });
+    res.status(403).json({ error: "Bạn không có quyền xóa lần ghi nhận này." });
     return;
   }
   try {
@@ -1281,11 +1281,11 @@ app.post("/api/documents", requireAuth, requireRole([UserRole.ADMIN, UserRole.ME
   if (req.body?.id) {
     const existing = FamilyDB.getDocuments().find(d => d.id === req.body.id);
     if (!existing) {
-      res.status(404).json({ error: "Khong tim thay giay to" });
+      res.status(404).json({ error: "Không tìm thấy giấy tờ" });
       return;
     }
     if (!canManageDocument(existing, session)) {
-      res.status(403).json({ error: "Ban khong co quyen sua giay to nay." });
+      res.status(403).json({ error: "Bạn không có quyền sửa giấy tờ này." });
       return;
     }
   }
@@ -1302,7 +1302,7 @@ app.delete("/api/documents/:id", requireAuth, requireRole([UserRole.ADMIN, UserR
   const session = req.userSession!;
   const existing = FamilyDB.getDocuments().find(d => d.id === req.params.id);
   if (existing && !canManageDocument(existing, session)) {
-    res.status(403).json({ error: "Ban khong co quyen xoa giay to nay." });
+    res.status(403).json({ error: "Bạn không có quyền xóa giấy tờ này." });
     return;
   }
   try {
@@ -1411,7 +1411,7 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
   const apiKey = getGeminiKey();
   const message = String(req.body?.message || "").trim();
   if (!message) {
-    res.status(400).json({ error: "Vui long nhap cau hoi cho tro ly" });
+    res.status(400).json({ error: "Vui lòng nhập câu hỏi cho trợ lý" });
     return;
   }
   if (!apiKey) {
@@ -1482,7 +1482,7 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
     });
   } catch (err: any) {
     console.error("Assistant error:", err);
-    res.status(500).json({ error: err.message || "AI assistant dang gap loi" });
+    res.status(500).json({ error: err.message || "Trợ lý AI đang gặp lỗi" });
   }
 });
 

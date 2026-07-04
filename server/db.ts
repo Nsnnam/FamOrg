@@ -859,7 +859,7 @@ export class FamilyDB {
       }
 
       this.writeRaw(db);
-      this.logActivity(userId, username, "Tao Task", `Da lap cong viec moi "${newTask.title}".`);
+      this.logActivity(userId, username, "Tạo Task", `Đã lập công việc mới "${newTask.title}".`);
       return newTask;
     }
   }
@@ -1070,9 +1070,9 @@ export class FamilyDB {
   public static addRewardEntry(data: Partial<RewardPointEntry>, userId: string, username: string): RewardPointEntry {
     const db = this.readRaw();
     const target = db.users.find(u => u.id === data.userId);
-    if (!target) throw new Error("Khong tim thay thanh vien nhan diem");
+    if (!target) throw new Error("Không tìm thấy thành viên nhận điểm");
     const points = Number(data.points || 0);
-    if (!points) throw new Error("So diem khong hop le");
+    if (!points) throw new Error("Số điểm không hợp lệ");
 
     const entry: RewardPointEntry = {
       id: `reward_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -1085,7 +1085,7 @@ export class FamilyDB {
     };
     db.rewardLedger.unshift(entry);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Diem thuong", `Da cap nhat ${points} diem cho ${target.fullName}.`);
+    this.logActivity(userId, username, "Điểm thưởng", `Đã cập nhật ${points} điểm cho ${target.fullName}.`);
     return entry;
   }
 
@@ -1116,7 +1116,7 @@ export class FamilyDB {
     if (existingIdx >= 0) db.budgets[existingIdx] = budget;
     else db.budgets.unshift(budget);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Ngan sach", `Da dat ngan sach ${budget.category} thang ${budget.month}.`);
+    this.logActivity(userId, username, "Ngân sách", `Đã đặt ngân sách ${budget.category} tháng ${budget.month}.`);
     return budget;
   }
 
@@ -1157,7 +1157,7 @@ export class FamilyDB {
     if (copied.length === 0) return [];
     db.budgets.unshift(...copied);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Ngan sach", `Tu dong mang ${copied.length} han muc tu thang ${sourceMonth} sang ${targetMonth}.`);
+    this.logActivity(userId, username, "Ngân sách", `Tự động mang ${copied.length} hạn mức từ tháng ${sourceMonth} sang ${targetMonth}.`);
     return copied;
   }
 
@@ -1196,7 +1196,7 @@ export class FamilyDB {
     };
     db.recurringBills.unshift(bill);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Hoa don dinh ky", `Da tao hoa don dinh ky "${bill.title}".`);
+    this.logActivity(userId, username, "Hóa đơn định kỳ", `Đã tạo hóa đơn định kỳ "${bill.title}".`);
     return bill;
   }
 
@@ -1214,13 +1214,13 @@ export class FamilyDB {
   public static saveSavingsGoal(data: Partial<SavingsGoal>, userId: string, username: string): SavingsGoal {
     const db = this.readRaw();
     const now = new Date().toISOString();
-    if (!data.name || !data.name.trim()) throw new Error("Thieu ten muc tieu tiet kiem");
+    if (!data.name || !data.name.trim()) throw new Error("Thiếu tên mục tiêu tiết kiệm");
     const target = Number(data.targetAmount) || 0;
     if (target <= 0) throw new Error("Số tiền mục tiêu phải lớn hơn 0");
 
     if (data.id) {
       const idx = db.savingsGoals.findIndex(g => g.id === data.id);
-      if (idx === -1) throw new Error("Khong tim thay muc tieu tiet kiem");
+      if (idx === -1) throw new Error("Không tìm thấy mục tiêu tiết kiệm");
       const updated: SavingsGoal = {
         ...db.savingsGoals[idx],
         name: data.name.trim(),
@@ -1252,7 +1252,7 @@ export class FamilyDB {
     };
     db.savingsGoals.unshift(goal);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Tiet kiem", `Da tao muc tieu "${goal.name}".`);
+    this.logActivity(userId, username, "Tiết kiệm", `Đã tạo mục tiêu "${goal.name}".`);
     return goal;
   }
 
@@ -1262,7 +1262,7 @@ export class FamilyDB {
     if (!goal) return;
     db.savingsGoals = db.savingsGoals.filter(g => g.id !== id);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Tiet kiem", `Da xoa muc tieu "${goal.name}".`);
+    this.logActivity(userId, username, "Tiết kiệm", `Đã xóa mục tiêu "${goal.name}".`);
   }
 
   public static addSavingsContribution(
@@ -1272,7 +1272,7 @@ export class FamilyDB {
   ): SavingsGoal {
     const db = this.readRaw();
     const goal = db.savingsGoals.find(g => g.id === goalId);
-    if (!goal) throw new Error("Khong tim thay muc tieu tiet kiem");
+    if (!goal) throw new Error("Không tìm thấy mục tiêu tiết kiệm");
     const amount = Number(data.amount) || 0;
     if (amount === 0) throw new Error("Số tiền đóng góp phải khác 0");
     const contribution: SavingsContribution = {
@@ -1292,7 +1292,7 @@ export class FamilyDB {
   public static removeSavingsContribution(goalId: string, contributionId: string): SavingsGoal {
     const db = this.readRaw();
     const goal = db.savingsGoals.find(g => g.id === goalId);
-    if (!goal) throw new Error("Khong tim thay muc tieu tiet kiem");
+    if (!goal) throw new Error("Không tìm thấy mục tiêu tiết kiệm");
     goal.contributions = goal.contributions.filter(c => c.id !== contributionId);
     goal.updatedAt = new Date().toISOString();
     this.writeRaw(db);
@@ -1307,7 +1307,7 @@ export class FamilyDB {
   public static saveDebt(data: Partial<Debt>, userId: string, username: string): Debt {
     const db = this.readRaw();
     const now = new Date().toISOString();
-    if (!data.counterparty || !data.counterparty.trim()) throw new Error("Thieu ten nguoi/ngan hang");
+    if (!data.counterparty || !data.counterparty.trim()) throw new Error("Thiếu tên người/ngân hàng");
     const amount = Number(data.amount) || 0;
     if (amount <= 0) throw new Error("Số tiền nợ phải lớn hơn 0");
     const direction = data.direction === "lent" ? "lent" : "borrowed";
@@ -1322,7 +1322,7 @@ export class FamilyDB {
 
     if (data.id) {
       const idx = db.debts.findIndex(d => d.id === data.id);
-      if (idx === -1) throw new Error("Khong tim thay khoan no");
+      if (idx === -1) throw new Error("Không tìm thấy khoản nợ");
       const updated: Debt = {
         ...db.debts[idx],
         direction,
@@ -1364,7 +1364,7 @@ export class FamilyDB {
     };
     db.debts.unshift(debt);
     this.writeRaw(db);
-    this.logActivity(userId, username, "No", `Da them khoan ${direction === "lent" ? "cho muon" : "vay"} voi "${debt.counterparty}".`);
+    this.logActivity(userId, username, "Nợ", `Đã thêm khoản ${direction === "lent" ? "cho mượn" : "vay"} với "${debt.counterparty}".`);
     return debt;
   }
 
@@ -1374,7 +1374,7 @@ export class FamilyDB {
     if (!debt) return;
     db.debts = db.debts.filter(d => d.id !== id);
     this.writeRaw(db);
-    this.logActivity(userId, username, "No", `Da xoa khoan no voi "${debt.counterparty}".`);
+    this.logActivity(userId, username, "Nợ", `Đã xóa khoản nợ với "${debt.counterparty}".`);
   }
 
   public static addDebtPayment(
@@ -1384,7 +1384,7 @@ export class FamilyDB {
   ): Debt {
     const db = this.readRaw();
     const debt = db.debts.find(d => d.id === debtId);
-    if (!debt) throw new Error("Khong tim thay khoan no");
+    if (!debt) throw new Error("Không tìm thấy khoản nợ");
     const amount = Number(data.amount) || 0;
     if (amount <= 0) throw new Error("Số tiền trả phải lớn hơn 0");
     const payment: DebtPayment = {
@@ -1407,7 +1407,7 @@ export class FamilyDB {
   public static removeDebtPayment(debtId: string, paymentId: string): Debt {
     const db = this.readRaw();
     const debt = db.debts.find(d => d.id === debtId);
-    if (!debt) throw new Error("Khong tim thay khoan no");
+    if (!debt) throw new Error("Không tìm thấy khoản nợ");
     debt.payments = debt.payments.filter(p => p.id !== paymentId);
     const paid = debt.payments.reduce((s, p) => s + p.amount, 0);
     if (paid < debt.amount) debt.isSettled = false; // mở lại nếu chưa đủ
@@ -1424,13 +1424,13 @@ export class FamilyDB {
   public static saveVaccination(data: Partial<VaccinationRecord>, userId: string, username: string): VaccinationRecord {
     const db = this.readRaw();
     const now = new Date().toISOString();
-    if (!data.childId) throw new Error("Thieu thong tin tre");
-    if (!data.name || !data.name.trim()) throw new Error("Thieu ten vac-xin");
+    if (!data.childId) throw new Error("Thiếu thông tin trẻ");
+    if (!data.name || !data.name.trim()) throw new Error("Thiếu tên vắc-xin");
     const status = data.status === "done" || data.status === "skipped" ? data.status : "scheduled";
 
     if (data.id) {
       const idx = db.vaccinations.findIndex(v => v.id === data.id);
-      if (idx === -1) throw new Error("Khong tim thay mui tiem");
+      if (idx === -1) throw new Error("Không tìm thấy mũi tiêm");
       const updated: VaccinationRecord = {
         ...db.vaccinations[idx],
         childId: data.childId,
@@ -1461,7 +1461,7 @@ export class FamilyDB {
     };
     db.vaccinations.unshift(rec);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Tiem chung", `Da them mui "${rec.name}".`);
+    this.logActivity(userId, username, "Tiêm chủng", `Đã thêm mũi "${rec.name}".`);
     return rec;
   }
 
@@ -1479,25 +1479,25 @@ export class FamilyDB {
   public static saveGrowthRecord(data: Partial<GrowthRecord>, userId: string, username: string): GrowthRecord {
     const db = this.readRaw();
     const now = new Date().toISOString();
-    if (!data.childId) throw new Error("Thieu thong tin tre");
-    if (!data.date) throw new Error("Thieu ngay do");
+    if (!data.childId) throw new Error("Thiếu thông tin trẻ");
+    if (!data.date) throw new Error("Thiếu ngày đo");
     const rawHeight = (data as any).heightCm;
     const rawWeight = (data as any).weightKg;
     const height = rawHeight !== undefined && rawHeight !== null && rawHeight !== "" ? Number(rawHeight) : undefined;
     const weight = rawWeight !== undefined && rawWeight !== null && rawWeight !== "" ? Number(rawWeight) : undefined;
     if (height === undefined && weight === undefined) {
-      throw new Error("Nhap chieu cao hoac can nang");
+      throw new Error("Nhập chiều cao hoặc cân nặng");
     }
     if (height !== undefined && (!Number.isFinite(height) || height <= 0)) {
-      throw new Error("Chieu cao phai lon hon 0");
+      throw new Error("Chiều cao phải lớn hơn 0");
     }
     if (weight !== undefined && (!Number.isFinite(weight) || weight <= 0)) {
-      throw new Error("Can nang phai lon hon 0");
+      throw new Error("Cân nặng phải lớn hơn 0");
     }
 
     if (data.id) {
       const idx = db.growthRecords.findIndex(g => g.id === data.id);
-      if (idx === -1) throw new Error("Khong tim thay ban ghi");
+      if (idx === -1) throw new Error("Không tìm thấy bản ghi");
       const updated: GrowthRecord = {
         ...db.growthRecords[idx],
         childId: data.childId,
@@ -1555,7 +1555,7 @@ export class FamilyDB {
     bill.updatedAt = new Date().toISOString();
     db.recurringBills[idx] = bill;
     this.writeRaw(db);
-    this.logActivity(userId, username, "Thanh toan hoa don", `Da thanh toan "${bill.title}" (${bill.amount.toLocaleString()} VND).`);
+    this.logActivity(userId, username, "Thanh toán hóa đơn", `Đã thanh toán "${bill.title}" (${bill.amount.toLocaleString()} VND).`);
     return { bill, transaction: tx };
   }
 
@@ -1839,12 +1839,12 @@ export class FamilyDB {
     const db = this.readRaw();
     const now = new Date().toISOString();
     if (!data.name || !data.patientId || !data.times || data.times.length === 0) {
-      throw new Error("Thieu ten thuoc, nguoi uong hoac gio nhac");
+      throw new Error("Thiếu tên thuốc, người uống hoặc giờ nhắc");
     }
 
     if (data.id) {
       const idx = db.medications.findIndex(m => m.id === data.id);
-      if (idx === -1) throw new Error("Khong tim thay lich thuoc");
+      if (idx === -1) throw new Error("Không tìm thấy lịch thuốc");
       const updated = { ...db.medications[idx], ...data, updatedAt: now } as MedicationReminder;
       db.medications[idx] = updated;
       this.writeRaw(db);
@@ -1866,7 +1866,7 @@ export class FamilyDB {
     };
     db.medications.unshift(med);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Nhac thuoc", `Da tao lich thuoc "${med.name}".`);
+    this.logActivity(userId, username, "Nhắc thuốc", `Đã tạo lịch thuốc "${med.name}".`);
     return med;
   }
 
@@ -1898,11 +1898,11 @@ export class FamilyDB {
   ): { log: MedicationLog | null; cleared: boolean } {
     const db = this.readRaw();
     const med = db.medications.find(m => m.id === data.medicationId);
-    if (!med) throw new Error("Khong tim thay lich thuoc");
-    if (!data.date || !data.time) throw new Error("Thieu ngay hoac gio cua lieu thuoc");
+    if (!med) throw new Error("Không tìm thấy lịch thuốc");
+    if (!data.date || !data.time) throw new Error("Thiếu ngày hoặc giờ của liều thuốc");
     const status = data.status;
     if (status !== "taken" && status !== "skipped" && status !== "none") {
-      throw new Error("Trang thai lieu thuoc khong hop le");
+      throw new Error("Trạng thái liều thuốc không hợp lệ");
     }
 
     const idx = db.medicationLogs.findIndex(
@@ -1954,14 +1954,14 @@ export class FamilyDB {
   public static saveDocument(data: Partial<FamilyDocument>, userId: string, username: string): FamilyDocument {
     const db = this.readRaw();
     const now = new Date().toISOString();
-    if (!data.title || !data.title.trim()) throw new Error("Thieu ten giay to");
-    if (!data.type || !VALID_DOCUMENT_TYPES.has(data.type)) throw new Error("Loai giay to khong hop le");
+    if (!data.title || !data.title.trim()) throw new Error("Thiếu tên giấy tờ");
+    if (!data.type || !VALID_DOCUMENT_TYPES.has(data.type)) throw new Error("Loại giấy tờ không hợp lệ");
 
     const files = Array.isArray(data.files) ? data.files : [];
 
     if (data.id) {
       const idx = db.documents.findIndex(d => d.id === data.id);
-      if (idx === -1) throw new Error("Khong tim thay giay to");
+      if (idx === -1) throw new Error("Không tìm thấy giấy tờ");
       const prev = db.documents[idx];
       // Xoá file đính kèm đã bị gỡ khỏi danh sách mới để không để lại rác trên đĩa.
       const newUrls = new Set(files.map(f => f.url));
@@ -1975,7 +1975,7 @@ export class FamilyDB {
       } as FamilyDocument;
       db.documents[idx] = updated;
       this.writeRaw(db);
-      this.logActivity(userId, username, "Giay to", `Da cap nhat giay to "${updated.title}".`);
+      this.logActivity(userId, username, "Giấy tờ", `Đã cập nhật giấy tờ "${updated.title}".`);
       return updated;
     }
 
@@ -1997,7 +1997,7 @@ export class FamilyDB {
     };
     db.documents.unshift(doc);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Giay to", `Da them giay to "${doc.title}".`);
+    this.logActivity(userId, username, "Giấy tờ", `Đã thêm giấy tờ "${doc.title}".`);
     return doc;
   }
 
@@ -2009,7 +2009,7 @@ export class FamilyDB {
     (doc.files || []).forEach(f => deleteMediaByUrl(f.url));
     db.documents = db.documents.filter(d => d.id !== id);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Giay to", `Da xoa giay to "${doc.title}".`);
+    this.logActivity(userId, username, "Giấy tờ", `Đã xóa giấy tờ "${doc.title}".`);
   }
 
   // Pre-deadline reminders: notify before tasks are due and before plans start.
