@@ -73,6 +73,7 @@ const BILL_CATEGORIES = [
   { value: "insurance",  label: "Bảo hiểm" },
   { value: "medical",    label: "Y tế" },
   { value: "education2", label: "Học tập" },
+  { value: "loan",       label: "Trả nợ ngân hàng" },
   { value: "other",      label: "Khác" },
 ] as const;
 
