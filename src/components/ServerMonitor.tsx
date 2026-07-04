@@ -3,14 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Cpu, Thermometer, MemoryStick, HardDrive, Server, Activity, Clock, AlertTriangle } from "lucide-react";
 import { ShimmerLine, Reveal, IconChip, Accent } from "./Lively.js";
 
-// Poll thông số máy chủ mỗi 2s khi tab đang mở & app đang hiển thị.
-const POLL_MS = 2000;
-// Số mẫu giữ lại cho biểu đồ realtime (~3 phút lịch sử với poll 2s).
-const HISTORY_MAX = 90;
+// Client chỉ tải dữ liệu 1 phút/lần (server cũng tự ghi telemetry 1 phút/lần
+// vào SQLite nên biểu đồ giữ nguyên lịch sử qua các lần reload trang).
+const POLL_MS = 60 * 1000;
+
+type HistoryRange = "24h" | "7d";
 
 interface ServerStats {
   at: string;
@@ -25,13 +26,14 @@ interface ServerStats {
   disk: { totalBytes: number; usedBytes: number; freeBytes: number } | null;
 }
 
-// Một mẫu đo cho biểu đồ (t = epoch ms lúc nhận).
-interface Sample {
+// Một mẫu telemetry từ DB (server ghi 1 phút/lần).
+interface MetricPoint {
   t: number;
   cpu: number | null;
-  ram: number;
+  ram: number | null;
   temp: number | null;
   ssd: number | null;
+  disk: number | null;
 }
 
 interface ServerMonitorProps {
@@ -40,14 +42,19 @@ interface ServerMonitorProps {
 
 const fmtGb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1).replace(".", ",") + " GB";
 const fmtTemp = (c: number) => c.toFixed(1).replace(".", ",") + "°C";
-const fmtClock = (t: number) =>
-  new Date(t).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 const fmtUptime = (sec: number) => {
   const d = Math.floor(sec / 86400);
   const h = Math.floor((sec % 86400) / 3600);
   const m = Math.floor((sec % 3600) / 60);
   return d > 0 ? `${d} ngày ${h} giờ` : h > 0 ? `${h} giờ ${m} phút` : `${m} phút`;
+};
+
+// Nhãn mốc thời gian trục X: 24h hiện giờ:phút, 7 ngày hiện ngày/tháng + giờ.
+const fmtTick = (t: number, range: HistoryRange) => {
+  const d = new Date(t);
+  if (range === "7d") return `${d.getDate()}/${d.getMonth() + 1} ${String(d.getHours()).padStart(2, "0")}h`;
+  return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
 };
 
 // Ngưỡng màu theo mức độ "nóng" của chỉ số (% hoặc °C).
@@ -86,33 +93,37 @@ interface ChartSeries {
 }
 
 /**
- * Biểu đồ đường có trục rõ ràng: trục X = thời gian (HH:mm:ss),
- * trục Y = giá trị có nhãn (% hoặc °). SVG thuần, tự co theo bề rộng thẻ.
+ * Biểu đồ đường có trục rõ ràng: trục X = thời gian, trục Y = giá trị có nhãn
+ * (% hoặc °). SVG thuần, tự co theo bề rộng thẻ.
  */
-function AxisChart({ series, times, yMin, yMax, yTicks, unit }: {
+function AxisChart({ series, times, yMin, yMax, yTicks, unit, range }: {
   series: ChartSeries[];
   times: number[];
   yMin: number;
   yMax: number;
   yTicks: number[];
   unit: string;
+  range: HistoryRange;
 }) {
   const W = 420, H = 170;
   const M = { top: 10, right: 10, bottom: 24, left: 38 };
   const iw = W - M.left - M.right;
   const ih = H - M.top - M.bottom;
   const n = times.length;
-  const x = (i: number) => M.left + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
+  const t0 = times[0] ?? 0;
+  const t1 = times[n - 1] ?? 1;
+  const span = Math.max(1, t1 - t0);
+  // X theo thời gian thật (khoảng trống khi server tắt sẽ hiện đúng khoảng trống).
+  const x = (t: number) => M.left + (n <= 1 ? iw / 2 : ((t - t0) / span) * iw);
   const y = (v: number) => M.top + ih - ((Math.min(yMax, Math.max(yMin, v)) - yMin) / (yMax - yMin || 1)) * ih;
   const linePoints = (values: (number | null)[]) =>
     values
-      .map((v, i) => (v === null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`))
+      .map((v, i) => (v === null ? null : `${x(times[i]).toFixed(1)},${y(v).toFixed(1)}`))
       .filter(Boolean)
       .join(" ");
-  // 4 mốc thời gian trải đều trên trục X (bỏ trùng khi còn ít dữ liệu).
-  const xTickIdx = n >= 2
-    ? Array.from(new Set([0, Math.floor((n - 1) / 3), Math.floor((2 * (n - 1)) / 3), n - 1]))
-    : [];
+  // 4 mốc nhãn chia ĐỀU THEO THỜI GIAN (không theo index) — dữ liệu phân bố
+  // lệch tới đâu thì nhãn vẫn cách đều, không bị chồng chữ ở góc biểu đồ.
+  const xTicks = n >= 2 ? [0, 1, 2, 3].map(i => t0 + (i * span) / 3) : [];
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img">
@@ -129,16 +140,16 @@ function AxisChart({ series, times, yMin, yMax, yTicks, unit }: {
       <line x1={M.left} x2={M.left} y1={M.top} y2={M.top + ih} className="stroke-slate-800" strokeWidth="1.5" />
       <line x1={M.left} x2={W - M.right} y1={M.top + ih} y2={M.top + ih} className="stroke-slate-800" strokeWidth="1.5" />
       {/* Nhãn thời gian trục X */}
-      {xTickIdx.map(i => (
+      {xTicks.map((t, idx) => (
         <text
-          key={i}
-          x={x(i)}
+          key={idx}
+          x={x(t)}
           y={H - 7}
-          textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"}
+          textAnchor={idx === 0 ? "start" : idx === xTicks.length - 1 ? "end" : "middle"}
           fontSize="10"
           className="fill-slate-500 font-mono"
         >
-          {fmtClock(times[i])}
+          {fmtTick(t, range)}
         </text>
       ))}
       {/* Đường dữ liệu */}
@@ -189,21 +200,20 @@ function ChartCard({ accent, icon, title, legend, children, delay }: {
 
 const CollectingHint = () => (
   <div className="bg-slate-950/40 border border-dashed border-slate-800 rounded-xl py-9 text-center">
-    <p className="text-xs text-slate-500">Đang thu thập dữ liệu... biểu đồ hiện sau vài giây.</p>
+    <p className="text-xs text-slate-500">Server đang thu thập telemetry (1 phút/lần) — biểu đồ sẽ đầy dần.</p>
   </div>
 );
 
 export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
   const [stats, setStats] = useState<ServerStats | null>(null);
   const [error, setError] = useState("");
-  const [history, setHistory] = useState<Sample[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [range, setRange] = useState<HistoryRange>("24h");
+  const [history, setHistory] = useState<MetricPoint[]>([]);
 
+  // Thẻ chỉ số hiện tại: tải ngay khi mở tab + mỗi phút (bỏ qua khi app chạy nền).
   useEffect(() => {
     let alive = true;
-
     const fetchStats = async () => {
-      // Không poll khi app chạy nền (PWA iPhone) — đỡ tốn pin & băng thông.
       if (document.visibilityState === "hidden") return;
       try {
         const res = await fetch("/api/server/stats", { headers: authHeaders });
@@ -212,30 +222,39 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
         if (!alive) return;
         setStats(data);
         setError("");
-        setHistory(prev => [
-          ...prev,
-          {
-            t: Date.now(),
-            cpu: data.cpu?.percent ?? null,
-            ram: data.memory ? (data.memory.usedBytes / data.memory.totalBytes) * 100 : 0,
-            temp: data.tempC ?? null,
-            ssd: data.ssdTempC ?? null
-          }
-        ].slice(-HISTORY_MAX));
       } catch (err: any) {
         if (alive) setError(err.message || "Mất kết nối tới máy chủ.");
       }
     };
-
     fetchStats();
-    timerRef.current = setInterval(fetchStats, POLL_MS);
+    const timer = setInterval(fetchStats, POLL_MS);
     document.addEventListener("visibilitychange", fetchStats);
     return () => {
       alive = false;
-      if (timerRef.current) clearInterval(timerRef.current);
+      clearInterval(timer);
       document.removeEventListener("visibilitychange", fetchStats);
     };
   }, []); // authHeaders ổn định trong một phiên đăng nhập
+
+  // Lịch sử biểu đồ từ SQLite: tải khi đổi khoảng xem + làm mới mỗi phút.
+  useEffect(() => {
+    let alive = true;
+    const fetchHistory = async () => {
+      if (document.visibilityState === "hidden") return;
+      try {
+        const res = await fetch(`/api/server/history?range=${range}`, { headers: authHeaders });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive) setHistory(data.points || []);
+      } catch { /* lỗi mạng tạm thời — giữ dữ liệu cũ trên biểu đồ */ }
+    };
+    fetchHistory();
+    const timer = setInterval(fetchHistory, POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [range]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cpuPct = stats?.cpu.percent ?? null;
   const ramPct = stats ? (stats.memory.usedBytes / stats.memory.totalBytes) * 100 : null;
@@ -246,12 +265,12 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
   const ramAccent = levelAccent(ramPct, 70, 90);
   const diskAccent = levelAccent(diskPct, 75, 90);
 
-  const times = useMemo(() => history.map(s => s.t), [history]);
+  const times = useMemo(() => history.map(p => p.t), [history]);
   const hasChart = history.length >= 2;
 
   // Trục Y biểu đồ nhiệt: tự co theo dữ liệu, làm tròn bậc 10 cho nhãn đẹp.
   const tempDomain = useMemo(() => {
-    const vals = history.flatMap(s => [s.temp, s.ssd]).filter((v): v is number => v !== null);
+    const vals = history.flatMap(p => [p.temp, p.ssd]).filter((v): v is number => v !== null);
     if (vals.length === 0) return { min: 20, max: 80 };
     const min = Math.max(0, Math.floor((Math.min(...vals) - 3) / 10) * 10);
     const max = Math.min(110, Math.ceil((Math.max(...vals) + 3) / 10) * 10);
@@ -263,7 +282,6 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
   );
 
   const pctTicks = [0, 25, 50, 75, 100];
-  const lastSample = history[history.length - 1];
 
   const skeleton = <span className="inline-block bg-slate-700/40 rounded-md animate-pulse h-8 w-24 align-middle" />;
 
@@ -293,7 +311,7 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
             </span>
           ) : (
             <span className="flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" /> LIVE · {POLL_MS / 1000}s
+              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" /> LIVE · cập nhật 1 phút/lần
             </span>
           )}
         </div>
@@ -388,20 +406,39 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
         </Reveal>
       </div>
 
-      {/* 3 biểu đồ realtime riêng: CPU % · RAM % · Nhiệt độ °C */}
+      {/* Chọn khoảng xem lịch sử (lưu trong SQLite trên server, giữ 7 ngày) */}
+      <Reveal delay={0.2} className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-[11px] text-slate-500">
+          Lịch sử ghi tự động 1 phút/lần trên server — reload trang không mất dữ liệu.
+        </p>
+        <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 gap-1 text-[11px] font-bold">
+          {(["24h", "7d"] as HistoryRange[]).map(r => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => setRange(r)}
+              className={`px-3 py-1.5 rounded-lg cursor-pointer transition-all ${range === r ? "bg-sky-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}
+            >
+              {r === "24h" ? "24 giờ" : "7 ngày"}
+            </button>
+          ))}
+        </div>
+      </Reveal>
+
+      {/* 3 biểu đồ riêng: CPU % · RAM % · Nhiệt độ °C */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <ChartCard
           accent="emerald"
           icon={<Cpu className="w-3.5 h-3.5" />}
           title="CPU (%)"
-          legend={[{ label: "CPU", color: "#34d399", value: lastSample?.cpu != null ? `${lastSample.cpu.toFixed(0)}%` : "—" }]}
-          delay={0.22}
+          legend={[{ label: "CPU", color: "#34d399", value: cpuPct != null ? `${cpuPct.toFixed(0)}%` : "—" }]}
+          delay={0.24}
         >
           {hasChart ? (
             <AxisChart
-              series={[{ label: "CPU", color: "#34d399", values: history.map(s => s.cpu) }]}
+              series={[{ label: "CPU", color: "#34d399", values: history.map(p => p.cpu) }]}
               times={times}
-              yMin={0} yMax={100} yTicks={pctTicks} unit="%"
+              yMin={0} yMax={100} yTicks={pctTicks} unit="%" range={range}
             />
           ) : <CollectingHint />}
         </ChartCard>
@@ -410,14 +447,14 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
           accent="indigo"
           icon={<MemoryStick className="w-3.5 h-3.5" />}
           title="RAM (%)"
-          legend={[{ label: "RAM", color: "#818cf8", value: lastSample ? `${lastSample.ram.toFixed(0)}%` : "—" }]}
-          delay={0.26}
+          legend={[{ label: "RAM", color: "#818cf8", value: ramPct != null ? `${ramPct.toFixed(0)}%` : "—" }]}
+          delay={0.28}
         >
           {hasChart ? (
             <AxisChart
-              series={[{ label: "RAM", color: "#818cf8", values: history.map(s => s.ram) }]}
+              series={[{ label: "RAM", color: "#818cf8", values: history.map(p => p.ram) }]}
               times={times}
-              yMin={0} yMax={100} yTicks={pctTicks} unit="%"
+              yMin={0} yMax={100} yTicks={pctTicks} unit="%" range={range}
             />
           ) : <CollectingHint />}
         </ChartCard>
@@ -427,19 +464,19 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
           icon={<Thermometer className="w-3.5 h-3.5" />}
           title="Nhiệt độ (°C)"
           legend={[
-            { label: "CPU", color: "#fbbf24", value: lastSample?.temp != null ? fmtTemp(lastSample.temp) : "—" },
-            { label: "SSD", color: "#22d3ee", value: lastSample?.ssd != null ? fmtTemp(lastSample.ssd) : "—" }
+            { label: "CPU", color: "#fbbf24", value: stats?.tempC != null ? fmtTemp(stats.tempC) : "—" },
+            { label: "SSD", color: "#22d3ee", value: stats?.ssdTempC != null ? fmtTemp(stats.ssdTempC) : "—" }
           ]}
-          delay={0.3}
+          delay={0.32}
         >
           {hasChart ? (
             <AxisChart
               series={[
-                { label: "CPU", color: "#fbbf24", values: history.map(s => s.temp) },
-                { label: "SSD", color: "#22d3ee", values: history.map(s => s.ssd) }
+                { label: "CPU", color: "#fbbf24", values: history.map(p => p.temp) },
+                { label: "SSD", color: "#22d3ee", values: history.map(p => p.ssd) }
               ]}
               times={times}
-              yMin={tempDomain.min} yMax={tempDomain.max} yTicks={tempTicks} unit="°"
+              yMin={tempDomain.min} yMax={tempDomain.max} yTicks={tempTicks} unit="°" range={range}
             />
           ) : <CollectingHint />}
         </ChartCard>
