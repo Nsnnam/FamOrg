@@ -952,6 +952,22 @@ export default function App() {
     return res.json();
   };
 
+  const handleCarryForwardBudgets = async (month: string) => {
+    try {
+      const res = await fetch("/api/finance/budgets/carry-forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeader() },
+        body: JSON.stringify({ month })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.budgets) setBudgets(data.budgets);
+      }
+    } catch {
+      /* carry-forward là tiện ích, lỗi không chặn UI */
+    }
+  };
+
   const handleSaveRecurringBill = async (payload: Partial<RecurringBill>) => {
     const res = await fetch("/api/finance/recurring-bills", {
       method: "POST",
@@ -1757,6 +1773,7 @@ export default function App() {
                   onDeleteTransaction={handleDeleteTransaction}
                   onSaveBudget={handleSaveBudget}
                   onDeleteBudget={handleDeleteBudget}
+                  onCarryForwardBudgets={handleCarryForwardBudgets}
                   onSaveRecurringBill={handleSaveRecurringBill}
                   onPayRecurringBill={handlePayRecurringBill}
                   onDeleteRecurringBill={handleDeleteRecurringBill}
