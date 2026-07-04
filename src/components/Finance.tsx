@@ -7,7 +7,6 @@ import React, { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import {
   TrendingUp,
   Wallet,
-  Plus,
   Trash2,
   Search,
   Calendar,
@@ -859,21 +858,6 @@ export function Finance({
         />
       ) : (
         <>
-
-      {/* Primary quick-add: ngay trên cùng để vào là thêm được thu chi */}
-      {canAccessFinance(currentUser.role) && (
-        <button
-          type="button"
-          onClick={() => {
-            setFormError("");
-            setIsFormOpen(true);
-          }}
-          className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-3.5 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/10 cursor-pointer"
-        >
-          <Plus className="w-5 h-5" /> Đăng ghi chép tài chính
-        </button>
-      )}
-
       {/* Period control: chọn chế độ kỳ + điều hướng kỳ + bật so sánh */}
       <Reveal delay={0.06} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl space-y-3" id="finance-period">
         <ShimmerLine accent="sky" />
