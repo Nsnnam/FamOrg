@@ -34,6 +34,22 @@ export interface GroceryLine {
   name: string;
   cat: FoodCategory;
   quantity: string;
+  meals?: string[];   // buổi ăn dùng nguyên liệu này: Sáng / Trưa / Tối / Tráng miệng
+  dishes?: string[];  // các món dùng nguyên liệu này
+}
+
+// Thứ tự buổi để hiển thị/sắp xếp gọn.
+const MEAL_ORDER = ["Sáng", "Trưa", "Tối", "Tráng miệng"];
+export function sortMeals(meals: Iterable<string>): string[] {
+  return [...new Set(meals)].sort((x, y) => {
+    const ix = MEAL_ORDER.indexOf(x), iy = MEAL_ORDER.indexOf(y);
+    return (ix === -1 ? 99 : ix) - (iy === -1 ? 99 : iy);
+  });
+}
+
+// Chuẩn hoá tên nguyên liệu để so trùng (gộp): thường + bỏ khoảng trắng thừa.
+function normName(s: string): string {
+  return (s || "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 export interface MealPlanResult {
@@ -329,9 +345,16 @@ export function buildPlanFromLibrary(
 
   const scaled = new Map<string, { cat: FoodCategory; unit: string; total: number }>();
   const nameOnly = new Map<string, FoodCategory>();
-  const add = (ings: MealIngredient[]) => {
+  // Ghi lại nguyên liệu (theo tên chuẩn hoá) dùng ở buổi nào & món nào, để chú thích.
+  const usage = new Map<string, { meals: Set<string>; dishes: Set<string> }>();
+  const add = (ings: MealIngredient[], meal: string | null, dish: string) => {
     for (const ing of ings) {
       if (!ing?.name) continue;
+      const nk = normName(ing.name);
+      let u = usage.get(nk);
+      if (!u) { u = { meals: new Set(), dishes: new Set() }; usage.set(nk, u); }
+      if (meal) u.meals.add(meal);
+      if (dish) u.dishes.add(dish);
       if (typeof ing.adult === "number" && ing.unit) {
         const amount = ing.adult * a + (ing.child || 0) * c;
         if (amount <= 0) continue;
@@ -349,18 +372,18 @@ export function buildPlanFromLibrary(
   // classic cơm + món mặn + canh, with the staple rotating so it isn't always
   // plain "Cơm". Indices walk forward so consecutive meals differ.
   let mainIdx = 0, sideIdx = 0, stapleIdx = 0, oneIdx = 0;
-  const buildMeal = (asOneDish: boolean): string[] => {
+  const buildMeal = (asOneDish: boolean, meal: string): string[] => {
     if (asOneDish && oneDishes.length) {
       const od = oneDishes[oneIdx++ % oneDishes.length];
-      add(od.ingredients);
+      add(od.ingredients, meal, od.name);
       return [od.name];
     }
     const staple = STAPLES[stapleIdx++ % STAPLES.length];
     const m = mains[mainIdx++ % mains.length];
     const s = sides[sideIdx++ % sides.length];
-    add([staple.ing]);
-    add(m.ingredients);
-    add(s.ingredients);
+    add([staple.ing], meal, staple.name);
+    add(m.ingredients, meal, m.name);
+    add(s.ingredients, meal, s.name);
     return [staple.name, m.name, s.name];
   };
 
@@ -376,22 +399,37 @@ export function buildPlanFromLibrary(
       day: d + 1,
       meals: [
         { meal: "Sáng", dishes: [b.name] },
-        { meal: "Trưa", dishes: buildMeal(lunchOneDish) },
-        { meal: "Tối", dishes: buildMeal(dinnerOneDish) },
+        { meal: "Trưa", dishes: buildMeal(lunchOneDish, "Trưa") },
+        { meal: "Tối", dishes: buildMeal(dinnerOneDish, "Tối") },
       ],
     });
 
-    add(b.ingredients);
-    if (fr) add(fr.ingredients);
+    add(b.ingredients, "Sáng", b.name);
+    if (fr) add(fr.ingredients, "Tráng miệng", fr.name);
   }
 
-  const groceries: GroceryLine[] = [];
+  // Gộp về 1 dòng/nguyên liệu (theo tên chuẩn hoá). Ưu tiên dòng có số lượng
+  // (scaled); dòng "vừa đủ" (nameOnly) chỉ thêm nếu tên đó chưa xuất hiện.
+  const out = new Map<string, GroceryLine>();
   for (const [key, v] of scaled) {
-    groceries.push({ name: key.split("|")[0], cat: v.cat, quantity: formatQuantity(v.total, v.unit) });
+    const name = key.split("|")[0];
+    const nk = normName(name);
+    const q = formatQuantity(v.total, v.unit);
+    const u = usage.get(nk);
+    const ex = out.get(nk);
+    if (ex) {
+      ex.quantity = ex.quantity && ex.quantity !== q ? `${ex.quantity} + ${q}` : q;
+    } else {
+      out.set(nk, { name, cat: v.cat, quantity: q, meals: sortMeals(u?.meals ?? []), dishes: [...(u?.dishes ?? [])] });
+    }
   }
   for (const [name, cat] of nameOnly) {
-    groceries.push({ name, cat, quantity: "vừa đủ" });
+    const nk = normName(name);
+    if (out.has(nk)) continue;
+    const u = usage.get(nk);
+    out.set(nk, { name, cat, quantity: "vừa đủ", meals: sortMeals(u?.meals ?? []), dishes: [...(u?.dishes ?? [])] });
   }
+  const groceries = [...out.values()];
   groceries.sort((x, y) => {
     const ci = FOOD_CATEGORY_ORDER.indexOf(x.cat) - FOOD_CATEGORY_ORDER.indexOf(y.cat);
     return ci !== 0 ? ci : x.name.localeCompare(y.name, "vi");
@@ -405,4 +443,67 @@ export function buildPlanFromLibrary(
 export function generateMealPlan(opts: { adults: number; children: number; days: number }): MealPlanResult {
   const res = buildPlanFromLibrary(SEED_DISHES, opts);
   return { ...res, source: "offline" };
+}
+
+/**
+ * Với thực đơn AI (danh sách nguyên liệu do AI trả về): GỘP các dòng trùng tên
+ * (AI hay lặp) và gắn chú thích "dùng ở buổi nào / món nào" bằng cách khớp tên
+ * nguyên liệu với nguyên liệu của các món (dishes) và buổi của món đó (days).
+ */
+export function dedupeAndAnnotateGroceries(
+  groceries: { name: string; cat: FoodCategory; quantity: string }[],
+  days: { meals: { meal: string; dishes: string[] }[] }[],
+  dishes: { name: string; ingredients: { name: string }[] }[]
+): GroceryLine[] {
+  // món (tên chuẩn hoá) -> các buổi xuất hiện
+  const dishMeals = new Map<string, Set<string>>();
+  for (const d of days || []) {
+    for (const m of d.meals || []) {
+      for (const dish of m.dishes || []) {
+        const k = normName(dish);
+        if (!k) continue;
+        if (!dishMeals.has(k)) dishMeals.set(k, new Set());
+        dishMeals.get(k)!.add(m.meal);
+      }
+    }
+  }
+  // nguyên liệu (tên chuẩn hoá) -> các món dùng nó
+  const ingToDishes = new Map<string, Set<string>>();
+  for (const dish of dishes || []) {
+    for (const ing of dish.ingredients || []) {
+      const k = normName(ing?.name || "");
+      if (!k) continue;
+      if (!ingToDishes.has(k)) ingToDishes.set(k, new Set());
+      ingToDishes.get(k)!.add(dish.name);
+    }
+  }
+  // Khớp lỏng: trùng khít, hoặc một bên chứa bên kia (đủ dài để tránh khớp bừa).
+  const matches = (a: string, b: string) =>
+    a === b || (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a)));
+
+  const out = new Map<string, GroceryLine>();
+  for (const g of groceries || []) {
+    const k = normName(g.name);
+    if (!k) continue;
+    const dishSet = new Set<string>();
+    const mealSet = new Set<string>();
+    for (const [ingK, ds] of ingToDishes) {
+      if (!matches(k, ingK)) continue;
+      for (const dn of ds) {
+        dishSet.add(dn);
+        for (const ml of dishMeals.get(normName(dn)) ?? []) mealSet.add(ml);
+      }
+    }
+    const ex = out.get(k);
+    if (ex) {
+      if (g.quantity && !(ex.quantity || "").includes(g.quantity)) {
+        ex.quantity = ex.quantity ? `${ex.quantity} + ${g.quantity}` : g.quantity;
+      }
+      for (const dn of dishSet) if (!ex.dishes!.includes(dn)) ex.dishes!.push(dn);
+      ex.meals = sortMeals([...(ex.meals ?? []), ...mealSet]);
+    } else {
+      out.set(k, { name: g.name, cat: g.cat, quantity: g.quantity, meals: sortMeals(mealSet), dishes: [...dishSet] });
+    }
+  }
+  return [...out.values()];
 }

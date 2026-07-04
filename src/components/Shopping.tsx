@@ -15,6 +15,15 @@ import { generateMealPlan, FOOD_CATEGORY_ORDER, GroceryLine, FoodCategory } from
 const WEEKDAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 const dayLabel = (i: number) => (i < WEEKDAYS.length ? WEEKDAYS[i] : `Ngày ${i + 1}`);
 
+// Ghi chú "dùng ở buổi nào / cho món nào" (đầy đủ chữ) cho một nguyên liệu.
+function groceryNote(g: { meals?: string[]; dishes?: string[] }): string {
+  const meals = g.meals?.length ? g.meals.join(", ") : "";
+  const dishes = g.dishes?.length
+    ? g.dishes.slice(0, 4).join(", ") + (g.dishes.length > 4 ? "…" : "")
+    : "";
+  return meals && dishes ? `${meals} · ${dishes}` : (meals || dishes || "");
+}
+
 // Weekly menu table.
 function MealTable({ days }: { days: { day: number; meals: { meal: string; dishes: string[] }[] }[] }) {
   return (
@@ -223,7 +232,7 @@ export function Shopping({
     setPlanError("");
     try {
       for (const g of toAdd) {
-        await onSaveItem({ name: g.name, quantity: g.quantity });
+        await onSaveItem({ name: g.name, quantity: g.quantity, note: groceryNote(g) });
       }
       setAddedCount(toAdd.length);
     } catch (err: any) {
@@ -317,6 +326,11 @@ export function Shopping({
             {item.name}
             {item.quantity ? <span className="text-slate-500 font-normal"> · {item.quantity}</span> : null}
           </p>
+          {item.note && (
+            <p className={`text-[10px] leading-snug ${done ? "text-slate-600" : "text-slate-400"}`}>
+              <ChefHat className="w-2.5 h-2.5 inline-block mr-0.5 -mt-0.5 text-slate-500" />{item.note}
+            </p>
+          )}
           <p className="text-[10px] text-slate-500">
             {creator ? creator.fullName.split(" ").slice(-1)[0] : "Thành viên"} thêm
           </p>
@@ -454,16 +468,22 @@ export function Shopping({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {group.items.map(g => {
                       const checked = !excluded.has(g.name);
+                      const note = groceryNote(g);
                       return (
                         <button
                           key={g.name}
                           type="button"
                           onClick={() => toggleGrocery(g.name)}
-                          className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all cursor-pointer ${checked ? "bg-slate-950 border-slate-700" : "bg-slate-950/40 border-slate-850 opacity-50"}`}
+                          className={`flex items-start gap-2 p-2 rounded-lg border text-left transition-all cursor-pointer ${checked ? "bg-slate-950 border-slate-700" : "bg-slate-950/40 border-slate-850 opacity-50"}`}
                         >
-                          {checked ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" /> : <Circle className="w-4 h-4 text-slate-600 shrink-0" />}
-                          <span className="text-slate-200 truncate flex-1">{g.name}</span>
-                          <span className="text-slate-500 font-mono text-[10px] shrink-0">{g.quantity}</span>
+                          {checked ? <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> : <Circle className="w-4 h-4 text-slate-600 shrink-0 mt-0.5" />}
+                          <span className="flex-1 min-w-0">
+                            <span className="flex items-center gap-2">
+                              <span className="text-slate-200 truncate flex-1">{g.name}</span>
+                              <span className="text-slate-500 font-mono text-[10px] shrink-0">{g.quantity}</span>
+                            </span>
+                            {note && <span className="block text-[10px] text-slate-500 leading-snug mt-0.5">{note}</span>}
+                          </span>
                         </button>
                       );
                     })}
