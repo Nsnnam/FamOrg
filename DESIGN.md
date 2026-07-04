@@ -45,9 +45,16 @@
 | `slate-200` | Chữ thân chính (body) | `#1e293b` | `#e2e8f0` |
 | `slate-100` | Tiêu đề đậm | `#0f172a` | `#f8fafc` |
 
-> ⚠️ **Tránh** `slate-600/700`, `bg-white`, `gray-*`, đen/trắng cứng cho bề mặt
-> & chữ — chúng KHÔNG đổi theo theme. Chỉ 10 bước slate ở trên + toàn thang `sky`
-> là theme-aware.
+> ⚠️ **Tránh** `slate-50`, `slate-600/700`, `bg-white`, `gray-*`, đen/trắng cứng
+> cho bề mặt & chữ — chúng KHÔNG đổi theo theme. Chỉ **10 bước slate trong bảng
+> trên (100 → 950)** + toàn thang `sky` là theme-aware.
+>
+> 🕳️ **Bẫy hay gặp — `slate-50`:** KHÔNG được remap (chỉ có `slate-100` trở lên).
+> `text-slate-50` = near-white cứng → **vô hình trên theme Sáng**. Cần chữ đậm/sáng
+> nhất (tiêu đề to) → dùng **`text-slate-100`** (Sáng = gần đen, Tối = gần trắng).
+>
+> ✅ **Luôn tự nhẩm cả 2 theme khi chọn màu:** một màu chữ/nền phải đọc được trên
+> **cả** nền Sáng (thẻ trắng) **và** nền Tối (thẻ navy). Nếu chỉ hợp một bên → sai.
 
 ### Màu thương hiệu (Indigo) — qua thang `sky` đã remap
 
@@ -228,7 +235,7 @@ Mọi tab dùng chung các primitive trong
 
 ## Checklist nhanh cho AI khi tạo UI mới
 
-- [ ] Bề mặt/chữ chỉ dùng các bước `slate` theme-aware (không `gray-*`, `bg-white`, đen/trắng cứng).
+- [ ] **Kiểm tra hiển thị ở CẢ theme Sáng & Tối** — bề mặt/chữ chỉ dùng bước `slate` theme-aware trong bảng (100→950); **không** `slate-50`/`gray-*`/`bg-white`/đen-trắng cứng (vô hình hoặc lệch trên một theme). Chữ sáng/đậm nhất = `text-slate-100`.
 - [ ] Màu nhấn đúng ngữ nghĩa (emerald=tốt/thêm, rose=xóa/nguy hiểm, amber=cảnh báo, sky=thông tin, indigo=hành động chính).
 - [ ] Thẻ `rounded-2xl`, control `rounded-xl`, badge `rounded-lg`.
 - [ ] Số/ngày dùng `font-mono`; control mobile không < 16px.

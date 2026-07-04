@@ -911,7 +911,7 @@ export function Finance({
           </button>
 
           <div className="text-center min-w-0">
-            <p className="text-lg md:text-xl font-extrabold text-slate-50 truncate tracking-tight">{periodLabel(periodMode, anchor)}</p>
+            <p className="text-lg md:text-xl font-extrabold text-slate-100 truncate tracking-tight">{periodLabel(periodMode, anchor)}</p>
             {!isCurrentPeriod ? (
               <button
                 type="button"
