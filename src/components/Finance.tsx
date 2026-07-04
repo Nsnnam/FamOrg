@@ -5,12 +5,11 @@
 
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import {
-  TrendingUp, 
-  TrendingDown, 
-  Wallet, 
-  Plus, 
-  Trash2, 
-  Search, 
+  TrendingUp,
+  Wallet,
+  Plus,
+  Trash2,
+  Search,
   Calendar,
   Image as ImageIcon,
   ChevronRight,
@@ -23,7 +22,18 @@ import {
   CheckCircle2,
   Pencil,
   RotateCcw,
-  BarChart3
+  BarChart3,
+  Utensils,
+  GraduationCap,
+  Zap,
+  ShoppingCart,
+  HeartPulse,
+  Car,
+  Landmark,
+  Users,
+  HelpCircle,
+  ArrowUpRight,
+  ArrowDownRight
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, SavingsGoal, Debt, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -596,15 +606,29 @@ export function Finance({
 
   const categoryColorClass = (cat: string) => {
     switch (cat) {
-      case "food": return "text-emerald-400 bg-emerald-500/10";
-      case "education2": return "text-violet-400 bg-violet-500/10";
-      case "utilities": return "text-amber-400 bg-amber-500/10";
-      case "shopping": return "text-pink-400 bg-pink-500/10";
-      case "medical": return "text-rose-400 bg-rose-500/10";
-      case "transport": return "text-sky-400 bg-sky-500/10";
-      case "debt_bank": return "text-orange-400 bg-orange-500/10";
+      case "food":          return "text-orange-400 bg-orange-500/10";
+      case "education2":    return "text-violet-400 bg-violet-500/10";
+      case "utilities":     return "text-amber-400 bg-amber-500/10";
+      case "shopping":      return "text-pink-400 bg-pink-500/10";
+      case "medical":       return "text-rose-400 bg-rose-500/10";
+      case "transport":     return "text-sky-400 bg-sky-500/10";
+      case "debt_bank":     return "text-red-400 bg-red-500/10";
       case "debt_personal": return "text-teal-400 bg-teal-500/10";
-      default: return "text-slate-400 bg-slate-800";
+      default:              return "text-slate-400 bg-slate-800";
+    }
+  };
+
+  const categoryIcon = (cat: string) => {
+    switch (cat) {
+      case "food":          return <Utensils className="w-4 h-4" />;
+      case "education2":    return <GraduationCap className="w-4 h-4" />;
+      case "utilities":     return <Zap className="w-4 h-4" />;
+      case "shopping":      return <ShoppingCart className="w-4 h-4" />;
+      case "medical":       return <HeartPulse className="w-4 h-4" />;
+      case "transport":     return <Car className="w-4 h-4" />;
+      case "debt_bank":     return <Landmark className="w-4 h-4" />;
+      case "debt_personal": return <Users className="w-4 h-4" />;
+      default:              return <HelpCircle className="w-4 h-4" />;
     }
   };
 
@@ -775,7 +799,7 @@ export function Finance({
           <div className="flex items-center justify-between">
             <span className="text-slate-400 text-xs font-semibold">Chi tiêu trong kỳ</span>
             <div className="bg-rose-500/10 p-2 rounded-xl text-rose-400">
-              <TrendingDown className="w-5 h-5" />
+              <ArrowDownRight className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-4 space-y-1">
@@ -1234,6 +1258,24 @@ export function Finance({
             </button>
           </div>
 
+          {/* Chú thích màu sắc icon */}
+          <div className="px-4 py-2.5 border-b border-slate-800/60 bg-slate-950/50 overflow-x-auto">
+            <div className="flex items-center gap-3 min-w-max text-[10px] font-semibold">
+              <span className="text-slate-600 uppercase tracking-wider shrink-0">Màu icon:</span>
+              <span className="flex items-center gap-1 text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> Thu nhập</span>
+              <span className="w-px h-3 bg-slate-800" />
+              <span className="flex items-center gap-1 text-orange-400"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> Ăn uống</span>
+              <span className="flex items-center gap-1 text-amber-400"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Điện nước</span>
+              <span className="flex items-center gap-1 text-pink-400"><span className="w-2 h-2 rounded-full bg-pink-400 inline-block" /> Mua sắm</span>
+              <span className="flex items-center gap-1 text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-400 inline-block" /> Y tế</span>
+              <span className="flex items-center gap-1 text-sky-400"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Đi lại</span>
+              <span className="flex items-center gap-1 text-violet-400"><span className="w-2 h-2 rounded-full bg-violet-400 inline-block" /> Học tập</span>
+              <span className="flex items-center gap-1 text-red-400"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> Trả nợ NH</span>
+              <span className="flex items-center gap-1 text-teal-400"><span className="w-2 h-2 rounded-full bg-teal-400 inline-block" /> Trả nợ CN</span>
+              <span className="flex items-center gap-1 text-slate-400"><span className="w-2 h-2 rounded-full bg-slate-500 inline-block" /> Khác</span>
+            </div>
+          </div>
+
           <div className="divide-y divide-slate-800 max-h-[400px] overflow-y-auto">
             {filteredTransactions.map(tx => {
               const creator = users.find(u => u.id === tx.creatorId);
@@ -1242,23 +1284,33 @@ export function Finance({
               return (
                 <div key={tx.id} className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between hover:bg-slate-850/40 transition-colors gap-3">
                   <div className="flex items-start gap-3.5">
-                    {/* Small category bubble icon mapping */}
-                    <div className={`p-2.5 rounded-xl shrink-0 font-bold ${isIncome ? "text-emerald-400 bg-emerald-500/10" : categoryColorClass(tx.category)}`}>
-                      {isIncome ? <TrendingUp className="w-4.5 h-4.5" /> : <TrendingDown className="w-4.5 h-4.5" />}
+                    {/* Icon chip: emerald + ArrowUpRight = THU, màu hạng mục + icon riêng = CHI */}
+                    <div className={`p-2.5 rounded-xl shrink-0 ${isIncome ? "text-emerald-400 bg-emerald-500/10" : categoryColorClass(tx.category)}`}>
+                      {isIncome ? <ArrowUpRight className="w-4 h-4" /> : categoryIcon(tx.category)}
                     </div>
 
                     <div className="space-y-1 text-xs">
                       {/* Description */}
-                      <p className="text-slate-200 font-semibold text-sm leading-snug">{tx.description}</p>
-                      
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-slate-200 font-semibold text-sm leading-snug">{tx.description}</p>
+                        {/* Badge THU / CHI */}
+                        <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 ${isIncome ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"}`}>
+                          {isIncome ? <span className="flex items-center gap-0.5"><ArrowUpRight className="w-2.5 h-2.5" />THU</span> : <span className="flex items-center gap-0.5"><ArrowDownRight className="w-2.5 h-2.5" />CHI</span>}
+                        </span>
+                      </div>
+
                       {/* Secondary descriptors */}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
                         {/* Date */}
                         <span className="flex items-center gap-1 font-mono text-[10px]"><Calendar className="w-3 h-3 text-slate-500" /> {tx.date}</span>
                         {/* Account */}
                         <span>{translateAccount(tx.account)}</span>
-                        {/* Category tag — hạng mục chi, và khoản thu từ bán tài sản */}
-                        {!isIncome && <span className="px-1.5 py-0.5 rounded bg-slate-950 text-slate-400 text-[10px]">#{translateCategory(tx.category).split(" ")[0]}</span>}
+                        {/* Category tag */}
+                        {!isIncome && (
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${categoryColorClass(tx.category)}`}>
+                            {translateCategory(tx.category).split(" ")[0]}
+                          </span>
+                        )}
                         {isIncome && tx.category === "Bán tài sản" && <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-semibold">🪙 Bán tài sản</span>}
                         {/* Member user */}
                         {creator && <span className="text-[10px] font-semibold text-sky-400">@{creator.username}</span>}
