@@ -185,6 +185,8 @@ export enum ExpenseCategory {
   SHOPPING = "shopping",   // Mua sắm
   MEDICAL = "medical",     // Y tế / Sức khỏe
   TRANSPORT = "transport", // Đi lại / Xăng xe
+  FUNERAL = "funeral",     // Ma chay
+  CEREMONY = "ceremony",   // Hiếu hỉ (đám cưới, sinh nhật, tiệc...)
   OTHER = "other"          // Khác
 }
 

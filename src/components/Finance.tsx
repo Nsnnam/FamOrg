@@ -37,7 +37,9 @@ import {
   Home,
   Wifi,
   Phone,
-  Shield
+  Shield,
+  Flower2,
+  Gift
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, SavingsGoal, Debt, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -596,6 +598,8 @@ export function Finance({
       case "transport":     return "Đi lại";
       case "debt_bank":     return "Trả nợ NH";
       case "debt_personal": return "Trả nợ CN";
+      case "funeral":       return "Ma chay";
+      case "ceremony":      return "Hiếu hỉ";
       // Hạng mục từ hóa đơn định kỳ (bill.category → transaction.category)
       case "rent":          return "Thuê nhà";
       case "internet":      return "Cước Internet";
@@ -627,6 +631,8 @@ export function Finance({
       case "debt_bank":
       case "loan":          return "text-red-400 bg-red-500/10";
       case "debt_personal": return "text-teal-400 bg-teal-500/10";
+      case "funeral":       return "text-zinc-400 bg-zinc-500/15";
+      case "ceremony":      return "text-yellow-400 bg-yellow-500/10";
       case "rent":          return "text-indigo-400 bg-indigo-500/10";
       case "internet":      return "text-cyan-400 bg-cyan-500/10";
       case "phone":         return "text-purple-400 bg-purple-500/10";
@@ -646,6 +652,8 @@ export function Finance({
       case "debt_bank":
       case "loan":          return <Landmark className="w-4 h-4" />;
       case "debt_personal": return <Users className="w-4 h-4" />;
+      case "funeral":       return <Flower2 className="w-4 h-4" />;
+      case "ceremony":      return <Gift className="w-4 h-4" />;
       case "rent":          return <Home className="w-4 h-4" />;
       case "internet":      return <Wifi className="w-4 h-4" />;
       case "phone":         return <Phone className="w-4 h-4" />;
@@ -941,6 +949,8 @@ export function Finance({
                   <option value="transport">Đi lại</option>
                   <option value="debt_bank">Trả nợ ngân hàng</option>
                   <option value="debt_personal">Trả nợ cá nhân</option>
+                  <option value="funeral">Ma chay</option>
+                  <option value="ceremony">Hiếu hỉ</option>
                   <option value="other">Khác</option>
                 </select>
                 <input
@@ -1225,6 +1235,8 @@ export function Finance({
               <option value="transport">Đi lại 🚗</option>
               <option value="debt_bank">Trả nợ ngân hàng 🏦</option>
               <option value="debt_personal">Trả nợ cá nhân 🤝</option>
+              <option value="funeral">Ma chay 🌸</option>
+              <option value="ceremony">Hiếu hỉ 🎁</option>
               <option value="other">Khoản khác 🏷️</option>
               <option value="Bán tài sản">Bán tài sản 🪙</option>
             </select>
@@ -1298,6 +1310,8 @@ export function Finance({
               <span className="flex items-center gap-1 text-slate-300"><span className="w-2 h-2 rounded-full bg-slate-400 inline-block" /> Bảo hiểm</span>
               <span className="flex items-center gap-1 text-red-400"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> Trả nợ NH</span>
               <span className="flex items-center gap-1 text-teal-400"><span className="w-2 h-2 rounded-full bg-teal-400 inline-block" /> Trả nợ CN</span>
+              <span className="flex items-center gap-1 text-zinc-400"><span className="w-2 h-2 rounded-full bg-zinc-400 inline-block" /> Ma chay</span>
+              <span className="flex items-center gap-1 text-yellow-400"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" /> Hiếu hỉ</span>
               <span className="flex items-center gap-1 text-slate-400"><span className="w-2 h-2 rounded-full bg-slate-500 inline-block" /> Khác</span>
             </div>
           </div>
@@ -1491,6 +1505,8 @@ export function Finance({
                       <option value="transport">Đi lại / Xăng xe 🚗</option>
                       <option value="debt_bank">Trả nợ ngân hàng 🏦</option>
                       <option value="debt_personal">Trả nợ cá nhân 🤝</option>
+                      <option value="funeral">Ma chay 🌸</option>
+                      <option value="ceremony">Hiếu hỉ 🎁</option>
                       <option value="other">Khoản khác 🏷️</option>
                     </select>
                   ) : (
