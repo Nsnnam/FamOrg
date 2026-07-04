@@ -94,6 +94,30 @@
   --color-sky-100: var(--sky-100);
 }
 
+/*
+ * Chuyển theme Sáng<->Tối MƯỢT: class `.theme-transition` được JS thêm vào <html>
+ * CHỈ trong khoảnh khắc đổi theme (~0.3s) rồi gỡ ra — nên hover/tương tác thường
+ * ngày vẫn tức thì, không bị ì. Chỉ cross-fade các thuộc tính màu rẻ (paint-only)
+ * để không giật/lag. Tự tắt khi người dùng bật "giảm chuyển động".
+ */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease,
+              color 0.3s ease, fill 0.3s ease, stroke 0.3s ease !important;
+  transition-delay: 0s !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition: none !important;
+  }
+}
+
 /* Global focus overlays & custom inputs to make them premium */
 input::placeholder, textarea::placeholder {
   color: var(--slate-500) !important;
