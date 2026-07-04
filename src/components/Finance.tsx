@@ -884,11 +884,7 @@ export function Finance({
                 key={m}
                 type="button"
                 onClick={() => setPeriodMode(m)}
-                className={`rounded-lg transition-all cursor-pointer ${
-                  periodMode === m
-                    ? "bg-sky-500 text-slate-950 font-extrabold text-sm py-2 scale-105 z-10 shadow-lg shadow-sky-500/40"
-                    : "text-slate-400 hover:text-slate-200 py-1.5"
-                }`}
+                className={`py-1.5 rounded-lg transition-all cursor-pointer ${periodMode === m ? "bg-sky-500 text-slate-950" : "text-slate-400 hover:text-slate-200"}`}
               >
                 {PERIOD_LABELS[m]}
               </button>
@@ -915,17 +911,19 @@ export function Finance({
           </button>
 
           <div className="text-center min-w-0">
-            <p className="text-sm font-extrabold text-slate-100 truncate">{periodLabel(periodMode, anchor)}</p>
+            <p className="text-lg md:text-xl font-extrabold text-slate-50 truncate tracking-tight">{periodLabel(periodMode, anchor)}</p>
             {!isCurrentPeriod ? (
               <button
                 type="button"
                 onClick={() => setAnchor(new Date())}
-                className="inline-flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
+                className="inline-flex items-center gap-1 text-[11px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
               >
                 <RotateCcw className="w-3 h-3" /> Về kỳ hiện tại
               </button>
             ) : (
-              <span className="text-[10px] text-slate-500 font-mono">Kỳ hiện tại</span>
+              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" /> Kỳ hiện tại
+              </span>
             )}
           </div>
 
