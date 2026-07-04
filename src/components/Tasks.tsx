@@ -1184,7 +1184,7 @@ export function Tasks({
               </div>
 
               <div className="space-y-1">
-                <label className="text-slate-400 block font-semibold">Nhãn tag (Cắt nhau bằng dấu phẩy)</label>
+                <label className="text-slate-400 block font-semibold">Nhãn tag (cách nhau bằng dấu phẩy)</label>
                 <input 
                   type="text" 
                   placeholder="Ví dụ: Nhà cửa, Mua sắm, Bé Vy..."

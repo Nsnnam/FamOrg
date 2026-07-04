@@ -642,14 +642,14 @@ export function Finance({
     e.preventDefault();
     setBudgetError("");
     if (budgetLimit <= 0) {
-      setBudgetError("Han muc phai lon hon 0");
+      setBudgetError("Hạn mức phải lớn hơn 0");
       return;
     }
     try {
       await onSaveBudget({ month: anchorMonthKey, category: budgetCategory, limit: Number(budgetLimit) });
       setBudgetLimit(0);
     } catch (err: any) {
-      setBudgetError(err.message || "Khong luu duoc ngan sach");
+      setBudgetError(err.message || "Không lưu được ngân sách");
     }
   };
 
@@ -672,7 +672,7 @@ export function Finance({
     e.preventDefault();
     setBillError("");
     if (!billTitle.trim() || billAmount <= 0) {
-      setBillError("Nhap ten hoa don va so tien hop le");
+      setBillError("Nhập tên hóa đơn và số tiền hợp lệ");
       return;
     }
     try {
@@ -688,7 +688,7 @@ export function Finance({
       setBillTitle("");
       setBillAmount(0);
     } catch (err: any) {
-      setBillError(err.message || "Khong luu duoc hoa don");
+      setBillError(err.message || "Không lưu được hóa đơn");
     }
   };
 
@@ -1557,7 +1557,7 @@ export function Finance({
                       <button 
                         onClick={() => handleDeleteClick(tx.id)}
                         className="p-1.5 bg-slate-950 border border-slate-800 hover:text-rose-450 hover:bg-slate-800 rounded-lg text-slate-500 transition-all cursor-pointer"
-                        title="Xóa biên bản này"
+                        title="Xóa giao dịch này"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -1620,13 +1620,13 @@ export function Finance({
                   onClick={() => { setFormType(TransactionType.INCOME); setFormCategory("Lương tháng"); }}
                   className={`py-2 rounded-lg cursor-pointer transition-all ${formType === TransactionType.INCOME ? "bg-emerald-500 text-slate-950" : "text-slate-400"}`}
                 >
-                  Ghi nhận KHUÂN THU (+)
+                  Ghi nhận KHOẢN THU (+)
                 </button>
               </div>
 
               {/* Description Input */}
               <div className="space-y-1">
-                <label className="text-slate-400 block font-semibold">Nội dung chi chép <span className="text-rose-400">*</span></label>
+                <label className="text-slate-400 block font-semibold">Nội dung ghi chép <span className="text-rose-400">*</span></label>
                 <input 
                   type="text" 
                   placeholder={formType === TransactionType.EXPENSE ? "Ví dụ: Đi chợ mua cá lóc, thanh toán hóa đơn điện nước..." : "Ví dụ: Nhận thưởng hoàn thành dự án, nhận lương tháng..."}
