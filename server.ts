@@ -13,7 +13,7 @@ import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret, getAppSettings, setAppSetting } from "./server/db.js";
 import { sqliteAppendServerMetric, sqliteGetServerMetrics } from "./server/sqlite.js";
 import { UserRole, isLimitedViewer, DishSlot, MealIngredient } from "./src/types.js";
-import { buildPlanFromLibrary } from "./src/utils/mealPlan.js";
+import { buildPlanFromLibrary, dedupeAndAnnotateGroceries } from "./src/utils/mealPlan.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
 
@@ -1596,30 +1596,37 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
       }))
       .filter((g: any) => g.name);
 
+    // Chuẩn hoá danh sách MÓN (dùng cho cả học món mới lẫn chú thích buổi/món).
+    const SLOTS = ["breakfast", "main", "side", "fruit"];
+    const cleanDishes = Array.isArray(parsed.dishes)
+      ? parsed.dishes
+          .slice(0, 40)
+          .map((d: any) => ({
+            name: String(d?.name || "").slice(0, 80),
+            slot: (SLOTS.includes(String(d?.slot)) ? String(d.slot) : "main") as DishSlot,
+            ingredients: Array.isArray(d?.ingredients)
+              ? d.ingredients.slice(0, 12).map((ing: any): MealIngredient => ({
+                  name: String(ing?.name || "").slice(0, 60),
+                  cat: CATS.includes(String(ing?.cat)) ? (String(ing.cat) as MealIngredient["cat"]) : "Gia vị"
+                })).filter((ing: MealIngredient) => ing.name)
+              : []
+          }))
+          .filter((d: any) => d.name)
+      : [];
+
+    // GỘP nguyên liệu trùng (AI hay lặp) + gắn chú thích "dùng ở buổi/món nào".
+    const annotatedGroceries = dedupeAndAnnotateGroceries(cleanGroceries, cleanDays, cleanDishes);
+
     // Learn new dishes into the library so future random plans get more variety.
     let learned = 0;
-    if (Array.isArray(parsed.dishes)) {
-      const SLOTS = ["breakfast", "main", "side", "fruit"];
-      const cleanDishes = parsed.dishes
-        .slice(0, 40)
-        .map((d: any) => ({
-          name: String(d?.name || "").slice(0, 80),
-          slot: (SLOTS.includes(String(d?.slot)) ? String(d.slot) : "main") as DishSlot,
-          ingredients: Array.isArray(d?.ingredients)
-            ? d.ingredients.slice(0, 12).map((ing: any): MealIngredient => ({
-                name: String(ing?.name || "").slice(0, 60),
-                cat: CATS.includes(String(ing?.cat)) ? (String(ing.cat) as MealIngredient["cat"]) : "Gia vị"
-              })).filter((ing: MealIngredient) => ing.name)
-            : []
-        }))
-        .filter((d: any) => d.name);
+    if (cleanDishes.length) {
       try { learned = FamilyDB.addDishesFromAI(cleanDishes); } catch (e) { console.error("Lưu món AI lỗi:", e); }
     }
 
     // Save as the shared weekly menu shown on the shopping view + sync the family.
     FamilyDB.setMealPlan({
       days: cleanDays,
-      groceries: cleanGroceries as any,
+      groceries: annotatedGroceries as any,
       source: "ai",
       adults,
       children,
@@ -1628,7 +1635,7 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
     });
     broadcastSyncEvent("SHOPPING_UPDATE");
 
-    res.json({ days: cleanDays, groceries: cleanGroceries, source: "ai", learned });
+    res.json({ days: cleanDays, groceries: annotatedGroceries, source: "ai", learned });
   } catch (err: any) {
     console.error("Meal-plan error:", err);
     res.status(isGeminiOverloaded(err) ? 503 : 500).json({ error: geminiErrorMessage(err) });

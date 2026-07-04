@@ -507,7 +507,7 @@ export interface StoredDish {
 // The one shared weekly menu shown on the shopping view (persisted & synced).
 export interface StoredMealPlan {
   days: { day: number; meals: { meal: string; dishes: string[] }[] }[];
-  groceries: { name: string; cat: FoodCategory; quantity: string }[];
+  groceries: { name: string; cat: FoodCategory; quantity: string; meals?: string[]; dishes?: string[] }[];
   source: string;
   adults: number;
   children: number;
