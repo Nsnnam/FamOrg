@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback, useRef } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import {
   TrendingUp,
   Wallet,
@@ -66,6 +66,7 @@ interface FinanceProps {
   onDeleteTransaction: (id: string) => Promise<any>;
   onSaveBudget: (budget: Partial<BudgetLimit>) => Promise<any>;
   onDeleteBudget: (id: string) => Promise<any>;
+  onCarryForwardBudgets: (month: string) => Promise<any>;
   onSaveRecurringBill: (bill: Partial<RecurringBill>) => Promise<any>;
   onPayRecurringBill: (id: string) => Promise<any>;
   onDeleteRecurringBill: (id: string) => Promise<any>;
@@ -95,6 +96,108 @@ const BILL_CATEGORIES = [
 
 function translateBillCategory(value: string): string {
   return BILL_CATEGORIES.find(c => c.value === value)?.label ?? value;
+}
+
+// ─── Nhập tiền thông minh: cho phép gõ biểu thức cộng dồn ───────────────────
+// Ví dụ đi chợ: "50000+20000" → 70.000; "5*10000" → 50.000; "50000+5*3000" → 65.000.
+// Bỏ dấu phân tách hàng nghìn (. ,) và khoảng trắng; chỉ tính + - * (không eval).
+function evalMoneyExpression(input: string): number {
+  if (!input || !input.trim()) return 0;
+  // Bỏ khoảng trắng + dấu phân tách hàng nghìn, cắt các toán tử thừa ở cuối (đang gõ dở)
+  const cleaned = input.replace(/[\s.,]/g, "").replace(/[+\-*]+$/, "");
+  if (!cleaned) return 0;
+  // Không phải biểu thức hợp lệ → lấy phần chữ số cho an toàn
+  if (!/^[+\-]?\d+([+\-*]\d+)*$/.test(cleaned)) {
+    return Number(cleaned.replace(/[^\d]/g, "")) || 0;
+  }
+  // Tách theo + / - (giữ dấu), mỗi số hạng có thể chứa phép nhân
+  const terms = cleaned.match(/[+\-]?[^+\-]+/g) || [];
+  let total = 0;
+  for (const term of terms) {
+    const sign = term.startsWith("-") ? -1 : 1;
+    const factors = term.replace(/^[+\-]/, "").split("*").map(Number);
+    total += sign * factors.reduce((a, b) => a * b, 1);
+  }
+  return Math.round(total);
+}
+
+interface MoneyInputProps {
+  value: number;
+  onChange: (n: number) => void;
+  placeholder?: string;
+  className?: string;
+  id?: string;
+  autoFocus?: boolean;
+  /** Hiện nút +/× hỗ trợ cộng dồn (bàn phím số trên mobile không có toán tử). */
+  operators?: boolean;
+}
+
+/**
+ * Ô nhập tiền: hiển thị số có nhóm hàng nghìn khi rời ô, cho gõ biểu thức khi
+ * đang nhập. Có nút +/× (tuỳ chọn) và dòng preview kết quả "= 70.000 đ".
+ */
+function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, operators }: MoneyInputProps) {
+  const [focused, setFocused] = useState(false);
+  const [raw, setRaw] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const hasOperator = /\d\s*[+\-*]\s*\d/.test(raw);
+  const preview = evalMoneyExpression(raw);
+  const display = focused ? raw : (value > 0 ? value.toLocaleString("vi-VN") : "");
+
+  const commit = () => {
+    onChange(evalMoneyExpression(raw));
+    setFocused(false);
+  };
+
+  const appendOp = (op: string) => {
+    const base = raw.trim() === "" && value > 0 ? String(value) : raw;
+    const trimmed = base.replace(/[+\-*]+$/, "");
+    if (trimmed === "") return;
+    const next = trimmed + op;
+    setRaw(next);
+    setFocused(true);
+    onChange(evalMoneyExpression(next));
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div className="relative">
+      <div className="flex items-stretch gap-1.5">
+        <input
+          ref={inputRef}
+          id={id}
+          type="text"
+          inputMode="numeric"
+          autoFocus={autoFocus}
+          value={display}
+          placeholder={placeholder}
+          onFocus={() => { setRaw(value > 0 ? String(value) : ""); setFocused(true); }}
+          onChange={(e) => { setRaw(e.target.value); onChange(evalMoneyExpression(e.target.value)); }}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); inputRef.current?.blur(); } }}
+          className={className}
+        />
+        {operators && (
+          <div className="flex gap-1 shrink-0">
+            <button
+              type="button" tabIndex={-1} aria-label="Cộng thêm một khoản"
+              onPointerDown={(e) => e.preventDefault()} onClick={() => appendOp("+")}
+              className="w-9 grid place-items-center rounded-lg bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 font-bold text-lg leading-none transition-colors"
+            >+</button>
+            <button
+              type="button" tabIndex={-1} aria-label="Nhân số lượng"
+              onPointerDown={(e) => e.preventDefault()} onClick={() => appendOp("*")}
+              className="w-9 grid place-items-center rounded-lg bg-slate-800 hover:bg-sky-500/20 text-slate-300 hover:text-sky-400 font-bold text-sm leading-none transition-colors"
+            >×</button>
+          </div>
+        )}
+      </div>
+      {focused && hasOperator && (
+        <p className="mt-1 text-[11px] font-mono font-bold text-emerald-400">= {preview.toLocaleString("vi-VN")} đ</p>
+      )}
+    </div>
+  );
 }
 
 // Hạng mục THU NHẬP gợi ý — giá trị lưu trực tiếp là nhãn tiếng Việt (income category là free-text).
@@ -208,6 +311,7 @@ export function Finance({
   onDeleteTransaction,
   onSaveBudget,
   onDeleteBudget,
+  onCarryForwardBudgets,
   onSaveRecurringBill,
   onPayRecurringBill,
   onDeleteRecurringBill,
@@ -254,6 +358,9 @@ export function Finance({
   const [budgetCategory, setBudgetCategory] = useState<string>(ExpenseCategory.FOOD);
   const [budgetLimit, setBudgetLimit] = useState<number>(0);
   const [budgetError, setBudgetError] = useState("");
+  // Sửa nhanh hạn mức ngân sách ngay trong danh sách (inline)
+  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
+  const [editingBudgetLimit, setEditingBudgetLimit] = useState<number>(0);
   const [billTitle, setBillTitle] = useState("");
   const [billAmount, setBillAmount] = useState<number>(0);
   const [billDueDate, setBillDueDate] = useState(new Date().toISOString().slice(0, 10));
@@ -413,6 +520,20 @@ export function Finance({
     () => budgets.filter(b => b.month === anchorMonthKey),
     [budgets, anchorMonthKey]
   );
+
+  // Tự mang ngân sách sang THÁNG HIỆN TẠI (theo lịch thật) khi tháng mới chưa có
+  // hạn mức nào nhưng tháng trước đã đặt — đỡ phải nhập lại mỗi đầu tháng.
+  const realMonthKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+  const carriedRef = useRef(false);
+  useEffect(() => {
+    if (carriedRef.current) return;
+    if (!canAccessFinance(currentUser.role) || budgets.length === 0) return;
+    if (budgets.some(b => b.month === realMonthKey)) { carriedRef.current = true; return; }
+    if (budgets.some(b => b.month < realMonthKey)) {
+      carriedRef.current = true;
+      onCarryForwardBudgets(realMonthKey);
+    }
+  }, [budgets, currentUser.role, realMonthKey, onCarryForwardBudgets]);
   // Chế độ Quý/Năm: gộp hạn mức các tháng trong kỳ theo hạng mục (chỉ xem)
   const aggregatedBudgets = useMemo(() => {
     const map = new Map<string, number>();
@@ -514,6 +635,21 @@ export function Finance({
       setBudgetLimit(0);
     } catch (err: any) {
       setBudgetError(err.message || "Khong luu duoc ngan sach");
+    }
+  };
+
+  const startEditBudget = (b: BudgetLimit) => {
+    setEditingBudgetId(b.id);
+    setEditingBudgetLimit(b.limit);
+  };
+
+  const saveEditBudget = async (b: BudgetLimit) => {
+    if (editingBudgetLimit <= 0) return;
+    try {
+      await onSaveBudget({ id: b.id, month: b.month, category: b.category, limit: Number(editingBudgetLimit) });
+      setEditingBudgetId(null);
+    } catch {
+      /* giữ nguyên ô sửa nếu lỗi */
     }
   };
 
@@ -953,13 +1089,11 @@ export function Finance({
                   <option value="ceremony">Hiếu hỉ</option>
                   <option value="other">Khác</option>
                 </select>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={formatMoneyInput(budgetLimit)}
-                  onChange={(e) => setBudgetLimit(parseMoneyInput(e.target.value))}
+                <MoneyInput
+                  value={budgetLimit}
+                  onChange={setBudgetLimit}
                   placeholder="Hạn mức"
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
                 />
                 <button type="submit" className="bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl px-3 py-2 font-bold">
                   Lưu
@@ -980,18 +1114,43 @@ export function Finance({
               ) : monthBudgets.map(b => {
                 const used = budgetUsage[b.category] || 0;
                 const pct = Math.min(100, Math.round((used / b.limit) * 100));
+                const isEditing = editingBudgetId === b.id;
                 return (
                   <div key={b.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between text-xs gap-2">
                       <span className="font-bold text-slate-200">{translateCategory(b.category)}</span>
-                      <button onClick={() => onDeleteBudget(b.id)} className="text-slate-500 hover:text-rose-400">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {isEditing ? (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button onClick={() => saveEditBudget(b)} className="text-emerald-400 hover:text-emerald-300 font-bold text-[11px]">Lưu</button>
+                          <button onClick={() => setEditingBudgetId(null)} className="text-slate-500 hover:text-slate-300 font-bold text-[11px]">Hủy</button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button onClick={() => startEditBudget(b)} className="text-slate-500 hover:text-sky-400" title="Sửa hạn mức">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => onDeleteBudget(b.id)} className="text-slate-500 hover:text-rose-400" title="Xóa hạn mức">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
-                      <div className={`h-full ${used > b.limit ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
-                    </div>
-                    <p className="text-[10px] text-slate-500 font-mono">{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</p>
+                    {isEditing ? (
+                      <MoneyInput
+                        value={editingBudgetLimit}
+                        onChange={setEditingBudgetLimit}
+                        autoFocus
+                        placeholder="Hạn mức mới"
+                        className="w-full bg-slate-950 border border-sky-800 rounded-lg px-3 py-1.5 text-slate-200 text-xs outline-none focus:border-sky-500"
+                      />
+                    ) : (
+                      <>
+                        <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
+                          <div className={`h-full ${used > b.limit ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-mono">{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</p>
+                      </>
+                    )}
                   </div>
                 );
               })
@@ -1465,13 +1624,17 @@ export function Finance({
               {/* Amount & Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1 min-w-0">
-                  <label className="text-slate-400 block font-semibold">Số lượng (VNĐ) <span className="text-rose-400">*</span></label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
+                  <label className="text-slate-400 block font-semibold">
+                    Số lượng (VNĐ) <span className="text-rose-400">*</span>
+                    {formType === TransactionType.EXPENSE && (
+                      <span className="ml-1 text-[10px] font-normal text-slate-500">— gõ 50000+20000 để cộng dồn</span>
+                    )}
+                  </label>
+                  <MoneyInput
+                    value={formAmount}
+                    onChange={setFormAmount}
                     placeholder="Điền số giá trị..."
-                    value={formatMoneyInput(formAmount)}
-                    onChange={(e) => setFormAmount(parseMoneyInput(e.target.value))}
+                    operators={formType === TransactionType.EXPENSE}
                     className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-bold"
                   />
                 </div>

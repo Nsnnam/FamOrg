@@ -898,6 +898,17 @@ app.post("/api/finance/budgets", requireAuth, requireRole([UserRole.ADMIN, UserR
   }
 });
 
+app.post("/api/finance/budgets/carry-forward", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const copied = FamilyDB.carryForwardBudgets(req.body.month, session.userId, session.username);
+    if (copied.length > 0) broadcastSyncEvent("FINANCE_UPDATE", { carriedForward: copied.length });
+    res.json({ budgets: FamilyDB.getBudgets(), copied: copied.length });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.delete("/api/finance/budgets/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
   FamilyDB.deleteBudget(req.params.id);
   broadcastSyncEvent("FINANCE_UPDATE", { deletedBudgetId: req.params.id });

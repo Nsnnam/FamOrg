@@ -1126,6 +1126,41 @@ export class FamilyDB {
     this.writeRaw(db);
   }
 
+  /**
+   * Mang ngân sách sang tháng mới: nếu targetMonth chưa có hạn mức nào thì sao
+   * chép toàn bộ từ tháng gần nhất trước đó. Idempotent — gọi lại không nhân đôi.
+   */
+  public static carryForwardBudgets(targetMonth: string, userId: string, username: string): BudgetLimit[] {
+    if (!targetMonth || !/^\d{4}-\d{2}$/.test(targetMonth)) throw new Error("Thang khong hop le");
+    const db = this.readRaw();
+    // Đã có hạn mức cho tháng đích → không làm gì
+    if (db.budgets.some(b => b.month === targetMonth)) {
+      return db.budgets.filter(b => b.month === targetMonth);
+    }
+    // Tìm tháng gần nhất TRƯỚC tháng đích có đặt ngân sách
+    const priorMonths = Array.from(new Set(db.budgets.map(b => b.month)))
+      .filter(m => m < targetMonth)
+      .sort();
+    const sourceMonth = priorMonths[priorMonths.length - 1];
+    if (!sourceMonth) return [];
+    const now = new Date().toISOString();
+    const copied: BudgetLimit[] = db.budgets
+      .filter(b => b.month === sourceMonth)
+      .map((b, i) => ({
+        id: `budget_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+        month: targetMonth,
+        category: b.category,
+        limit: b.limit,
+        createdAt: now,
+        updatedAt: now
+      }));
+    if (copied.length === 0) return [];
+    db.budgets.unshift(...copied);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Ngan sach", `Tu dong mang ${copied.length} han muc tu thang ${sourceMonth} sang ${targetMonth}.`);
+    return copied;
+  }
+
   public static saveRecurringBill(data: Partial<RecurringBill>, userId: string, username: string): RecurringBill {
     const db = this.readRaw();
     const now = new Date().toISOString();
