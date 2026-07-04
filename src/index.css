@@ -118,6 +118,19 @@ html.theme-transition *::after {
   }
 }
 
+/*
+ * Hiệu ứng "đã mắt" khi đổi theme (trình duyệt hỗ trợ View Transitions API):
+ * theme mới lan tỏa thành vòng tròn từ nút bấm. Tắt cross-fade mặc định để chỉ
+ * còn animation clip-path do JS điều khiển (App.tsx). New nằm trên, phủ dần Old.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-new(root) { z-index: 1; }
+::view-transition-old(root) { z-index: 0; }
+
 /* Global focus overlays & custom inputs to make them premium */
 input::placeholder, textarea::placeholder {
   color: var(--slate-500) !important;

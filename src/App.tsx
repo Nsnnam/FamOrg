@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { flushSync } from "react-dom";
 import { 
   Home, 
   CheckSquare, 
@@ -96,34 +97,81 @@ export default function App() {
     const saved = localStorage.getItem("family_theme");
     return (saved as "light" | "dark") || "light";
   });
-  const isFirstThemeApply = useRef(true);
   const themeFadeTimer = useRef<number | null>(null);
 
+  // Áp theme lên DOM (class + màu thanh trình duyệt) — thuần DOM, không animation
+  const applyThemeDom = useCallback((t: "light" | "dark") => {
+    document.documentElement.classList.toggle("dark", t === "dark");
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", t === "dark" ? "#0d121f" : "#f8fafc");
+  }, []);
+
+  // Lưu + áp theme khi mount và khi theme đổi (không tạo hiệu ứng ở đây; hiệu ứng
+  // do handler nút bấm đảm nhiệm để lấy được toạ độ điểm bấm)
   useEffect(() => {
     localStorage.setItem("family_theme", theme);
-    const root = document.documentElement;
-    const applyTheme = () => root.classList.toggle("dark", theme === "dark");
+    applyThemeDom(theme);
+  }, [theme, applyThemeDom]);
 
-    if (isFirstThemeApply.current) {
-      // Lần đầu (tải trang): áp dụng ngay, không cross-fade để tránh nháy
-      isFirstThemeApply.current = false;
-      applyTheme();
-    } else {
-      // Người dùng đổi theme: bật cross-fade màu ~0.3s cho mượt, không giật
-      root.classList.add("theme-transition");
-      void root.offsetWidth; // prime: chốt transition trên màu hiện tại trước khi đổi biến
-      applyTheme();
-      if (themeFadeTimer.current) clearTimeout(themeFadeTimer.current);
-      themeFadeTimer.current = window.setTimeout(() => {
-        root.classList.remove("theme-transition");
-        themeFadeTimer.current = null;
-      }, 340);
+  const prefersReducedMotion = () =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Đổi theme với hiệu ứng "đã mắt": theme mới lan tỏa thành vòng tròn từ nút bấm
+  // (View Transitions API). iOS/trình duyệt cũ → fallback cross-fade màu dịu.
+  const toggleTheme = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const next: "light" | "dark" = theme === "light" ? "dark" : "light";
+    const startViewTransition = (document as any).startViewTransition?.bind(document);
+
+    if (!startViewTransition || prefersReducedMotion()) {
+      // Fallback: cross-fade màu ~0.3s (đã mượt, không giật), tôn trọng reduced-motion
+      const root = document.documentElement;
+      if (!prefersReducedMotion()) {
+        root.classList.add("theme-transition");
+        void root.offsetWidth;
+        if (themeFadeTimer.current) clearTimeout(themeFadeTimer.current);
+        themeFadeTimer.current = window.setTimeout(() => {
+          root.classList.remove("theme-transition");
+          themeFadeTimer.current = null;
+        }, 340);
+      }
+      setTheme(next);
+      return;
     }
 
-    // Đồng bộ màu thanh trình duyệt/PWA theo theme
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#0d121f" : "#f8fafc");
-  }, [theme]);
+    // Toạ độ tâm vòng tròn = tâm nút bấm; bán kính = góc màn xa nhất
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const endRadius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    );
+
+    const transition = startViewTransition(() => {
+      flushSync(() => {
+        applyThemeDom(next); // đổi class ngay để ảnh chụp "new" đúng theme
+        setTheme(next);
+      });
+    });
+
+    transition.ready
+      .then(() => {
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius}px at ${x}px ${y}px)`
+            ]
+          },
+          {
+            duration: 520,
+            easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+            pseudoElement: "::view-transition-new(root)"
+          }
+        );
+      })
+      .catch(() => {/* nếu trình duyệt huỷ transition thì thôi, theme vẫn đã đổi */});
+  };
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
@@ -1615,7 +1663,7 @@ export default function App() {
 
             {/* Theme Toggle Button */}
             <button
-              onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+              onClick={toggleTheme}
               className="p-2.5 text-slate-400 hover:text-slate-100 hover:bg-slate-800 bg-slate-950 border border-slate-850 rounded-xl outline-none leading-none cursor-pointer group flex items-center justify-center transition-all"
               title={theme === "light" ? "Chuyển sang Giao diện Tối" : "Chuyển sang Giao diện Sáng"}
             >
