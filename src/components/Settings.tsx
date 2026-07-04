@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import { FancySelect } from "./FancySelect.js";
 
 // Role <select> options shared by the create + edit forms
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
@@ -43,6 +44,14 @@ const RELATION_OPTIONS = (Object.keys(FAMILY_RELATION_LABELS) as FamilyRelation[
   value,
   label: FAMILY_RELATION_LABELS[value]
 }));
+
+const GENDER_OPTIONS = [
+  { value: "", label: "Chưa chọn" },
+  { value: "male", label: "Nam" },
+  { value: "female", label: "Nữ" }
+];
+
+const RELATION_SELECT_OPTIONS = [{ value: "", label: "— Không đặt —" }, ...RELATION_OPTIONS];
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("family_token");
@@ -751,15 +760,14 @@ export function Settings({
                 </div>
                 <div className="space-y-1 text-xs min-w-0">
                   <label className="text-slate-400 font-semibold">Giới tính <span className="text-slate-600 font-normal">(để tính BMI)</span></label>
-                  <select
+                  <FancySelect
                     value={profGender}
-                    onChange={(e) => setProfGender(e.target.value as "male" | "female" | "")}
-                    className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="">Chưa chọn</option>
-                    <option value="male">Nam</option>
-                    <option value="female">Nữ</option>
-                  </select>
+                    onChange={(v) => setProfGender(v as "male" | "female" | "")}
+                    ariaLabel="Giới tính"
+                    placeholder="Chưa chọn"
+                    className="bg-slate-900"
+                    options={GENDER_OPTIONS}
+                  />
                 </div>
               </div>
 
@@ -941,29 +949,25 @@ export function Settings({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <label className="text-slate-400 block font-semibold">Phân quyền</label>
-                      <select
+                      <FancySelect
                         value={regRole}
-                        onChange={(e) => setRegRole(e.target.value as UserRole)}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none"
-                      >
-                        {ROLE_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => setRegRole(v as UserRole)}
+                        ariaLabel="Phân quyền"
+                        className="bg-slate-900"
+                        options={ROLE_OPTIONS}
+                      />
                     </div>
 
                     <div className="space-y-1">
                       <label className="text-slate-400 block font-semibold">Vai vế trong gia đình</label>
-                      <select
+                      <FancySelect
                         value={regRelation}
-                        onChange={(e) => setRegRelation(e.target.value as FamilyRelation | "")}
-                        className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none"
-                      >
-                        <option value="">— Không đặt —</option>
-                        {RELATION_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
+                        onChange={(v) => setRegRelation(v as FamilyRelation | "")}
+                        ariaLabel="Vai vế trong gia đình"
+                        placeholder="— Không đặt —"
+                        className="bg-slate-900"
+                        options={RELATION_SELECT_OPTIONS}
+                      />
                     </div>
                   </div>
 
@@ -1000,15 +1004,14 @@ export function Settings({
                     </div>
                     <div className="space-y-1 min-w-0">
                       <label className="text-slate-400 font-semibold">Giới tính <span className="text-slate-600 font-normal">(để tính BMI)</span></label>
-                      <select
+                      <FancySelect
                         value={regGender}
-                        onChange={(e) => setRegGender(e.target.value as "male" | "female" | "")}
-                        className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
-                      >
-                        <option value="">Chưa chọn</option>
-                        <option value="male">Nam</option>
-                        <option value="female">Nữ</option>
-                      </select>
+                        onChange={(v) => setRegGender(v as "male" | "female" | "")}
+                        ariaLabel="Giới tính"
+                        placeholder="Chưa chọn"
+                        className="bg-slate-900"
+                        options={GENDER_OPTIONS}
+                      />
                     </div>
                   </div>
 
@@ -1209,29 +1212,23 @@ export function Settings({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Vai trò (Phân quyền)</label>
-                  <select
+                  <FancySelect
                     value={euRole}
-                    onChange={(e) => setEuRole(e.target.value as UserRole)}
-                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    {ROLE_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setEuRole(v as UserRole)}
+                    ariaLabel="Vai trò (Phân quyền)"
+                    options={ROLE_OPTIONS}
+                  />
                 </div>
 
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Vai vế trong gia đình</label>
-                  <select
+                  <FancySelect
                     value={euRelation}
-                    onChange={(e) => setEuRelation(e.target.value as FamilyRelation | "")}
-                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="">— Không đặt —</option>
-                    {RELATION_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setEuRelation(v as FamilyRelation | "")}
+                    ariaLabel="Vai vế trong gia đình"
+                    placeholder="— Không đặt —"
+                    options={RELATION_SELECT_OPTIONS}
+                  />
                 </div>
               </div>
 
@@ -1257,15 +1254,13 @@ export function Settings({
                 </div>
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 font-semibold">Giới tính <span className="text-slate-600 font-normal">(để tính BMI)</span></label>
-                  <select
+                  <FancySelect
                     value={euGender}
-                    onChange={(e) => setEuGender(e.target.value as "male" | "female" | "")}
-                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="">Chưa chọn</option>
-                    <option value="male">Nam</option>
-                    <option value="female">Nữ</option>
-                  </select>
+                    onChange={(v) => setEuGender(v as "male" | "female" | "")}
+                    ariaLabel="Giới tính"
+                    placeholder="Chưa chọn"
+                    options={GENDER_OPTIONS}
+                  />
                 </div>
               </div>
 

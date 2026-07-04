@@ -98,6 +98,27 @@ function translateBillCategory(value: string): string {
   return BILL_CATEGORIES.find(c => c.value === value)?.label ?? value;
 }
 
+// Hạng mục CHI (kèm emoji) — dùng chung cho bộ lọc, form thu chi, ngân sách
+const EXPENSE_CATEGORY_OPTIONS = [
+  { value: "food", label: "Ăn uống 🍲" },
+  { value: "education2", label: "Học tập 📚" },
+  { value: "utilities", label: "Điện nước ⚡" },
+  { value: "shopping", label: "Mua sắm 🛍️" },
+  { value: "medical", label: "Y tế 💊" },
+  { value: "transport", label: "Đi lại 🚗" },
+  { value: "debt_bank", label: "Trả nợ ngân hàng 🏦" },
+  { value: "debt_personal", label: "Trả nợ cá nhân 🤝" },
+  { value: "funeral", label: "Ma chay 🌸" },
+  { value: "ceremony", label: "Hiếu hỉ 🎁" },
+  { value: "other", label: "Khoản khác 🏷️" }
+];
+
+const BILL_FREQUENCY_OPTIONS = [
+  { value: "weekly", label: "Hàng tuần" },
+  { value: "monthly", label: "Hàng tháng" },
+  { value: "yearly", label: "Hàng năm" }
+];
+
 // ─── Nhập tiền thông minh: cho phép gõ biểu thức cộng dồn ───────────────────
 // Ví dụ đi chợ: "50000+20000" → 70.000; "5*10000" → 50.000; "50000+5*3000" → 65.000.
 // Bỏ dấu phân tách hàng nghìn (. ,) và khoảng trắng; chỉ tính + - * (không eval).
@@ -1074,23 +1095,12 @@ export function Finance({
           {periodMode === "month" ? (
             <>
               <form onSubmit={handleCreateBudget} className="grid grid-cols-1 sm:grid-cols-[1fr_140px_auto] gap-2 text-xs">
-                <select
+                <FancySelect
                   value={budgetCategory}
-                  onChange={(e) => setBudgetCategory(e.target.value)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
-                >
-                  <option value="food">Ăn uống</option>
-                  <option value="education2">Học tập</option>
-                  <option value="utilities">Điện nước</option>
-                  <option value="shopping">Mua sắm</option>
-                  <option value="medical">Y tế</option>
-                  <option value="transport">Đi lại</option>
-                  <option value="debt_bank">Trả nợ ngân hàng</option>
-                  <option value="debt_personal">Trả nợ cá nhân</option>
-                  <option value="funeral">Ma chay</option>
-                  <option value="ceremony">Hiếu hỉ</option>
-                  <option value="other">Khác</option>
-                </select>
+                  onChange={setBudgetCategory}
+                  ariaLabel="Hạng mục ngân sách"
+                  options={EXPENSE_CATEGORY_OPTIONS}
+                />
                 <MoneyInput
                   value={budgetLimit}
                   onChange={setBudgetLimit}
@@ -1189,14 +1199,18 @@ export function Finance({
             <input value={billTitle} onChange={(e) => setBillTitle(e.target.value)} placeholder="Tên hóa đơn" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
             <input type="text" inputMode="numeric" value={formatMoneyInput(billAmount)} onChange={(e) => setBillAmount(parseMoneyInput(e.target.value))} placeholder="Số tiền" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
             <input type="date" value={billDueDate} onChange={(e) => setBillDueDate(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
-            <select value={billFrequency} onChange={(e) => setBillFrequency(e.target.value as RecurringBill["frequency"])} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-              <option value="weekly">Hàng tuần</option>
-              <option value="monthly">Hàng tháng</option>
-              <option value="yearly">Hàng năm</option>
-            </select>
-            <select value={billCategory} onChange={(e) => setBillCategory(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-              {BILL_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
+            <FancySelect
+              value={billFrequency}
+              onChange={(v) => setBillFrequency(v as RecurringBill["frequency"])}
+              ariaLabel="Tần suất hóa đơn"
+              options={BILL_FREQUENCY_OPTIONS}
+            />
+            <FancySelect
+              value={billCategory}
+              onChange={setBillCategory}
+              ariaLabel="Hạng mục hóa đơn"
+              options={BILL_CATEGORIES}
+            />
             <button type="submit" className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl px-3 py-2 font-bold">Thêm hóa đơn</button>
           </form>
           {billError && <p className="text-[11px] text-rose-400">{billError}</p>}
@@ -1389,17 +1403,7 @@ export function Finance({
               ariaLabel="Lọc theo hạng mục"
               options={[
                 { value: "all", label: "Mọi hạng mục" },
-                { value: "food", label: "Ăn uống 🍲" },
-                { value: "education2", label: "Học tập 📚" },
-                { value: "utilities", label: "Điện nước ⚡" },
-                { value: "shopping", label: "Mua sắm 🛍️" },
-                { value: "medical", label: "Y tế 💊" },
-                { value: "transport", label: "Đi lại 🚗" },
-                { value: "debt_bank", label: "Trả nợ ngân hàng 🏦" },
-                { value: "debt_personal", label: "Trả nợ cá nhân 🤝" },
-                { value: "funeral", label: "Ma chay 🌸" },
-                { value: "ceremony", label: "Hiếu hỉ 🎁" },
-                { value: "other", label: "Khoản khác 🏷️" },
+                ...EXPENSE_CATEGORY_OPTIONS,
                 { value: "Bán tài sản", label: "Bán tài sản 🪙" }
               ]}
             />
@@ -1658,33 +1662,23 @@ export function Finance({
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Hạng mục {formType === TransactionType.EXPENSE ? "chi phí" : "nguồn tiền"}</label>
                   {formType === TransactionType.EXPENSE ? (
-                    <select
-                      value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
-                    >
-                      <option value="food">Ăn uống 🍲</option>
-                      <option value="education2">Học tập 📚</option>
-                      <option value="utilities">Điện nước ⚡</option>
-                      <option value="shopping">Mua sắm 🛍️</option>
-                      <option value="medical">Y tế 💊</option>
-                      <option value="transport">Đi lại / Xăng xe 🚗</option>
-                      <option value="debt_bank">Trả nợ ngân hàng 🏦</option>
-                      <option value="debt_personal">Trả nợ cá nhân 🤝</option>
-                      <option value="funeral">Ma chay 🌸</option>
-                      <option value="ceremony">Hiếu hỉ 🎁</option>
-                      <option value="other">Khoản khác 🏷️</option>
-                    </select>
+                    <FancySelect
+                      value={formCategory as string}
+                      onChange={setFormCategory}
+                      ariaLabel="Hạng mục chi phí"
+                      options={EXPENSE_CATEGORY_OPTIONS}
+                    />
                   ) : (
                     <div className="space-y-2">
-                      <select
+                      <FancySelect
                         value={isPresetIncome(formCategory as string) ? (formCategory as string) : INCOME_CUSTOM}
-                        onChange={(e) => setFormCategory(e.target.value === INCOME_CUSTOM ? "" : e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
-                      >
-                        {INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                        <option value={INCOME_CUSTOM}>Khác (tự nhập)…</option>
-                      </select>
+                        onChange={(v) => setFormCategory(v === INCOME_CUSTOM ? "" : v)}
+                        ariaLabel="Nguồn thu"
+                        options={[
+                          ...INCOME_CATEGORIES.map(c => ({ value: c, label: c })),
+                          { value: INCOME_CUSTOM, label: "Khác (tự nhập)…" }
+                        ]}
+                      />
                       {!isPresetIncome(formCategory as string) && (
                         <input
                           type="text"
@@ -1701,15 +1695,16 @@ export function Finance({
 
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Hình thức giao dịch</label>
-                  <select
+                  <FancySelect
                     value={formAccount}
-                    onChange={(e) => setFormAccount(e.target.value as AccountType)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="bank">Tài khoản Ngân hàng 💳</option>
-                    <option value="cash">Tiền mặt thủ công 💵</option>
-                    <option value="e_wallet">Ví điện tử MoMo/ZaloPay 📱</option>
-                  </select>
+                    onChange={(v) => setFormAccount(v as AccountType)}
+                    ariaLabel="Hình thức giao dịch"
+                    options={[
+                      { value: "bank", label: "Tài khoản Ngân hàng 💳" },
+                      { value: "cash", label: "Tiền mặt thủ công 💵" },
+                      { value: "e_wallet", label: "Ví điện tử MoMo/ZaloPay 📱" }
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -1819,22 +1814,18 @@ export function Finance({
                 onChange={e => setEditDueDate(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
               />
-              <select
+              <FancySelect
                 value={editFrequency}
-                onChange={e => setEditFrequency(e.target.value as RecurringBill["frequency"])}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
-              >
-                <option value="weekly">Hàng tuần</option>
-                <option value="monthly">Hàng tháng</option>
-                <option value="yearly">Hàng năm</option>
-              </select>
-              <select
+                onChange={(v) => setEditFrequency(v as RecurringBill["frequency"])}
+                ariaLabel="Tần suất hóa đơn"
+                options={BILL_FREQUENCY_OPTIONS}
+              />
+              <FancySelect
                 value={editCategory}
-                onChange={e => setEditCategory(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
-              >
-                {BILL_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
+                onChange={setEditCategory}
+                ariaLabel="Hạng mục hóa đơn"
+                options={BILL_CATEGORIES}
+              />
               {editError && <p className="text-[11px] text-rose-400">{editError}</p>}
               <p className="text-[10px] text-slate-500">Thay đổi không ảnh hưởng đến các kỳ đã thanh toán trước đó.</p>
               <div className="flex gap-2 pt-1">

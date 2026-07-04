@@ -31,6 +31,7 @@ import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { Avatar } from "./Avatar.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 import { getVietnamHolidaysForMonth, getVietnamLunarDateForSolarDate, type VietnamHoliday, type VietnamLunarDate } from "../utils/vietnamHolidays.js";
 
 interface SchedulesProps {
@@ -615,27 +616,25 @@ export function Schedules({
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
-              <select
-                value={calMonth}
-                onChange={(e) => setCalMonth(Number(e.target.value))}
-                aria-label="Chọn tháng"
-                className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer"
-              >
-                {Array.from({ length: 12 }, (_, m) => (
-                  <option key={m} value={m}>Tháng {m + 1}</option>
-                ))}
-              </select>
+              <div className="w-[104px] text-xs">
+                <FancySelect
+                  value={String(calMonth)}
+                  onChange={(v) => setCalMonth(Number(v))}
+                  ariaLabel="Chọn tháng"
+                  className="bg-slate-900"
+                  options={Array.from({ length: 12 }, (_, m) => ({ value: String(m), label: `Tháng ${m + 1}` }))}
+                />
+              </div>
 
-              <select
-                value={calYear}
-                onChange={(e) => setCalYear(Number(e.target.value))}
-                aria-label="Chọn năm"
-                className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 cursor-pointer font-mono"
-              >
-                {yearOptions.map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
+              <div className="w-[88px] text-xs">
+                <FancySelect
+                  value={String(calYear)}
+                  onChange={(v) => setCalYear(Number(v))}
+                  ariaLabel="Chọn năm"
+                  className="bg-slate-900 font-mono"
+                  options={yearOptions.map(y => ({ value: String(y), label: String(y) }))}
+                />
+              </div>
 
               <button
                 type="button"
@@ -1195,28 +1194,30 @@ export function Schedules({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Xảy ra định kỳ</label>
-                  <select 
+                  <FancySelect
                     value={newIsRecurring ? "true" : "false"}
-                    onChange={(e) => setNewIsRecurring(e.target.value === "true")}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="false">Chỉ xảy ra một lần</option>
-                    <option value="true">Sự kiện có lặp lại</option>
-                  </select>
+                    onChange={(v) => setNewIsRecurring(v === "true")}
+                    ariaLabel="Xảy ra định kỳ"
+                    options={[
+                      { value: "false", label: "Chỉ xảy ra một lần" },
+                      { value: "true", label: "Sự kiện có lặp lại" }
+                    ]}
+                  />
                 </div>
 
                 {newIsRecurring && (
                   <div className="space-y-1 font-mono">
                     <label className="text-slate-400 block font-semibold">Tần suất lặp lại</label>
-                    <select 
+                    <FancySelect
                       value={newRecurrenceType}
-                      onChange={(e) => setNewRecurrenceType(e.target.value as any)}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500"
-                    >
-                      <option value="daily">Hằng ngày</option>
-                      <option value="weekly">Hằng tuần</option>
-                      <option value="monthly">Hằng tháng</option>
-                    </select>
+                      onChange={(v) => setNewRecurrenceType(v as any)}
+                      ariaLabel="Tần suất lặp lại"
+                      options={[
+                        { value: "daily", label: "Hằng ngày" },
+                        { value: "weekly", label: "Hằng tuần" },
+                        { value: "monthly", label: "Hằng tháng" }
+                      ]}
+                    />
                   </div>
                 )}
               </div>
@@ -1224,14 +1225,15 @@ export function Schedules({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Phạm vi chia sẻ</label>
-                  <select 
+                  <FancySelect
                     value={newIsShared ? "true" : "false"}
-                    onChange={(e) => setNewIsShared(e.target.value === "true")}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="true">Công khai cả nhà cùng thấy</option>
-                    <option value="false">Riêng tư cá nhân</option>
-                  </select>
+                    onChange={(v) => setNewIsShared(v === "true")}
+                    ariaLabel="Phạm vi chia sẻ"
+                    options={[
+                      { value: "true", label: "Công khai cả nhà cùng thấy" },
+                      { value: "false", label: "Riêng tư cá nhân" }
+                    ]}
+                  />
                 </div>
 
                 <div className="space-y-1">

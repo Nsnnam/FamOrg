@@ -16,7 +16,7 @@ export interface SelectOption {
 interface FancySelectProps {
   value: string;
   onChange: (value: string) => void;
-  options: SelectOption[];
+  options: readonly SelectOption[];
   /** Lớp thêm cho nút trigger (vd width/màu chữ). */
   className?: string;
   placeholder?: string;
