@@ -683,11 +683,6 @@ export function Schedules({
                       <span className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-1.5 text-base sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
                         {day.dayNum}
                       </span>
-                      {isToday && (
-                        <div className="mt-1 inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide text-sky-400 leading-none">
-                          <span className="w-1 h-1 rounded-full bg-sky-400 animate-pulse" /> Hôm nay
-                        </div>
-                      )}
                       {lunarDate && (
                         <div
                           className={`mt-1 text-[9px] leading-none font-mono font-semibold ${lunarDate.day === 1 ? "text-emerald-400" : "text-slate-500"}`}
@@ -700,11 +695,20 @@ export function Schedules({
                         <div className="mt-1 text-[9px] leading-none font-bold text-amber-500 truncate">Lễ</div>
                       )}
                     </div>
-                    {hasEvents && (
-                      <div className="flex items-center gap-1 pt-1 shrink-0">
-                        {dayHolidays.length > 0 && <span className="w-2 h-2 rounded-full bg-amber-400" title="Ngày lễ Việt Nam" />}
-                        {dayBirthdays.length > 0 && <span className="w-2 h-2 rounded-full bg-pink-400" title="Sinh nhật" />}
-                        {dayPlans.length > 0 && <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" title="Sự kiện" />}
+                    {(isToday || hasEvents) && (
+                      <div className="flex items-center gap-1.5 h-8 shrink-0">
+                        {isToday && (
+                          <span className="inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide text-sky-400 leading-none">
+                            <span className="w-1 h-1 rounded-full bg-sky-400 animate-pulse" /> Hôm nay
+                          </span>
+                        )}
+                        {hasEvents && (
+                          <div className="flex items-center gap-1">
+                            {dayHolidays.length > 0 && <span className="w-2 h-2 rounded-full bg-amber-400" title="Ngày lễ Việt Nam" />}
+                            {dayBirthdays.length > 0 && <span className="w-2 h-2 rounded-full bg-pink-400" title="Sinh nhật" />}
+                            {dayPlans.length > 0 && <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" title="Sự kiện" />}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
