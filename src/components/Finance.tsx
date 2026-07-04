@@ -47,6 +47,7 @@ import { Assets } from "./Assets.js";
 import { SavingsGoals } from "./SavingsGoals.js";
 import { DebtTracker } from "./DebtTracker.js";
 import { ShimmerLine, Reveal } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
@@ -1368,66 +1369,68 @@ export function Finance({
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-1 text-[11px]">
           <div>
             <label className="text-slate-500 block mb-1">Loại quỹ</label>
-            <select
+            <FancySelect
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 focus:selection:outline-none"
-            >
-              <option value="all">Khoản thu & chi</option>
-              <option value="income">Chỉ khoản Thu nhập (+)</option>
-              <option value="expense">Chỉ khoản Chi tiêu (-)</option>
-            </select>
+              onChange={(v) => setTypeFilter(v as any)}
+              ariaLabel="Lọc theo loại quỹ"
+              options={[
+                { value: "all", label: "Khoản thu & chi" },
+                { value: "income", label: "Chỉ khoản Thu nhập (+)" },
+                { value: "expense", label: "Chỉ khoản Chi tiêu (-)" }
+              ]}
+            />
           </div>
 
           <div>
             <label className="text-slate-500 block mb-1">Hạng mục chi</label>
-            <select
+            <FancySelect
               value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 focus:selection:outline-none"
-            >
-              <option value="all">Mọi hạng mục</option>
-              <option value="food">Ăn uống 🍲</option>
-              <option value="education2">Học tập 📚</option>
-              <option value="utilities">Điền nước ⚡</option>
-              <option value="shopping">Mua sắm 🛍️</option>
-              <option value="medical">Y tế 💊</option>
-              <option value="transport">Đi lại 🚗</option>
-              <option value="debt_bank">Trả nợ ngân hàng 🏦</option>
-              <option value="debt_personal">Trả nợ cá nhân 🤝</option>
-              <option value="funeral">Ma chay 🌸</option>
-              <option value="ceremony">Hiếu hỉ 🎁</option>
-              <option value="other">Khoản khác 🏷️</option>
-              <option value="Bán tài sản">Bán tài sản 🪙</option>
-            </select>
+              onChange={setCategoryFilter}
+              ariaLabel="Lọc theo hạng mục"
+              options={[
+                { value: "all", label: "Mọi hạng mục" },
+                { value: "food", label: "Ăn uống 🍲" },
+                { value: "education2", label: "Học tập 📚" },
+                { value: "utilities", label: "Điện nước ⚡" },
+                { value: "shopping", label: "Mua sắm 🛍️" },
+                { value: "medical", label: "Y tế 💊" },
+                { value: "transport", label: "Đi lại 🚗" },
+                { value: "debt_bank", label: "Trả nợ ngân hàng 🏦" },
+                { value: "debt_personal", label: "Trả nợ cá nhân 🤝" },
+                { value: "funeral", label: "Ma chay 🌸" },
+                { value: "ceremony", label: "Hiếu hỉ 🎁" },
+                { value: "other", label: "Khoản khác 🏷️" },
+                { value: "Bán tài sản", label: "Bán tài sản 🪙" }
+              ]}
+            />
           </div>
 
           <div>
             <label className="text-slate-500 block mb-1">Ví tài khoản</label>
-            <select
+            <FancySelect
               value={accountFilter}
-              onChange={(e) => setAccountFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 focus:selection:outline-none"
-            >
-              <option value="all">Mọi ví tài khoản</option>
-              <option value="cash">Tiền mặt 💵</option>
-              <option value="bank">Ngân hàng 💳</option>
-              <option value="e_wallet">Ví điện tử 📱</option>
-            </select>
+              onChange={setAccountFilter}
+              ariaLabel="Lọc theo ví tài khoản"
+              options={[
+                { value: "all", label: "Mọi ví tài khoản" },
+                { value: "cash", label: "Tiền mặt 💵" },
+                { value: "bank", label: "Ngân hàng 💳" },
+                { value: "e_wallet", label: "Ví điện tử 📱" }
+              ]}
+            />
           </div>
 
           <div>
             <label className="text-slate-500 block mb-1">Thành viên thực hiện</label>
-            <select
+            <FancySelect
               value={memberFilter}
-              onChange={(e) => setMemberFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 focus:selection:outline-none"
-            >
-              <option value="all">Cả gia đình</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </select>
+              onChange={setMemberFilter}
+              ariaLabel="Lọc theo thành viên"
+              options={[
+                { value: "all", label: "Cả gia đình" },
+                ...users.map(u => ({ value: u.id, label: u.fullName }))
+              ]}
+            />
           </div>
         </div>
       </div>
