@@ -676,13 +676,18 @@ export function Schedules({
               return (
                 <div
                   key={`day-${day.dayNum}`}
-                  className={`p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isWeekend ? "bg-slate-950/15" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-sky-500/5 ring-1 ring-inset ring-sky-500/35" : ""}`}
+                  className={`p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isWeekend ? "bg-slate-950/15" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
                 >
                   <div className="flex justify-between items-start gap-1.5 min-h-9">
                     <div className="min-w-0">
-                      <span className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-1.5 text-base sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-400" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
+                      <span className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-1.5 text-base sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
                         {day.dayNum}
                       </span>
+                      {isToday && (
+                        <div className="mt-1 inline-flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide text-sky-400 leading-none">
+                          <span className="w-1 h-1 rounded-full bg-sky-400 animate-pulse" /> Hôm nay
+                        </div>
+                      )}
                       {lunarDate && (
                         <div
                           className={`mt-1 text-[9px] leading-none font-mono font-semibold ${lunarDate.day === 1 ? "text-emerald-400" : "text-slate-500"}`}
