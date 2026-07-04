@@ -865,8 +865,7 @@ export function Tasks({
 
       {/* Slideout Detail or Modal for Comments & Comment history logs */}
       {selectedTask && activeTaskDetails && (
-        <div 
-          onClick={() => setSelectedTask(null)}
+        <div
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="task-details-modal"
         >
@@ -1019,7 +1018,6 @@ export function Tasks({
       {/* Slide-out or Dialog Modal for Creation Form */}
       {isNewTaskOpen && (
         <div
-          onClick={handleCloseTaskForm}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
           id="task-create-modal"
         >

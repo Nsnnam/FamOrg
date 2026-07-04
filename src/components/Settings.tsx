@@ -1174,7 +1174,6 @@ export function Settings({
       {/* Admin edit-user modal */}
       {editTarget && (
         <div
-          onClick={() => setEditTarget(null)}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[60] p-4"
         >
           <motion.div
@@ -1311,7 +1310,6 @@ export function Settings({
       {/* Admin reset-password modal */}
       {resetTarget && (
         <div
-          onClick={() => setResetTarget(null)}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-[60] p-4"
         >
           <motion.div
