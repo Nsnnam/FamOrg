@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { TimeSelect24 } from "./DateTimePicker24.js";
 import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 
 interface MedicationProps {
   currentUser: User;
@@ -184,9 +185,14 @@ export function Medication({
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
             <input ref={nameInputRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Tên thuốc" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
             <input value={dosage} onChange={(e) => setDosage(e.target.value)} placeholder="Liều dùng" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
-            <select value={patientId} onChange={(e) => setPatientId(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500">
-              {users.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-            </select>
+            <div className="md:col-span-2">
+              <FancySelect
+                value={patientId}
+                onChange={setPatientId}
+                ariaLabel="Người uống thuốc"
+                options={users.map(u => ({ value: u.id, label: u.fullName }))}
+              />
+            </div>
 
             {/* Giờ uống - chip pickers */}
             <div className="md:col-span-6 bg-slate-950/40 border border-slate-800 rounded-xl p-3 space-y-2">

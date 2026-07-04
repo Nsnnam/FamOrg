@@ -8,6 +8,7 @@ import { PiggyBank, Plus, Trash2, Target, Calendar, ChevronDown, ChevronUp, X } 
 import { SavingsGoal, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 
 interface SavingsGoalsProps {
   currentUser: User;
@@ -134,17 +135,27 @@ export function SavingsGoals({
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Tên mục tiêu (vd: Tết 2027, Du lịch...)" className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500" />
             <input inputMode="numeric" value={target > 0 ? fmtMoney(target) : ""} onChange={e => setTarget(parseMoney(e.target.value))} placeholder="Số tiền mục tiêu" className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500" />
             <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 font-mono" />
-            <select value={color} onChange={e => setColor(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500">
-              <option value="emerald">Xanh lá</option>
-              <option value="sky">Xanh dương</option>
-              <option value="amber">Vàng</option>
-              <option value="rose">Hồng</option>
-              <option value="violet">Tím</option>
-            </select>
-            <select value={isShared ? "true" : "false"} onChange={e => setIsShared(e.target.value === "true")} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500">
-              <option value="true">Chia sẻ cả nhà</option>
-              <option value="false">Riêng tư</option>
-            </select>
+            <FancySelect
+              value={color}
+              onChange={setColor}
+              ariaLabel="Màu sắc"
+              options={[
+                { value: "emerald", label: "Xanh lá" },
+                { value: "sky", label: "Xanh dương" },
+                { value: "amber", label: "Vàng" },
+                { value: "rose", label: "Hồng" },
+                { value: "violet", label: "Tím" }
+              ]}
+            />
+            <FancySelect
+              value={isShared ? "true" : "false"}
+              onChange={(v) => setIsShared(v === "true")}
+              ariaLabel="Phạm vi chia sẻ"
+              options={[
+                { value: "true", label: "Chia sẻ cả nhà" },
+                { value: "false", label: "Riêng tư" }
+              ]}
+            />
             <input value={note} onChange={e => setNote(e.target.value)} placeholder="Ghi chú (tùy chọn)" className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500" />
             {error && <p className="sm:col-span-2 text-[11px] text-rose-400">{error}</p>}
             <div className="sm:col-span-2 flex gap-2">

@@ -26,6 +26,7 @@ import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, Recur
 import { motion, AnimatePresence } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { ShimmerLine, Reveal, IconChip, staggerDelay } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { DateTimePicker24 } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -498,62 +499,64 @@ export function Tasks({
           {/* Status filter */}
           <div>
             <label className="text-slate-500 block mb-1">Trạng thái</label>
-            <select 
+            <FancySelect
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 focus:outline-none focus:border-sky-500"
-            >
-              <option value="all">Tất cả trạng thái</option>
-              <option value="todo">Chưa làm</option>
-              <option value="in_progress">Đang làm</option>
-              <option value="completed">Hoàn thành</option>
-              <option value="overdue">Quá hạn</option>
-            </select>
+              onChange={setStatusFilter}
+              ariaLabel="Lọc theo trạng thái"
+              options={[
+                { value: "all", label: "Tất cả trạng thái" },
+                { value: "todo", label: "Chưa làm" },
+                { value: "in_progress", label: "Đang làm" },
+                { value: "completed", label: "Hoàn thành" },
+                { value: "overdue", label: "Quá hạn" }
+              ]}
+            />
           </div>
 
           {/* Assignee filter */}
           <div>
             <label className="text-slate-500 block mb-1">Người nhận việc</label>
-            <select 
+            <FancySelect
               value={assigneeFilter}
-              onChange={(e) => setAssigneeFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 focus:outline-none focus:border-sky-500"
-            >
-              <option value="all">Tất cả thành viên</option>
-              <option value="unassigned">Chưa giao việc</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.fullName}</option>
-              ))}
-            </select>
+              onChange={setAssigneeFilter}
+              ariaLabel="Lọc theo người nhận việc"
+              options={[
+                { value: "all", label: "Tất cả thành viên" },
+                { value: "unassigned", label: "Chưa giao việc" },
+                ...users.map(u => ({ value: u.id, label: u.fullName }))
+              ]}
+            />
           </div>
 
           {/* Priority filter */}
           <div>
             <label className="text-slate-500 block mb-1">Độ ưu tiên</label>
-            <select 
+            <FancySelect
               value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 focus:outline-none focus:border-sky-500"
-            >
-              <option value="all">Mọi ưu tiên</option>
-              <option value="low">Thấp</option>
-              <option value="medium">Trung bình</option>
-              <option value="high">Cao</option>
-            </select>
+              onChange={setPriorityFilter}
+              ariaLabel="Lọc theo độ ưu tiên"
+              options={[
+                { value: "all", label: "Mọi ưu tiên" },
+                { value: "low", label: "Thấp" },
+                { value: "medium", label: "Trung bình" },
+                { value: "high", label: "Cao" }
+              ]}
+            />
           </div>
 
           {/* Scope filter */}
           <div>
             <label className="text-slate-500 block mb-1">Phạm vi chia sẻ</label>
-            <select 
+            <FancySelect
               value={scopeFilter}
-              onChange={(e) => setScopeFilter(e.target.value as any)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 focus:outline-none focus:border-sky-500"
-            >
-              <option value="all">Mọi công việc</option>
-              <option value="shared">Chia sẻ chung cả nhà</option>
-              <option value="personal">Chỉ cá nhân riêng</option>
-            </select>
+              onChange={(v) => setScopeFilter(v as any)}
+              ariaLabel="Lọc theo phạm vi chia sẻ"
+              options={[
+                { value: "all", label: "Mọi công việc" },
+                { value: "shared", label: "Chia sẻ chung cả nhà" },
+                { value: "personal", label: "Chỉ cá nhân riêng" }
+              ]}
+            />
           </div>
 
           {/* Clear Filters Button */}
@@ -585,10 +588,16 @@ export function Tasks({
             </div>
             {isAdultRole(currentUser.role) && (
               <form onSubmit={handleManualReward} className="grid grid-cols-1 sm:grid-cols-[160px_100px_1fr_auto] gap-2 text-xs">
-                <select value={manualRewardUser} onChange={(e) => setManualRewardUser(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none">
-                  <option value="">Chọn trẻ</option>
-                  {childUsers.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-                </select>
+                <FancySelect
+                  value={manualRewardUser}
+                  onChange={setManualRewardUser}
+                  ariaLabel="Chọn trẻ nhận điểm"
+                  placeholder="Chọn trẻ"
+                  options={[
+                    { value: "", label: "Chọn trẻ" },
+                    ...childUsers.map(u => ({ value: u.id, label: u.fullName }))
+                  ]}
+                />
                 <input type="number" value={manualRewardPoints || ""} onChange={(e) => setManualRewardPoints(Number(e.target.value))} placeholder="+/- điểm" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
                 <input value={manualRewardReason} onChange={(e) => setManualRewardReason(e.target.value)} placeholder="Lý do" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
                 <button type="submit" className="bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl px-3 py-2 font-bold">Cập nhật</button>
@@ -657,17 +666,19 @@ export function Tasks({
               </div>
               <div className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-[11px] min-w-[180px]">
                 <label htmlFor="completed-window-filter" className="block text-slate-500 mb-1">Hoàn thành</label>
-                <select
+                <FancySelect
                   id="completed-window-filter"
                   value={completedWindowDays}
-                  onChange={(e) => setCompletedWindowDays(e.target.value as "7" | "30" | "90" | "all")}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500"
-                >
-                  <option value="7">7 ngày gần nhất</option>
-                  <option value="30">30 ngày gần nhất</option>
-                  <option value="90">90 ngày gần nhất</option>
-                  <option value="all">Tất cả</option>
-                </select>
+                  onChange={(v) => setCompletedWindowDays(v as "7" | "30" | "90" | "all")}
+                  ariaLabel="Khoảng thời gian hoàn thành"
+                  className="bg-slate-900"
+                  options={[
+                    { value: "7", label: "7 ngày gần nhất" },
+                    { value: "30", label: "30 ngày gần nhất" },
+                    { value: "90", label: "90 ngày gần nhất" },
+                    { value: "all", label: "Tất cả" }
+                  ]}
+                />
                 {hiddenCompletedCount > 0 && (
                   <p className="mt-1 text-[10px] text-slate-500 tabular-nums">Đang ẩn {hiddenCompletedCount} task cũ.</p>
                 )}
@@ -1076,15 +1087,16 @@ export function Tasks({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Độ ưu tiên</label>
-                  <select 
+                  <FancySelect
                     value={newPriority}
-                    onChange={(e) => setNewPriority(e.target.value as TaskPriority)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="low">Thấp / Thường nhật</option>
-                    <option value="medium">Bình thường</option>
-                    <option value="high">Cao / Khẩn cấp</option>
-                  </select>
+                    onChange={(v) => setNewPriority(v as TaskPriority)}
+                    ariaLabel="Độ ưu tiên"
+                    options={[
+                      { value: "low", label: "Thấp / Thường nhật" },
+                      { value: "medium", label: "Bình thường" },
+                      { value: "high", label: "Cao / Khẩn cấp" }
+                    ]}
+                  />
                 </div>
 
                 <div className="space-y-1 min-w-0">
@@ -1096,28 +1108,28 @@ export function Tasks({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 block font-semibold">Giao việc cho ai</label>
-                  <select 
+                  <FancySelect
                     value={newAssignee}
-                    onChange={(e) => setNewAssignee(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="unassigned">Chung (Cả nhà cùng thấy)</option>
-                    {users.map(u => (
-                      <option key={u.id} value={u.id}>{u.fullName}</option>
-                    ))}
-                  </select>
+                    onChange={setNewAssignee}
+                    ariaLabel="Giao việc cho ai"
+                    options={[
+                      { value: "unassigned", label: "Chung (Cả nhà cùng thấy)" },
+                      ...users.map(u => ({ value: u.id, label: u.fullName }))
+                    ]}
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Chia sẻ công khai</label>
-                  <select 
+                  <FancySelect
                     value={newIsShared ? "true" : "false"}
-                    onChange={(e) => setNewIsShared(e.target.value === "true")}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
-                  >
-                    <option value="true">Chung (Cả gia đình đều xem được)</option>
-                    <option value="false">Riêng tư (Chỉ Admin & người phân công thấy)</option>
-                  </select>
+                    onChange={(v) => setNewIsShared(v === "true")}
+                    ariaLabel="Phạm vi chia sẻ"
+                    options={[
+                      { value: "true", label: "Chung (Cả gia đình đều xem được)" },
+                      { value: "false", label: "Riêng tư (Chỉ Admin & người phân công thấy)" }
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -1135,16 +1147,17 @@ export function Tasks({
                 </div>
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Task lặp lại</label>
-                  <select
+                  <FancySelect
                     value={newRecurrenceType}
-                    onChange={(e) => setNewRecurrenceType(e.target.value as RecurrenceType)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="none">Không lặp</option>
-                    <option value="daily">Hàng ngày</option>
-                    <option value="weekly">Hàng tuần</option>
-                    <option value="monthly">Hàng tháng</option>
-                  </select>
+                    onChange={(v) => setNewRecurrenceType(v as RecurrenceType)}
+                    ariaLabel="Task lặp lại"
+                    options={[
+                      { value: "none", label: "Không lặp" },
+                      { value: "daily", label: "Hàng ngày" },
+                      { value: "weekly", label: "Hàng tuần" },
+                      { value: "monthly", label: "Hàng tháng" }
+                    ]}
+                  />
                 </div>
                 {newRecurrenceType !== "none" && (
                   <div className="space-y-1 col-span-2">

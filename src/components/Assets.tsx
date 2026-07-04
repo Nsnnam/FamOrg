@@ -45,6 +45,7 @@ import { uploadDataUrl } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
@@ -708,22 +709,25 @@ export function Assets({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
           <div>
             <label className="text-slate-500 block mb-1">Loại tài sản</label>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as AssetType | "all")} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 outline-none">
-              <option value="all">Tất cả tài sản</option>
-              {ASSET_TYPES.map(type => (
-                <option key={type.value} value={type.value}>{type.label}</option>
-              ))}
-            </select>
+            <FancySelect
+              value={typeFilter}
+              onChange={(v) => setTypeFilter(v as AssetType | "all")}
+              ariaLabel="Lọc theo loại tài sản"
+              options={[{ value: "all", label: "Tất cả tài sản" }, ...ASSET_TYPES]}
+            />
           </div>
           <div>
             <label className="text-slate-500 block mb-1">Chủ sở hữu</label>
-            <select value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-300 outline-none">
-              <option value="all">Cả gia đình</option>
-              <option value="">Chưa gán chủ sở hữu</option>
-              {users.map(user => (
-                <option key={user.id} value={user.id}>{user.fullName}</option>
-              ))}
-            </select>
+            <FancySelect
+              value={ownerFilter}
+              onChange={setOwnerFilter}
+              ariaLabel="Lọc theo chủ sở hữu"
+              options={[
+                { value: "all", label: "Cả gia đình" },
+                { value: "", label: "Chưa gán chủ sở hữu" },
+                ...users.map(user => ({ value: user.id, label: user.fullName }))
+              ]}
+            />
           </div>
         </div>
       </Reveal>
@@ -925,11 +929,12 @@ export function Assets({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-slate-400 block font-semibold">Loại tài sản</label>
-                    <select value={formType} onChange={(e) => handleTypeChange(e.target.value as AssetType)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
-                      {ASSET_TYPES.map(type => (
-                        <option key={type.value} value={type.value}>{type.label}</option>
-                      ))}
-                    </select>
+                    <FancySelect
+                      value={formType}
+                      onChange={(v) => handleTypeChange(v as AssetType)}
+                      ariaLabel="Loại tài sản"
+                      options={ASSET_TYPES}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-slate-400 block font-semibold">Tên tài sản <span className="text-rose-400">*</span></label>
@@ -940,12 +945,16 @@ export function Assets({
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
                     <label className="text-slate-400 block font-semibold">Chủ sở hữu</label>
-                    <select value={formOwnerId} onChange={(e) => setFormOwnerId(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
-                      <option value="">Tài sản chung</option>
-                      {users.map(user => (
-                        <option key={user.id} value={user.id}>{user.fullName}</option>
-                      ))}
-                    </select>
+                    <FancySelect
+                      value={formOwnerId}
+                      onChange={setFormOwnerId}
+                      ariaLabel="Chủ sở hữu"
+                      placeholder="Tài sản chung"
+                      options={[
+                        { value: "", label: "Tài sản chung" },
+                        ...users.map(user => ({ value: user.id, label: user.fullName }))
+                      ]}
+                    />
                   </div>
                   {formType !== "land" && (
                     <>
@@ -956,11 +965,16 @@ export function Assets({
                       <div className="space-y-1">
                         <label className="text-slate-400 block font-semibold">Đơn vị</label>
                         {isGoldType(formType) ? (
-                          <select value={formUnit} onChange={(e) => setFormUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
-                            <option value="chỉ">chỉ</option>
-                            <option value="lượng">lượng</option>
-                            <option value="gram">gram</option>
-                          </select>
+                          <FancySelect
+                            value={formUnit}
+                            onChange={setFormUnit}
+                            ariaLabel="Đơn vị"
+                            options={[
+                              { value: "chỉ", label: "chỉ" },
+                              { value: "lượng", label: "lượng" },
+                              { value: "gram", label: "gram" }
+                            ]}
+                          />
                         ) : (
                           <input value={formUnit} onChange={(e) => setFormUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
                         )}
@@ -969,10 +983,15 @@ export function Assets({
                   )}
                   <div className="space-y-1">
                     <label className="text-slate-400 block font-semibold">Tiền tệ</label>
-                    <select value={formCurrency} onChange={(e) => setFormCurrency(e.target.value as "VND" | "USD")} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
-                      <option value="VND">VND</option>
-                      <option value="USD">USD</option>
-                    </select>
+                    <FancySelect
+                      value={formCurrency}
+                      onChange={(v) => setFormCurrency(v as "VND" | "USD")}
+                      ariaLabel="Tiền tệ"
+                      options={[
+                        { value: "VND", label: "VND" },
+                        { value: "USD", label: "USD" }
+                      ]}
+                    />
                   </div>
                 </div>
 
@@ -1043,12 +1062,17 @@ export function Assets({
                 {isGoldType(formType) && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
                     <div className="flex items-center gap-1.5">
-                      <select value={normalizeGoldPurity(formGoldPurity)} onChange={(e) => setFormGoldPurity(e.target.value)} className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
-                        <option value="">— Tuổi vàng —</option>
-                        {GOLD_PURITY_OPTIONS.map(o => (
-                          <option key={o.value} value={o.value}>{o.label} ({Math.round(o.factor * 100)}%)</option>
-                        ))}
-                      </select>
+                      <FancySelect
+                        value={normalizeGoldPurity(formGoldPurity)}
+                        onChange={setFormGoldPurity}
+                        ariaLabel="Tuổi vàng"
+                        placeholder="— Tuổi vàng —"
+                        className="flex-1 min-w-0"
+                        options={[
+                          { value: "", label: "— Tuổi vàng —" },
+                          ...GOLD_PURITY_OPTIONS.map(o => ({ value: o.value, label: `${o.label} (${Math.round(o.factor * 100)}%)` }))
+                        ]}
+                      />
                       <button type="button" onClick={() => setShowGoldPurityInfo(true)} aria-label="Bảng quy ước tuổi vàng" title="Bảng quy ước tuổi vàng" className="shrink-0 size-9 rounded-lg bg-slate-800 border border-slate-700 text-amber-400 hover:bg-slate-700 flex items-center justify-center cursor-pointer">
                         <Info className="size-4" />
                       </button>
@@ -1270,9 +1294,12 @@ export function Assets({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Tiền vào ví</label>
-                  <select value={sellAccount} onChange={(e) => setSellAccount(e.target.value as AccountType)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none">
-                    {SELL_ACCOUNTS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
-                  </select>
+                  <FancySelect
+                    value={sellAccount}
+                    onChange={(v) => setSellAccount(v as AccountType)}
+                    ariaLabel="Tiền vào ví"
+                    options={SELL_ACCOUNTS}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Ngày bán</label>

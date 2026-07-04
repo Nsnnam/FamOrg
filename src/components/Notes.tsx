@@ -26,6 +26,7 @@ import { useConfirm } from "./ConfirmDialog.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 
 interface NotesProps {
   currentUser: User;
@@ -273,16 +274,17 @@ export function Notes({
 
           <div className="flex items-center gap-2 self-start md:self-auto">
             <TagIcon className="w-4 h-4 text-slate-500 shrink-0" />
-            <select 
-              value={tagFilter}
-              onChange={(e) => setTagFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500 min-w-[120px]"
-            >
-              <option value="all">Mọi thẻ nhãn</option>
-              {tagsPool.map(tg => (
-                <option key={tg} value={tg}>#{tg}</option>
-              ))}
-            </select>
+            <div className="min-w-[130px] text-xs">
+              <FancySelect
+                value={tagFilter}
+                onChange={setTagFilter}
+                ariaLabel="Lọc theo thẻ nhãn"
+                options={[
+                  { value: "all", label: "Mọi thẻ nhãn" },
+                  ...tagsPool.map(tg => ({ value: tg, label: `#${tg}` }))
+                ]}
+              />
+            </div>
           </div>
         </div>
 

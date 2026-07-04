@@ -12,6 +12,7 @@ import { useTabFab } from "./FabHost.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 
 interface DocumentsProps {
   currentUser: User;
@@ -255,9 +256,14 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
         </div>
 
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
-          <select value={type} onChange={(e) => setType(e.target.value as DocumentType)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500">
-            {DOC_TYPE_ORDER.map(t => <option key={t} value={t}>{DOCUMENT_TYPE_LABELS[t]}</option>)}
-          </select>
+          <div className="md:col-span-2">
+            <FancySelect
+              value={type}
+              onChange={(v) => setType(v as DocumentType)}
+              ariaLabel="Loại giấy tờ"
+              options={DOC_TYPE_ORDER.map(t => ({ value: t, label: DOCUMENT_TYPE_LABELS[t] }))}
+            />
+          </div>
           <div className="md:col-span-4 relative">
             <input
               value={title}
@@ -277,10 +283,18 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
             )}
           </div>
 
-          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500">
-            <option value="">Chủ sở hữu (tùy chọn)</option>
-            {users.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-          </select>
+          <div className="md:col-span-2">
+            <FancySelect
+              value={ownerId}
+              onChange={setOwnerId}
+              ariaLabel="Chủ sở hữu"
+              placeholder="Chủ sở hữu (tùy chọn)"
+              options={[
+                { value: "", label: "Chủ sở hữu (tùy chọn)" },
+                ...users.map(u => ({ value: u.id, label: u.fullName }))
+              ]}
+            />
+          </div>
           <input value={documentNumber} onChange={(e) => setDocumentNumber(e.target.value)} placeholder="Số giấy tờ" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500" />
           <input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Nơi cấp" className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500" />
 
@@ -294,10 +308,17 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
           </div>
 
           <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú thêm..." className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500" />
-          <select value={isShared ? "true" : "false"} onChange={(e) => setIsShared(e.target.value === "true")} className="md:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500">
-            <option value="false">Riêng tư (người tạo & chủ sở hữu)</option>
-            <option value="true">Chia sẻ (người lớn trong nhà)</option>
-          </select>
+          <div className="md:col-span-2">
+            <FancySelect
+              value={isShared ? "true" : "false"}
+              onChange={(v) => setIsShared(v === "true")}
+              ariaLabel="Phạm vi chia sẻ"
+              options={[
+                { value: "false", label: "Riêng tư (người tạo & chủ sở hữu)" },
+                { value: "true", label: "Chia sẻ (người lớn trong nhà)" }
+              ]}
+            />
+          </div>
 
           {/* Đính kèm ảnh/scan */}
           <div className="md:col-span-6 bg-slate-950/40 border border-slate-800 rounded-xl p-3 space-y-2">
@@ -341,10 +362,17 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
       {documents.length > 0 && (
         <div className="flex items-center gap-2 text-xs">
           <span className="text-slate-500">Lọc:</span>
-          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-300 outline-none focus:border-indigo-500">
-            <option value="all">Tất cả loại</option>
-            {DOC_TYPE_ORDER.map(t => <option key={t} value={t}>{DOCUMENT_TYPE_LABELS[t]}</option>)}
-          </select>
+          <div className="min-w-[150px]">
+            <FancySelect
+              value={filterType}
+              onChange={setFilterType}
+              ariaLabel="Lọc theo loại giấy tờ"
+              options={[
+                { value: "all", label: "Tất cả loại" },
+                ...DOC_TYPE_ORDER.map(t => ({ value: t, label: DOCUMENT_TYPE_LABELS[t] }))
+              ]}
+            />
+          </div>
         </div>
       )}
 

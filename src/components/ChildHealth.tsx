@@ -11,6 +11,7 @@ import { assessBmi, ageFromDob, BmiAssessment } from "../utils/bmi.js";
 import { Avatar } from "./Avatar.js";
 import { Medication } from "./Medication.js";
 import { ShimmerLine, Reveal, IconChip, staggerDelay } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
 
 type HealthSection = "growth" | "vaccination" | "medication";
 
@@ -229,13 +230,13 @@ export function ChildHealth({
   const renderMemberSelect = (accent: string, spanClass: string) => (
     <div className={`space-y-1 ${spanClass}`}>
       <label className="text-slate-500 text-[10px] block">Ghi cho thành viên</label>
-      <select
+      <FancySelect
         value={formMemberId}
-        onChange={e => setFormMemberId(e.target.value)}
-        className={`w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none ${accent}`}
-      >
-        {sortedMembers.map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
-      </select>
+        onChange={setFormMemberId}
+        ariaLabel="Ghi cho thành viên"
+        className={accent}
+        options={sortedMembers.map(u => ({ value: u.id, label: u.fullName }))}
+      />
     </div>
   );
 
