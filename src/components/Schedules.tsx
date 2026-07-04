@@ -31,6 +31,7 @@ import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { Avatar } from "./Avatar.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
+import { getVietnamHolidaysForMonth, getVietnamLunarDateForSolarDate, type VietnamHoliday, type VietnamLunarDate } from "../utils/vietnamHolidays.js";
 
 interface SchedulesProps {
   currentUser: User;
@@ -51,6 +52,7 @@ export function Schedules({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewingPlan, setViewingPlan] = useState<FamilyPlan | null>(null);
   const [viewingBirthday, setViewingBirthday] = useState<{ user: User; day: number } | null>(null);
+  const [viewingHoliday, setViewingHoliday] = useState<{ holiday: VietnamHoliday; day: number } | null>(null);
   const [editingPlan, setEditingPlan] = useState<FamilyPlan | null>(null);
   const [formError, setFormError] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
@@ -125,7 +127,7 @@ export function Schedules({
 
   // Nút nổi lên lịch nhanh — ẩn khi đang mở form/chi tiết hoặc tài khoản khách
   useTabFab(
-    currentUser.role !== UserRole.GUEST && !isFormOpen && !viewingPlan && !viewingBirthday
+    currentUser.role !== UserRole.GUEST && !isFormOpen && !viewingPlan && !viewingBirthday && !viewingHoliday
       ? { id: "plans", color: "sky", title: "Lên lịch sự kiện mới", icon: CalendarIcon, onClick: handleOpenCreatePlan }
       : null
   );
@@ -157,12 +159,15 @@ export function Schedules({
   const viewingRef = React.useRef<HTMLDivElement | null>(null);
   const formRef = React.useRef<HTMLDivElement | null>(null);
   const birthdayRef = React.useRef<HTMLDivElement | null>(null);
+  const holidayRef = React.useRef<HTMLDivElement | null>(null);
   const closeViewing = useCallback(() => setViewingPlan(null), []);
   const closeForm = useCallback(() => { setIsFormOpen(false); setEditingPlan(null); setFormError(""); }, []);
   const closeBirthday = useCallback(() => setViewingBirthday(null), []);
+  const closeHoliday = useCallback(() => setViewingHoliday(null), []);
   useModalA11y(!!viewingPlan, closeViewing, viewingRef);
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!viewingBirthday, closeBirthday, birthdayRef);
+  useModalA11y(!!viewingHoliday, closeHoliday, holidayRef);
 
   // Filter plans according to user permission and filters
   const filteredPlans = useMemo(() => {
@@ -243,6 +248,27 @@ export function Schedules({
     });
     return mapping;
   }, [filteredPlans, calYear, calMonth]);
+
+  const monthHolidays = useMemo(() => getVietnamHolidaysForMonth(calYear, calMonth), [calYear, calMonth]);
+
+  const holidaysByDayNum = useMemo(() => {
+    const map: Record<number, VietnamHoliday[]> = {};
+    monthHolidays.forEach(holiday => {
+      const day = Number(holiday.date.slice(8, 10));
+      if (!map[day]) map[day] = [];
+      map[day].push(holiday);
+    });
+    return map;
+  }, [monthHolidays]);
+
+  const lunarByDayNum = useMemo(() => {
+    const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+    const map: Record<number, VietnamLunarDate> = {};
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      map[day] = getVietnamLunarDateForSolarDate(calYear, calMonth + 1, day);
+    }
+    return map;
+  }, [calYear, calMonth]);
 
   // Birthdays falling in the current calendar month
   const birthdaysByDayNum = useMemo(() => {
@@ -420,6 +446,40 @@ export function Schedules({
     }
   };
 
+  const holidayBadgeClass = (tone: VietnamHoliday["tone"]) => {
+    switch (tone) {
+      case "official": return "bg-amber-500/15 text-amber-500 border border-amber-500/30";
+      case "family": return "bg-pink-500/10 text-pink-400 border border-pink-500/20";
+      default: return "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+    }
+  };
+
+  const holidayBorderClass = (tone: VietnamHoliday["tone"]) => {
+    switch (tone) {
+      case "official": return "border-l-4 border-l-amber-500";
+      case "family": return "border-l-4 border-l-pink-500";
+      default: return "border-l-4 border-l-emerald-500";
+    }
+  };
+
+  const holidayToneLabel = (tone: VietnamHoliday["tone"]) => {
+    switch (tone) {
+      case "official": return "Ngày lễ chính thức";
+      case "family": return "Dịp gia đình";
+      default: return "Lễ truyền thống";
+    }
+  };
+
+  const lunarCellLabel = (lunar?: VietnamLunarDate) => {
+    if (!lunar) return "";
+    return lunar.day === 1 ? `${lunar.day}/${lunar.month}${lunar.isLeapMonth ? "N" : ""}` : String(lunar.day);
+  };
+
+  const lunarCellTitle = (lunar?: VietnamLunarDate) => {
+    if (!lunar) return "";
+    return `Âm lịch: ngày ${lunar.day}/${lunar.month}${lunar.isLeapMonth ? " nhuận" : ""}/${lunar.year}`;
+  };
+
   // Decide how a plan should render in ONE calendar cell.
   // For multi-day events: start time hugs the opening edge (first day), end time
   // hugs the closing edge (last day), and chevrons (‹ tiếp tục ›) bridge the days
@@ -523,10 +583,17 @@ export function Schedules({
           <ShimmerLine accent="amber" />
           
           <div className="bg-slate-950 p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2 capitalize">
-              <CalendarIcon className="w-5 h-5 text-amber-400 shrink-0" />
-              {calMonthName}
-            </h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base font-extrabold text-slate-200 flex items-center gap-2 capitalize">
+                <CalendarIcon className="w-5 h-5 text-amber-400 shrink-0" />
+                {calMonthName}
+              </h3>
+              {monthHolidays.length > 0 && (
+                <span className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  {monthHolidays.length} ngày lễ VN
+                </span>
+              )}
+            </div>
 
             {/* Month / year navigation */}
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -582,18 +649,18 @@ export function Schedules({
           </div>
 
           {/* Weekday labels */}
-          <div className="grid grid-cols-7 border-b border-slate-800 text-center bg-slate-950/40 text-[11px] text-slate-500 font-bold py-2.5">
-            <div>Chủ Nhật</div>
-            <div>Thứ Hai</div>
-            <div>Thứ Ba</div>
-            <div>Thứ Tư</div>
-            <div>Thứ Năm</div>
-            <div>Thứ Sáu</div>
-            <div>Thứ Bảy</div>
+          <div className="grid grid-cols-7 border-b border-slate-800 text-center bg-slate-950/40 text-[10px] sm:text-[11px] text-slate-500 font-bold py-2.5">
+            <div><span className="hidden sm:inline">Chủ Nhật</span><span className="sm:hidden">CN</span></div>
+            <div><span className="hidden sm:inline">Thứ Hai</span><span className="sm:hidden">T2</span></div>
+            <div><span className="hidden sm:inline">Thứ Ba</span><span className="sm:hidden">T3</span></div>
+            <div><span className="hidden sm:inline">Thứ Tư</span><span className="sm:hidden">T4</span></div>
+            <div><span className="hidden sm:inline">Thứ Năm</span><span className="sm:hidden">T5</span></div>
+            <div><span className="hidden sm:inline">Thứ Sáu</span><span className="sm:hidden">T6</span></div>
+            <div><span className="hidden sm:inline">Thứ Bảy</span><span className="sm:hidden">T7</span></div>
           </div>
 
           {/* 30 block spaces */}
-          <div className="grid grid-cols-7 md:auto-rows-[110px] auto-rows-[80px] bg-slate-900">
+          <div className="grid grid-cols-7 auto-rows-[112px] sm:auto-rows-[118px] lg:auto-rows-[132px] bg-slate-900">
             {calendarDays.map((day, i) => {
               if (day.blank) {
                 return <div key={`blank-${i}`} className="bg-slate-950/25 border-r border-b border-slate-800/60" />;
@@ -601,23 +668,58 @@ export function Schedules({
 
               const dayPlans = plansByDayNum[day.dayNum] || [];
               const dayBirthdays = birthdaysByDayNum[day.dayNum] || [];
-              const hasEvents = dayPlans.length > 0 || dayBirthdays.length > 0;
+              const dayHolidays = holidaysByDayNum[day.dayNum] || [];
+              const lunarDate = lunarByDayNum[day.dayNum];
+              const hasEvents = dayPlans.length > 0 || dayBirthdays.length > 0 || dayHolidays.length > 0;
               const isToday = isViewingToday && day.dayNum === today.getDate();
+              const isWeekend = i % 7 === 0 || i % 7 === 6;
 
               return (
                 <div
                   key={`day-${day.dayNum}`}
-                  className={`p-1.5 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col justify-between overflow-hidden ${isToday ? "bg-sky-500/5" : ""}`}
+                  className={`p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isWeekend ? "bg-slate-950/15" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-sky-500/5 ring-1 ring-inset ring-sky-500/35" : ""}`}
                 >
-                  <div className="flex justify-between items-center">
-                    <span className={`text-[11px] font-semibold font-mono ${isToday ? "bg-sky-500 text-slate-950 px-1.5 rounded-md" : "text-slate-400"}`}>{day.dayNum}</span>
+                  <div className="flex justify-between items-start gap-1.5 min-h-9">
+                    <div className="min-w-0">
+                      <span className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-1.5 text-base sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-400" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
+                        {day.dayNum}
+                      </span>
+                      {lunarDate && (
+                        <div
+                          className={`mt-1 text-[9px] leading-none font-mono font-semibold ${lunarDate.day === 1 ? "text-emerald-400" : "text-slate-500"}`}
+                          title={lunarCellTitle(lunarDate)}
+                        >
+                          âm {lunarCellLabel(lunarDate)}
+                        </div>
+                      )}
+                      {dayHolidays.length > 0 && (
+                        <div className="mt-1 text-[9px] leading-none font-bold text-amber-500 truncate">Lễ</div>
+                      )}
+                    </div>
                     {hasEvents && (
-                      <span className="w-2 h-2 shrink-0 rounded-full bg-sky-400 animate-pulse" />
+                      <div className="flex items-center gap-1 pt-1 shrink-0">
+                        {dayHolidays.length > 0 && <span className="w-2 h-2 rounded-full bg-amber-400" title="Ngày lễ Việt Nam" />}
+                        {dayBirthdays.length > 0 && <span className="w-2 h-2 rounded-full bg-pink-400" title="Sinh nhật" />}
+                        {dayPlans.length > 0 && <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" title="Sự kiện" />}
+                      </div>
                     )}
                   </div>
 
-                  {/* Event + birthday badges */}
-                  <div className="space-y-1 overflow-y-auto max-h-[80%] pr-0.5 scrollbar-none">
+                  {/* Holiday, event and birthday badges */}
+                  <div className="mt-2 space-y-1.5 overflow-y-auto flex-1 min-h-0 pr-0.5 scrollbar-none">
+                    {dayHolidays.map(holiday => (
+                      <button
+                        key={`holiday-${holiday.date}-${holiday.shortTitle}`}
+                        type="button"
+                        onClick={() => setViewingHoliday({ holiday, day: day.dayNum })}
+                        title={`${holiday.title}${holiday.lunarDate ? ` (${holiday.lunarDate})` : ""}`}
+                        aria-label={`Xem ý nghĩa ${holiday.title}`}
+                        className={`w-full text-left text-[10px] px-1.5 py-1 rounded-md font-semibold flex items-center gap-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${holidayBadgeClass(holiday.tone)}`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-75 shrink-0" />
+                        <span className="truncate min-w-0 flex-1">{holiday.shortTitle}</span>
+                      </button>
+                    ))}
                     {dayBirthdays.map(b => {
                       const bUser = users.find(u => u.id === b.id);
                       return (
@@ -626,7 +728,7 @@ export function Schedules({
                           type="button"
                           onClick={() => bUser && setViewingBirthday({ user: bUser, day: day.dayNum })}
                           title={`🎂 Sinh nhật ${b.name} — bấm để xem chi tiết`}
-                          className="w-full text-left text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity bg-pink-500/10 text-pink-400 border border-pink-500/20"
+                          className="w-full text-left text-[10px] px-1.5 py-1 rounded-md font-medium flex items-center gap-1 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity bg-pink-500/10 text-pink-400 border border-pink-500/20"
                         >
                           <span className="shrink-0">🎂</span>
                           <span className="truncate min-w-0 flex-1">{b.name}</span>
@@ -641,7 +743,7 @@ export function Schedules({
                           type="button"
                           onClick={() => setViewingPlan(plan)}
                           title={`${plan.title}\n(${plan.startDate} → ${plan.endDate || plan.startDate})`}
-                          className={`w-full text-left text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-0.5 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${badgeColorClass(plan.color)}`}
+                          className={`w-full text-left text-[10px] px-1.5 py-1 rounded-md font-medium flex items-center gap-0.5 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${badgeColorClass(plan.color)}`}
                         >
                           {meta.contFrom && <ChevronLeft className="w-2.5 h-2.5 shrink-0 opacity-60" />}
                           {meta.startTime && <span className="shrink-0 text-[8px] font-mono opacity-80">{meta.startTime}</span>}
@@ -854,6 +956,80 @@ export function Schedules({
                   )}
                 </div>
               </div>
+            </motion.div>
+          </div>
+        );
+      })()}
+
+      {/* Holiday detail viewer (click a Vietnamese holiday badge on the calendar) */}
+      {viewingHoliday && (() => {
+        const holiday = viewingHoliday.holiday;
+        const parsedDate = new Date(`${holiday.date}T00:00:00`);
+        const isValidDate = !isNaN(parsedDate.getTime());
+        const weekday = isValidDate ? parsedDate.toLocaleDateString("vi-VN", { weekday: "long" }) : "";
+        const dateLabel = isValidDate ? parsedDate.toLocaleDateString("vi-VN", { day: "numeric", month: "long", year: "numeric" }) : holiday.date;
+        return (
+          <div
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              ref={holidayRef}
+              tabIndex={-1}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              className={`bg-slate-900 border border-slate-800 ${holidayBorderClass(holiday.tone)} rounded-2xl w-full max-w-sm p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto outline-none`}
+            >
+              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="space-y-1 min-w-0">
+                  <span className={`text-[10px] px-2 py-0.5 rounded-lg ${holidayBadgeClass(holiday.tone)} font-semibold inline-flex items-center gap-1`}>
+                    <CalendarIcon className="w-3 h-3" /> {holidayToneLabel(holiday.tone)}
+                  </span>
+                  <h3 className="text-md font-bold text-slate-100">{holiday.title}</h3>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Đóng chi tiết ngày lễ"
+                  onClick={() => setViewingHoliday(null)}
+                  className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-2.5 bg-slate-950/40 border border-slate-800 rounded-xl p-3.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className="text-slate-300 capitalize">{weekday ? `${weekday}, ` : ""}{dateLabel}</span>
+                </div>
+                {holiday.lunarDate && (
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="text-slate-300">{holiday.lunarDate}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Tag className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span className="text-slate-300">{holidayToneLabel(holiday.tone)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <h4 className="text-xs font-bold text-slate-200">Ý nghĩa</h4>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {holiday.meaning}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingHoliday(null)}
+                className="w-full px-4 py-2 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-slate-100 border border-slate-800 rounded-xl font-semibold cursor-pointer transition-all"
+              >
+                Đóng lại
+              </button>
             </motion.div>
           </div>
         );
