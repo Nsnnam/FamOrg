@@ -114,7 +114,14 @@ viền `color-500/20` → `color-500/30`. Ví dụ badge:
 ### Inputs / Forms
 - Chuẩn: `bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200
   outline-none focus:border-indigo-500`.
-- `<select>` dùng cùng style. `<input type="date">` thêm
+- **Dropdown chọn 1 giá trị: DÙNG `<FancySelect>`** ([src/components/FancySelect.tsx](src/components/FancySelect.tsx)),
+  **không dùng `<select>` gốc** — list bung ra của `<select>` không tạo kiểu được,
+  nhìn thô trên web. FancySelect: `options={[{value,label}]}`, popup portal +
+  `position: fixed` (không bị thẻ cha `overflow-hidden` cắt), theme-aware, có bàn
+  phím + đóng khi cuộn nền. Trigger mặc định `w-full` → cần bề ngang tuỳ ý thì bọc
+  `<div className="w-…">`. Ngoại lệ hợp lệ: control cần type-ahead danh sách dài
+  (vd giờ/phút trong `DateTimePicker24`) vẫn dùng `<select>` gốc.
+- `<input type="date">` thêm
   `min-w-0 box-border appearance-none ... font-mono` để khít cột trên mobile.
 - Form nhiều cột: grid `grid-cols-1 md:grid-cols-6 gap-2 text-xs`, dùng
   `md:col-span-*` để chia. Mobile xếp 1 cột.
