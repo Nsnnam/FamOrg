@@ -594,19 +594,19 @@ export function Schedules({
                   {monthHolidays.length} ngày lễ VN
                 </span>
               )}
-            </div>
-
-            {/* Month / year navigation */}
-            <div className="flex items-center gap-1.5 flex-wrap">
               {!isViewingToday && (
                 <button
                   type="button"
                   onClick={goToToday}
-                  className="mr-1 px-2.5 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
                 >
-                  Hôm nay
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-400" /> Hôm nay
                 </button>
               )}
+            </div>
+
+            {/* Month / year navigation */}
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={goToPrevMonth}
