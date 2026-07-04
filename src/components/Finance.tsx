@@ -33,7 +33,11 @@ import {
   Users,
   HelpCircle,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Home,
+  Wifi,
+  Phone,
+  Shield
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, SavingsGoal, Debt, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -583,14 +587,22 @@ export function Finance({
   // Naming converters
   const translateCategory = (cat: string) => {
     switch (cat) {
-      case "food": return "Ăn uống 🍲";
-      case "education2": return "Học tập / Học phí 📚";
-      case "utilities": return "Điện nước / Sinh hoạt ⚡";
-      case "shopping": return "Mua sắm quần áo 🛍️";
-      case "medical": return "Y tế / Chăm sóc sức khỏe 💊";
-      case "transport": return "Phương tiện đi lại 🚗";
-      case "debt_bank": return "Trả nợ ngân hàng 🏦";
-      case "debt_personal": return "Trả nợ cá nhân 🤝";
+      // Hạng mục chi tiêu thông thường
+      case "food":          return "Ăn uống";
+      case "education2":    return "Học tập";
+      case "utilities":     return "Điện nước";
+      case "shopping":      return "Mua sắm";
+      case "medical":       return "Y tế";
+      case "transport":     return "Đi lại";
+      case "debt_bank":     return "Trả nợ NH";
+      case "debt_personal": return "Trả nợ CN";
+      // Hạng mục từ hóa đơn định kỳ (bill.category → transaction.category)
+      case "rent":          return "Thuê nhà";
+      case "internet":      return "Cước Internet";
+      case "phone":         return "Điện thoại";
+      case "insurance":     return "Bảo hiểm";
+      case "loan":          return "Trả nợ NH";
+      case "other":         return "Khác";
       default: return cat;
     }
   };
@@ -612,8 +624,13 @@ export function Finance({
       case "shopping":      return "text-pink-400 bg-pink-500/10";
       case "medical":       return "text-rose-400 bg-rose-500/10";
       case "transport":     return "text-sky-400 bg-sky-500/10";
-      case "debt_bank":     return "text-red-400 bg-red-500/10";
+      case "debt_bank":
+      case "loan":          return "text-red-400 bg-red-500/10";
       case "debt_personal": return "text-teal-400 bg-teal-500/10";
+      case "rent":          return "text-indigo-400 bg-indigo-500/10";
+      case "internet":      return "text-cyan-400 bg-cyan-500/10";
+      case "phone":         return "text-purple-400 bg-purple-500/10";
+      case "insurance":     return "text-slate-300 bg-slate-700/40";
       default:              return "text-slate-400 bg-slate-800";
     }
   };
@@ -626,8 +643,13 @@ export function Finance({
       case "shopping":      return <ShoppingCart className="w-4 h-4" />;
       case "medical":       return <HeartPulse className="w-4 h-4" />;
       case "transport":     return <Car className="w-4 h-4" />;
-      case "debt_bank":     return <Landmark className="w-4 h-4" />;
+      case "debt_bank":
+      case "loan":          return <Landmark className="w-4 h-4" />;
       case "debt_personal": return <Users className="w-4 h-4" />;
+      case "rent":          return <Home className="w-4 h-4" />;
+      case "internet":      return <Wifi className="w-4 h-4" />;
+      case "phone":         return <Phone className="w-4 h-4" />;
+      case "insurance":     return <Shield className="w-4 h-4" />;
       default:              return <HelpCircle className="w-4 h-4" />;
     }
   };
@@ -1270,6 +1292,10 @@ export function Finance({
               <span className="flex items-center gap-1 text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-400 inline-block" /> Y tế</span>
               <span className="flex items-center gap-1 text-sky-400"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Đi lại</span>
               <span className="flex items-center gap-1 text-violet-400"><span className="w-2 h-2 rounded-full bg-violet-400 inline-block" /> Học tập</span>
+              <span className="flex items-center gap-1 text-indigo-400"><span className="w-2 h-2 rounded-full bg-indigo-400 inline-block" /> Thuê nhà</span>
+              <span className="flex items-center gap-1 text-cyan-400"><span className="w-2 h-2 rounded-full bg-cyan-400 inline-block" /> Internet</span>
+              <span className="flex items-center gap-1 text-purple-400"><span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /> Điện thoại</span>
+              <span className="flex items-center gap-1 text-slate-300"><span className="w-2 h-2 rounded-full bg-slate-400 inline-block" /> Bảo hiểm</span>
               <span className="flex items-center gap-1 text-red-400"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> Trả nợ NH</span>
               <span className="flex items-center gap-1 text-teal-400"><span className="w-2 h-2 rounded-full bg-teal-400 inline-block" /> Trả nợ CN</span>
               <span className="flex items-center gap-1 text-slate-400"><span className="w-2 h-2 rounded-full bg-slate-500 inline-block" /> Khác</span>
