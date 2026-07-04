@@ -11,6 +11,7 @@ import fsp from "fs/promises";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret, getAppSettings, setAppSetting } from "./server/db.js";
+import { sqliteAppendServerMetric, sqliteGetServerMetrics } from "./server/sqlite.js";
 import { UserRole, isLimitedViewer, DishSlot, MealIngredient } from "./src/types.js";
 import { buildPlanFromLibrary } from "./src/utils/mealPlan.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
@@ -479,6 +480,43 @@ const readDisk = async () => {
     return null;
   }
 };
+
+// Ghi telemetry vào SQLite 1 phút/lần (24/7) để biểu đồ giữ được lịch sử
+// 24h/7 ngày qua các lần reload trang — client không cần poll dày.
+async function recordServerMetric() {
+  try {
+    const [cpuPercent, tempC, ssdTempC, memory, disk] = await Promise.all([
+      readCpuPercent(),
+      readCpuTempC(),
+      readSsdTempC(),
+      readMemory(),
+      readDisk()
+    ]);
+    sqliteAppendServerMetric({
+      t: Date.now(),
+      cpu: cpuPercent,
+      ram: memory ? (memory.usedBytes / memory.totalBytes) * 100 : null,
+      temp: tempC,
+      ssd: ssdTempC,
+      disk: disk ? (disk.usedBytes / disk.totalBytes) * 100 : null
+    });
+  } catch (e) {
+    console.error("Không ghi được telemetry máy chủ:", e);
+  }
+}
+setTimeout(recordServerMetric, 10 * 1000);
+setInterval(recordServerMetric, 60 * 1000);
+
+// Lịch sử telemetry cho biểu đồ: 24h (mặc định) hoặc 7 ngày, downsample ≤320 điểm.
+app.get("/api/server/history", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
+  const range = req.query.range === "7d" ? "7d" : "24h";
+  const sinceMs = Date.now() - (range === "7d" ? 7 * 24 : 24) * 3600 * 1000;
+  const all = sqliteGetServerMetrics(sinceMs);
+  const MAX_POINTS = 320;
+  const step = Math.ceil(all.length / MAX_POINTS);
+  const points = step > 1 ? all.filter((_, i) => i % step === 0 || i === all.length - 1) : all;
+  res.json({ range, points });
+});
 
 app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
   try {

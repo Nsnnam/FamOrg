@@ -125,3 +125,45 @@ export function sqliteCheckpoint(): void {
     console.error("Lỗi checkpoint WAL:", e);
   }
 }
+
+// --- TELEMETRY MÁY CHỦ (tab Quản lý Server) ---
+// Bảng riêng NGOÀI mô hình document ở trên: ghi 1 phút/lần bằng INSERT đơn lẻ
+// (không rewrite cả DB), tự cắt dữ liệu quá hạn. Không nằm trong backup JSON —
+// telemetry là dữ liệu tạm, không cần khôi phục.
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS server_metrics (
+    t    INTEGER PRIMARY KEY,
+    cpu  REAL,
+    ram  REAL,
+    temp REAL,
+    ssd  REAL,
+    disk REAL
+  );
+`);
+
+export interface ServerMetricRow {
+  t: number;                 // epoch ms
+  cpu: number | null;        // % CPU
+  ram: number | null;        // % RAM
+  temp: number | null;       // °C CPU
+  ssd: number | null;        // °C SSD NVMe
+  disk: number | null;       // % ổ đĩa
+}
+
+const insertMetricStmt = db.prepare(
+  "INSERT OR REPLACE INTO server_metrics (t, cpu, ram, temp, ssd, disk) VALUES (?, ?, ?, ?, ?, ?)"
+);
+const pruneMetricStmt = db.prepare("DELETE FROM server_metrics WHERE t < ?");
+const selectMetricsStmt = db.prepare(
+  "SELECT t, cpu, ram, temp, ssd, disk FROM server_metrics WHERE t >= ? ORDER BY t ASC"
+);
+
+export function sqliteAppendServerMetric(row: ServerMetricRow, keepMs = 7 * 24 * 3600 * 1000): void {
+  insertMetricStmt.run(row.t, row.cpu, row.ram, row.temp, row.ssd, row.disk);
+  pruneMetricStmt.run(row.t - keepMs);
+}
+
+export function sqliteGetServerMetrics(sinceMs: number): ServerMetricRow[] {
+  return selectMetricsStmt.all(sinceMs) as ServerMetricRow[];
+}
