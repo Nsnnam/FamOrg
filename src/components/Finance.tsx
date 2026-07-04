@@ -121,6 +121,13 @@ function evalMoneyExpression(input: string): number {
   return Math.round(total);
 }
 
+// Nhóm hàng nghìn cho CẢ biểu thức đang gõ: "50000+20000" → "50.000+20.000".
+// Giữ lại toán tử + - *, bỏ mọi ký tự khác (kể cả dấu chấm cũ) rồi nhóm lại từng số.
+function formatMoneyExpr(input: string): string {
+  const cleaned = input.replace(/[^\d+\-*]/g, "");
+  return cleaned.replace(/\d+/g, (m) => Number(m).toLocaleString("vi-VN"));
+}
+
 interface MoneyInputProps {
   value: number;
   onChange: (n: number) => void;
@@ -133,8 +140,9 @@ interface MoneyInputProps {
 }
 
 /**
- * Ô nhập tiền: hiển thị số có nhóm hàng nghìn khi rời ô, cho gõ biểu thức khi
- * đang nhập. Có nút +/× (tuỳ chọn) và dòng preview kết quả "= 70.000 đ".
+ * Ô nhập tiền: LUÔN hiển thị số có nhóm hàng nghìn (2.000.000), kể cả khi đang
+ * gõ biểu thức cộng dồn (50.000+20.000). Có nút +/× (tuỳ chọn) và dòng preview
+ * kết quả "= 70.000 đ". Quy tắc chung cho mọi ô tiền trong app.
  */
 function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, operators }: MoneyInputProps) {
   const [focused, setFocused] = useState(false);
@@ -143,6 +151,7 @@ function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, op
 
   const hasOperator = /\d\s*[+\-*]\s*\d/.test(raw);
   const preview = evalMoneyExpression(raw);
+  // Khi rời ô: hiển thị theo value đã chốt; khi đang gõ: hiển thị raw (đã nhóm nghìn)
   const display = focused ? raw : (value > 0 ? value.toLocaleString("vi-VN") : "");
 
   const commit = () => {
@@ -150,8 +159,14 @@ function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, op
     setFocused(false);
   };
 
+  const setFromInput = (text: string) => {
+    const formatted = formatMoneyExpr(text);
+    setRaw(formatted);
+    onChange(evalMoneyExpression(formatted));
+  };
+
   const appendOp = (op: string) => {
-    const base = raw.trim() === "" && value > 0 ? String(value) : raw;
+    const base = raw.trim() === "" && value > 0 ? value.toLocaleString("vi-VN") : raw;
     const trimmed = base.replace(/[+\-*]+$/, "");
     if (trimmed === "") return;
     const next = trimmed + op;
@@ -172,8 +187,8 @@ function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, op
           autoFocus={autoFocus}
           value={display}
           placeholder={placeholder}
-          onFocus={() => { setRaw(value > 0 ? String(value) : ""); setFocused(true); }}
-          onChange={(e) => { setRaw(e.target.value); onChange(evalMoneyExpression(e.target.value)); }}
+          onFocus={() => { setRaw(value > 0 ? value.toLocaleString("vi-VN") : ""); setFocused(true); }}
+          onChange={(e) => setFromInput(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); inputRef.current?.blur(); } }}
           className={className}
@@ -1621,33 +1636,32 @@ export function Finance({
                 />
               </div>
 
-              {/* Amount & Date */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1 min-w-0">
-                  <label className="text-slate-400 block font-semibold">
-                    Số lượng (VNĐ) <span className="text-rose-400">*</span>
-                    {formType === TransactionType.EXPENSE && (
-                      <span className="ml-1 text-[10px] font-normal text-slate-500">— gõ 50000+20000 để cộng dồn</span>
-                    )}
-                  </label>
-                  <MoneyInput
-                    value={formAmount}
-                    onChange={setFormAmount}
-                    placeholder="Điền số giá trị..."
-                    operators={formType === TransactionType.EXPENSE}
-                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-bold"
-                  />
-                </div>
+              {/* Amount — hàng riêng cho thoáng (kèm nút cộng dồn khi chi tiêu) */}
+              <div className="space-y-1">
+                <label className="text-slate-400 block font-semibold">
+                  Số lượng (VNĐ) <span className="text-rose-400">*</span>
+                  {formType === TransactionType.EXPENSE && (
+                    <span className="ml-1 text-[10px] font-normal text-slate-500">— gõ 50.000+20.000 để cộng dồn</span>
+                  )}
+                </label>
+                <MoneyInput
+                  value={formAmount}
+                  onChange={setFormAmount}
+                  placeholder="Điền số giá trị..."
+                  operators={formType === TransactionType.EXPENSE}
+                  className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-bold"
+                />
+              </div>
 
-                <div className="space-y-1 min-w-0">
-                  <label className="text-slate-400 block font-semibold">Mốc ngày sự kiện</label>
-                  <input
-                    type="date"
-                    value={formDate}
-                    onChange={(e) => setFormDate(e.target.value)}
-                    className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
-                  />
-                </div>
+              {/* Date — hàng riêng */}
+              <div className="space-y-1">
+                <label className="text-slate-400 block font-semibold">Mốc ngày sự kiện</label>
+                <input
+                  type="date"
+                  value={formDate}
+                  onChange={(e) => setFormDate(e.target.value)}
+                  className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
+                />
               </div>
 
               {/* Categorization and Wallet */}
