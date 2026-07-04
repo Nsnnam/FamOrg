@@ -96,15 +96,31 @@ export default function App() {
     const saved = localStorage.getItem("family_theme");
     return (saved as "light" | "dark") || "light";
   });
+  const isFirstThemeApply = useRef(true);
+  const themeFadeTimer = useRef<number | null>(null);
 
   useEffect(() => {
     localStorage.setItem("family_theme", theme);
-    if (theme === "dark") {
-      document.documentElement.classList.add("dark");
+    const root = document.documentElement;
+    const applyTheme = () => root.classList.toggle("dark", theme === "dark");
+
+    if (isFirstThemeApply.current) {
+      // Lần đầu (tải trang): áp dụng ngay, không cross-fade để tránh nháy
+      isFirstThemeApply.current = false;
+      applyTheme();
     } else {
-      document.documentElement.classList.remove("dark");
+      // Người dùng đổi theme: bật cross-fade màu ~0.3s cho mượt, không giật
+      root.classList.add("theme-transition");
+      void root.offsetWidth; // prime: chốt transition trên màu hiện tại trước khi đổi biến
+      applyTheme();
+      if (themeFadeTimer.current) clearTimeout(themeFadeTimer.current);
+      themeFadeTimer.current = window.setTimeout(() => {
+        root.classList.remove("theme-transition");
+        themeFadeTimer.current = null;
+      }, 340);
     }
-    // Keep the browser/PWA chrome color in sync with the active theme
+
+    // Đồng bộ màu thanh trình duyệt/PWA theo theme
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", theme === "dark" ? "#0d121f" : "#f8fafc");
   }, [theme]);
