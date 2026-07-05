@@ -69,6 +69,7 @@ import { Settings } from "./components/Settings.js";
 import { ServerMonitor } from "./components/ServerMonitor.js";
 import { useModalA11y } from "./hooks/useModalA11y.js";
 import { reloadOnce, scheduleReloadFallback } from "./utils/appReload.js";
+import { DEFAULT_VN_LOCATION, findVnLocation } from "./utils/vnLocations.js";
 import { motion, AnimatePresence } from "motion/react";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
@@ -351,6 +352,7 @@ export default function App() {
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
   const [backups, setBackups] = useState<any[]>([]);
   const [widgets, setWidgets] = useState<any>(null);
+  const [weatherLoc, setWeatherLoc] = useState<string>(DEFAULT_VN_LOCATION.code);
   const [appVersion, setAppVersion] = useState<string>("");
 
   // Notifications modal control
@@ -622,12 +624,19 @@ export default function App() {
     }
   };
 
-  const fetchWidgets = async () => {
+  // Địa phương thời tiết lưu riêng theo từng user (localStorage, không đụng DB).
+  const weatherLocKey = (uid: string) => `weather_loc_${uid}`;
+
+  const fetchWidgets = async (locOverride?: string) => {
     if (!currentUser) return;
     try {
+      // Đọc địa phương của user (ưu tiên override khi vừa đổi để tránh trễ state).
+      const code = locOverride ?? localStorage.getItem(weatherLocKey(currentUser.id)) ?? DEFAULT_VN_LOCATION.code;
+      const loc = findVnLocation(code);
+      const geoQuery = `?lat=${loc.lat}&lon=${loc.lon}&city=${encodeURIComponent(loc.name)}`;
       // Lấy giá hiện tại + lịch sử 7 ngày (cho sparkline tăng trưởng ở Tổng quan)
       const [res, histRes] = await Promise.all([
-        fetch("/api/widgets/overview", { headers: getAuthHeader() }),
+        fetch(`/api/widgets/overview${geoQuery}`, { headers: getAuthHeader() }),
         fetch("/api/widgets/history?days=7", { headers: getAuthHeader() })
       ]);
       if (res.ok) {
@@ -638,6 +647,14 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  // Người dùng đổi địa phương thời tiết: lưu riêng theo user + lấy lại widget ngay.
+  const handleChangeWeatherLoc = (code: string) => {
+    if (!currentUser) return;
+    setWeatherLoc(code);
+    localStorage.setItem(weatherLocKey(currentUser.id), code);
+    fetchWidgets(code);
   };
 
   // Dispatch fully unified refetch sequences
@@ -706,6 +723,9 @@ export default function App() {
       }
       return;
     }
+
+    // Nạp địa phương thời tiết đã lưu của user này (mỗi người một cài đặt riêng)
+    setWeatherLoc(localStorage.getItem(weatherLocKey(currentUser.id)) || DEFAULT_VN_LOCATION.code);
 
     // Refresh core states on login
     fetchAllData();
@@ -1757,6 +1777,8 @@ export default function App() {
                   transactions={transactions}
                   activityLogs={activityLogs}
                   widgets={widgets}
+                  weatherLoc={weatherLoc}
+                  onChangeWeatherLoc={handleChangeWeatherLoc}
                   onNavigate={(tab) => {
                     setActiveTab(tab);
                     // Also query log history if navigating to settings

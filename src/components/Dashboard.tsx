@@ -15,13 +15,22 @@ import {
   ArrowUpRight,
   Clock,
   AlertCircle,
-  Cake
+  Cake,
+  MapPin,
+  AlertTriangle,
+  Droplets,
+  Wind,
+  Sun,
+  CloudRain,
+  Waves
 } from "lucide-react";
 import { Task, FamilyPlan, Note, FinancialTransaction, User, TaskStatus, MarketHistoryPoint } from "../types.js";
 import { motion, useReducedMotion } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { QuickNudge } from "./QuickNudge.js";
 import { ShimmerLine, IconChip } from "./Lively.js";
+import { FancySelect } from "./FancySelect.js";
+import { VN_LOCATIONS } from "../utils/vnLocations.js";
 
 interface DashboardProps {
   currentUser: User;
@@ -32,6 +41,8 @@ interface DashboardProps {
   transactions: FinancialTransaction[];
   activityLogs: any[];
   widgets: any;
+  weatherLoc: string;
+  onChangeWeatherLoc: (code: string) => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -57,6 +68,18 @@ const WEATHER_CODES: Record<number, { label: string; icon: string }> = {
   99: { label: "Dông mạnh", icon: "⛈️" }
 };
 const describeWeather = (code: number) => WEATHER_CODES[code] || { label: "—", icon: "🌡️" };
+
+// "cách đây" gọn gàng cho mốc thời gian động đất (nhận epoch ms từ USGS).
+const timeAgoVi = (ms: number | null | undefined): string => {
+  if (!ms) return "";
+  const diff = Date.now() - ms;
+  const mins = Math.round(diff / 60000);
+  if (mins < 60) return `${Math.max(1, mins)} phút trước`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} giờ trước`;
+  const days = Math.round(hours / 24);
+  return `${days} ngày trước`;
+};
 
 // Aurora look of the hero banner per time of day. Blob tints are fixed accents
 // at low opacity so they read as soft pastels on the light theme and as glow on dark.
@@ -155,6 +178,8 @@ export function Dashboard({
   transactions,
   activityLogs,
   widgets,
+  weatherLoc,
+  onChangeWeatherLoc,
   onNavigate
 }: DashboardProps) {
   const reduceMotion = useReducedMotion();
@@ -353,13 +378,34 @@ export function Dashboard({
           const w = widgets?.weather;
           const hasW = !!w?.current;
           const cur = hasW ? describeWeather(w.current.weather_code) : null;
+          const uvToday = hasW && w.daily?.uv_index_max ? w.daily.uv_index_max[0] : null;
+          const rainToday = hasW && w.daily?.precipitation_probability_max ? w.daily.precipitation_probability_max[0] : null;
+          const storm = w?.stormRisk;
+          const quakes = widgets?.quakes;
+          const quakeList: any[] = quakes?.events || [];
+          const stormStyle = storm?.level === "warning"
+            ? "bg-rose-500/15 border-rose-500/40 text-rose-300"
+            : "bg-amber-500/15 border-amber-500/40 text-amber-300";
           return (
             <div className="relative overflow-hidden lg:col-span-1 bg-gradient-to-br from-sky-500/15 via-slate-900 to-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col min-h-[188px]">
               <ShimmerLine via="via-sky-500/60" />
               <div aria-hidden className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-sky-500/10 blur-2xl" />
+
+              {/* Bộ chọn địa phương — mỗi người một cài đặt riêng */}
+              <div className="relative flex items-center gap-1.5 mb-2">
+                <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <div className="min-w-0 flex-1 max-w-[190px]">
+                  <FancySelect
+                    value={weatherLoc}
+                    onChange={onChangeWeatherLoc}
+                    ariaLabel="Chọn địa phương xem thời tiết"
+                    options={VN_LOCATIONS.map(l => ({ value: l.code, label: l.name }))}
+                  />
+                </div>
+              </div>
+
               <div className="relative flex items-start justify-between">
                 <div className="min-w-0">
-                  <p className="text-xs text-slate-400 font-semibold truncate">{hasW ? w.city : "Thời tiết"}</p>
                   {hasW ? (
                     <p className="text-3xl font-extrabold text-slate-100 mt-1">
                       <AnimatedNumber value={w.current.temperature_2m} format={(n) => `${Math.round(n)}°C`} />
@@ -375,16 +421,32 @@ export function Dashboard({
                 </div>
                 <span className="text-4xl leading-none">{hasW ? cur!.icon : "🌡️"}</span>
               </div>
-              <div className="relative flex items-center gap-4 mt-3 pt-3 border-t border-slate-800/60 text-[11px] text-slate-400">
+
+              {/* Chi tiết: độ ẩm, gió giật, tia UV, xác suất mưa */}
+              <div className="relative grid grid-cols-2 gap-1.5 mt-3 pt-3 border-t border-slate-800/60 text-[11px] text-slate-300">
                 {hasW ? (
                   <>
-                    <span>💧 Độ ẩm {w.current.relative_humidity_2m}%</span>
-                    <span>💨 {Math.round(w.current.wind_speed_10m)} km/h</span>
+                    <span className="inline-flex items-center gap-1.5"><Droplets className="w-3.5 h-3.5 text-sky-400 shrink-0" />Độ ẩm {w.current.relative_humidity_2m}%</span>
+                    <span className="inline-flex items-center gap-1.5"><Wind className="w-3.5 h-3.5 text-cyan-400 shrink-0" />Giật {Math.round(w.current.wind_gusts_10m ?? w.current.wind_speed_10m)} km/h</span>
+                    {uvToday != null && <span className="inline-flex items-center gap-1.5"><Sun className="w-3.5 h-3.5 text-amber-400 shrink-0" />UV {Math.round(uvToday)}</span>}
+                    {rainToday != null && <span className="inline-flex items-center gap-1.5"><CloudRain className="w-3.5 h-3.5 text-indigo-400 shrink-0" />Mưa {Math.round(rainToday)}%</span>}
                   </>
                 ) : (
-                  <Skeleton className="h-3 w-40" />
+                  <Skeleton className="h-3 w-40 col-span-2" />
                 )}
               </div>
+
+              {/* Cảnh báo nguy cơ giông bão (ước lượng từ gió giật + mã dông) */}
+              {hasW && storm && storm.level !== "none" && (
+                <div className={`relative mt-3 rounded-lg border px-2.5 py-2 flex items-start gap-2 ${stormStyle}`}>
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold leading-tight">{storm.label}</p>
+                    {storm.detail && <p className="text-[10px] opacity-80 leading-tight mt-0.5">{storm.detail} · ước lượng</p>}
+                  </div>
+                </div>
+              )}
+
               <div className="relative flex justify-between mt-3 gap-2">
                 {hasW && w.daily?.time ? (
                   w.daily.time.slice(0, 3).map((d: string, i: number) => {
@@ -406,6 +468,26 @@ export function Dashboard({
                       <Skeleton className="h-2 w-9" />
                     </div>
                   ))
+                )}
+              </div>
+
+              {/* Động đất gần đây trong bán kính quanh địa phương (USGS) */}
+              <div className="relative mt-3 pt-3 border-t border-slate-800/60">
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase tracking-wide mb-1.5">
+                  <Waves className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                  Động đất gần đây {quakes?.radiusKm ? `(bán kính ${quakes.radiusKm}km)` : ""}
+                </div>
+                {quakeList.length > 0 ? (
+                  <div className="space-y-1">
+                    {quakeList.slice(0, 2).map((q, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[11px]">
+                        <span className={`font-mono font-bold shrink-0 ${q.mag >= 5 ? "text-rose-400" : q.mag >= 4 ? "text-amber-400" : "text-slate-300"}`}>M{Number(q.mag).toFixed(1)}</span>
+                        <span className="text-slate-400 truncate min-w-0 flex-1">{q.distanceKm != null ? `cách ~${q.distanceKm}km` : "gần đây"} · {timeAgoVi(q.time)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500">Không có động đất đáng kể gần đây.</p>
                 )}
               </div>
             </div>

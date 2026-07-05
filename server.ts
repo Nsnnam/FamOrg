@@ -2032,7 +2032,7 @@ app.post("/api/admin/backups/:id/restore", requireAuth, requireRole([UserRole.AD
 // Server-side proxy with caching: avoids CORS, respects rate limits, and keeps
 // serving the last known value if an upstream call fails.
 
-// Weather location (TP. Hồ Chí Minh). Change here to relocate.
+// Toạ độ mặc định (TP. Hồ Chí Minh) khi client không gửi kèm địa phương.
 const WEATHER_LAT = 10.7769;
 const WEATHER_LON = 106.7009;
 const WEATHER_CITY = "TP. Hồ Chí Minh";
@@ -2052,12 +2052,66 @@ async function cachedFetch(key: string, ttlMs: number, fetcher: () => Promise<an
   }
 }
 
-async function fetchWeather() {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=Asia%2FHo_Chi_Minh&forecast_days=3`;
+// Suy ra "nguy cơ giông bão" (ước lượng, KHÔNG phải đường đi bão chính thức) từ
+// mã thời tiết dông + gió giật hiện tại/tối đa trong các ngày dự báo. Thang gió
+// tham chiếu cấp bão VN: cấp 8 (bão) ≈ 62 km/h, cấp 10 ≈ 89 km/h.
+function deriveStormRisk(current: any, daily: any): any {
+  const codeNow = Number(current?.weather_code);
+  const gustNow = Number(current?.wind_gusts_10m) || 0;
+  const gustsMax: number[] = Array.isArray(daily?.wind_gusts_10m_max) ? daily.wind_gusts_10m_max.map(Number) : [];
+  const rainProb: number[] = Array.isArray(daily?.precipitation_probability_max) ? daily.precipitation_probability_max.map(Number) : [];
+  const peakGust = Math.max(gustNow, ...(gustsMax.length ? gustsMax : [0]));
+  const peakRain = rainProb.length ? Math.max(...rainProb) : 0;
+  const thunderNow = [95, 96, 99].includes(codeNow);
+
+  if (peakGust >= 89) {
+    return { level: "warning", label: "Cảnh báo gió bão", detail: `Gió giật tới ~${Math.round(peakGust)} km/h (cấp 10+)`, gust: Math.round(peakGust) };
+  }
+  if (peakGust >= 62) {
+    return { level: "watch", label: "Đề phòng gió mạnh", detail: `Gió giật tới ~${Math.round(peakGust)} km/h (cấp 8-9)`, gust: Math.round(peakGust) };
+  }
+  if (thunderNow || (peakRain >= 80 && peakGust >= 45)) {
+    return { level: "watch", label: "Đề phòng giông", detail: thunderNow ? "Đang có dông gần khu vực" : `Mưa lớn khả năng cao (${Math.round(peakRain)}%)`, gust: Math.round(peakGust) };
+  }
+  return { level: "none", label: "Không có cảnh báo giông bão", detail: "", gust: Math.round(peakGust) };
+}
+
+async function fetchWeather(lat: number, lon: number, city: string) {
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_probability_max,wind_gusts_10m_max&timezone=Asia%2FHo_Chi_Minh&forecast_days=3`;
   const r = await fetch(url);
   if (!r.ok) throw new Error(`weather HTTP ${r.status}`);
   const j: any = await r.json();
-  return { city: WEATHER_CITY, current: j.current, daily: j.daily };
+  return { city, current: j.current, daily: j.daily, stormRisk: deriveStormRisk(j.current, j.daily) };
+}
+
+// Khoảng cách Haversine (km) giữa hai toạ độ.
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Động đất gần đây trong bán kính quanh địa phương (USGS, miễn phí, không cần key).
+async function fetchQuakes(lat: number, lon: number) {
+  const RADIUS_KM = 500;
+  const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const url = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${lat}&longitude=${lon}&maxradiuskm=${RADIUS_KM}&starttime=${start}&minmagnitude=2.5&orderby=time&limit=5`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`quakes HTTP ${r.status}`);
+  const j: any = await r.json();
+  const events = (j.features || []).map((f: any) => {
+    const [qlon, qlat] = f.geometry?.coordinates || [];
+    return {
+      mag: f.properties?.mag ?? null,
+      place: f.properties?.place ?? "",
+      time: f.properties?.time ?? null,
+      distanceKm: (typeof qlat === "number" && typeof qlon === "number") ? Math.round(haversineKm(lat, lon, qlat, qlon)) : null
+    };
+  });
+  return { radiusKm: RADIUS_KM, events };
 }
 
 async function fetchCrypto() {
@@ -2156,11 +2210,22 @@ async function fetchGold(usdVnd: number | null) {
 }
 
 app.get("/api/widgets/overview", requireAuth, async (req: AuthRequest, res: Response) => {
-  const weather = await cachedFetch("weather", 15 * 60 * 1000, fetchWeather);
+  // Toạ độ do client gửi theo địa phương từng người; fallback về TP.HCM.
+  const parseCoord = (v: any, min: number, max: number, fallback: number): number => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= min && n <= max ? n : fallback;
+  };
+  const lat = parseCoord(req.query.lat, 8, 24, WEATHER_LAT);   // giới hạn quanh VN
+  const lon = parseCoord(req.query.lon, 102, 110, WEATHER_LON);
+  const city = typeof req.query.city === "string" && req.query.city.trim() ? req.query.city.trim().slice(0, 60) : WEATHER_CITY;
+  const geoKey = `${lat.toFixed(3)}_${lon.toFixed(3)}`;
+
+  const weather = await cachedFetch(`weather_${geoKey}`, 15 * 60 * 1000, () => fetchWeather(lat, lon, city));
+  const quakes = await cachedFetch(`quakes_${geoKey}`, 30 * 60 * 1000, () => fetchQuakes(lat, lon));
   const cryptoPrices = await cachedFetch("crypto", 5 * 60 * 1000, fetchCrypto);
   const fx = await cachedFetch("fx", 30 * 60 * 1000, fetchFx);
   const gold = await cachedFetch("gold", 30 * 60 * 1000, () => fetchGold(fx?.usdVnd ?? null));
-  res.json({ weather, crypto: cryptoPrices, fx, gold });
+  res.json({ weather, quakes, crypto: cryptoPrices, fx, gold });
 });
 
 // --- LỊCH SỬ GIÁ THỊ TRƯỜNG (sparkline BTC/ETH/Vàng/USD ở Tổng quan) ---
