@@ -304,6 +304,15 @@ export default function App() {
   const [settingsTabRequest, setSettingsTabRequest] = useState<{ tab: SettingsTab; seq: number }>({ tab: "profile", seq: 0 });
   // Sub-tab đang yêu cầu bên trong "Sức khỏe gia đình" (deep-link từ thông báo thuốc → mục Lịch thuốc)
   const [healthSectionRequest, setHealthSectionRequest] = useState<{ section: "growth" | "vaccination" | "medication"; seq: number }>({ section: "growth", seq: 0 });
+  // Deep-link mở chi tiết một sự kiện lịch (bấm từ "Sự kiện sắp diễn ra" ở Tổng quan → tab Lập lịch mở popup)
+  const [planViewRequest, setPlanViewRequest] = useState<{ id: string; seq: number }>({ id: "", seq: 0 });
+  const handleViewPlan = (id: string) => {
+    setPlanViewRequest(prev => ({ id, seq: prev.seq + 1 }));
+    setActiveTab("plans");
+  };
+  // Sau khi Schedules đã mở popup, xoá id để lần điều hướng thường vào tab Lập lịch
+  // (không phải do bấm sự kiện) không bị tự mở lại popup cũ.
+  const handleConsumeViewPlan = () => setPlanViewRequest(prev => ({ ...prev, id: "" }));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
 
@@ -1777,6 +1786,7 @@ export default function App() {
                   transactions={transactions}
                   activityLogs={activityLogs}
                   widgets={widgets}
+                  onViewPlan={handleViewPlan}
                   onNavigate={(tab) => {
                     setActiveTab(tab);
                     // Also query log history if navigating to settings
@@ -1800,12 +1810,15 @@ export default function App() {
               )}
 
               {activeTab === "plans" && (
-                <Schedules 
+                <Schedules
                   currentUser={currentUser}
                   users={users}
                   plans={plans}
                   onSavePlan={handleSavePlan}
                   onDeletePlan={handleDeletePlan}
+                  requestedViewPlanId={planViewRequest.id}
+                  requestedViewPlanSeq={planViewRequest.seq}
+                  onConsumeViewPlan={handleConsumeViewPlan}
                 />
               )}
 

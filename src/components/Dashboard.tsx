@@ -40,6 +40,7 @@ interface DashboardProps {
   transactions: FinancialTransaction[];
   activityLogs: any[];
   widgets: any;
+  onViewPlan: (planId: string) => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -175,6 +176,7 @@ export function Dashboard({
   transactions,
   activityLogs,
   widgets,
+  onViewPlan,
   onNavigate
 }: DashboardProps) {
   const reduceMotion = useReducedMotion();
@@ -242,7 +244,7 @@ export function Dashboard({
     const recurLabel = (t?: string) => t === "daily" ? "Hằng ngày" : t === "weekly" ? "Hằng tuần" : t === "monthly" ? "Hằng tháng" : "";
 
     type UpcomingItem = {
-      key: string; title: string; description: string; color: string;
+      key: string; planId: string; title: string; description: string; color: string;
       date: Date; dateLabel: string; timeLabel: string;
       isHoliday: boolean; recur: string;
     };
@@ -258,6 +260,7 @@ export function Dashboard({
         if (day < startOfToday || day > windowEnd) return;
         items.push({
           key: `${plan.id}-${day.getTime()}`,
+          planId: plan.id,
           title: plan.title,
           description: plan.description || "",
           color: plan.color || "sky",
@@ -299,6 +302,7 @@ export function Dashboard({
           if (isNaN(hd.getTime()) || hd < startOfToday || hd > windowEnd) return;
           items.push({
             key: `holiday-${h.date}`,
+            planId: "",
             title: h.title,
             description: h.meaning || "",
             color: "holiday",
@@ -790,10 +794,16 @@ export function Dashboard({
                     rose: "border-l-4 border-rose-500 bg-rose-500/5",
                     holiday: "border-l-4 border-amber-500 bg-amber-500/10"
                   };
+                  const clickable = !item.isHoliday && !!item.planId;
                   return (
                     <div
                       key={item.key}
-                      className={`p-3 rounded-xl flex items-center justify-between ${colorMap[item.color] || "border-l-4 border-slate-600 bg-slate-800/10"} hover:bg-slate-800/30 hover:translate-x-1 transition-all duration-300`}
+                      onClick={clickable ? () => onViewPlan(item.planId) : undefined}
+                      role={clickable ? "button" : undefined}
+                      tabIndex={clickable ? 0 : undefined}
+                      onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onViewPlan(item.planId); } } : undefined}
+                      title={clickable ? "Xem chi tiết sự kiện" : undefined}
+                      className={`p-3 rounded-xl flex items-center justify-between ${colorMap[item.color] || "border-l-4 border-slate-600 bg-slate-800/10"} hover:bg-slate-800/30 hover:translate-x-1 transition-all duration-300 ${clickable ? "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40" : ""}`}
                     >
                       <div className="space-y-0.5 max-w-[70%] min-w-0">
                         <span className="text-sm font-semibold text-slate-200 flex items-center gap-1.5 min-w-0">

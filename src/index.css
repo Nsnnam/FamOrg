@@ -170,4 +170,30 @@ input::placeholder, textarea::placeholder {
   background: var(--slate-500);
 }
 
+/* Thanh cuộn MẢNH, bo tròn, theme-aware cho các panel cuộn bên trong
+   (Sự kiện sắp diễn ra, Nhật ký gia đình, dropdown…). Mẹo border trong suốt +
+   background-clip: content-box tạo khoảng đệm quanh thumb → nhìn thanh thoát,
+   không thô như scrollbar mặc định. */
+.scrollbar-thin {
+  scrollbar-width: thin;                          /* Firefox */
+  scrollbar-color: var(--slate-800) transparent;  /* Firefox: thumb | track */
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--slate-800);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--slate-500);
+  background-clip: content-box;
+}
+
 
