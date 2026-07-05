@@ -23,6 +23,8 @@ const ALLOWED_CATEGORIES = new Set(["avatars", "assets", "receipts", "documents"
 
 // Reject anything larger than this per single image (after client-side optimize).
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+// PDF không được optimize phía client nên cho trần riêng, rộng hơn.
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 const MIME_EXT: Record<string, string> = {
   "image/png": "png",
@@ -30,10 +32,11 @@ const MIME_EXT: Record<string, string> = {
   "image/jpg": "jpg",
   "image/webp": "webp",
   "image/gif": "gif",
-  "image/svg+xml": "svg"
+  "image/svg+xml": "svg",
+  "application/pdf": "pdf"
 };
 
-const DATA_URL_RE = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i;
+const DATA_URL_RE = /^data:(image\/[a-z0-9.+-]+|application\/pdf);base64,(.+)$/i;
 
 function sanitizeSegment(value: unknown): string {
   return String(value || "").replace(/[^a-z0-9_-]/gi, "").slice(0, 40);
@@ -62,7 +65,7 @@ export function saveDataUrlToFile(dataUrl: unknown, category: string, subfolder?
   }
   const match = dataUrl.match(DATA_URL_RE);
   if (!match) {
-    throw new Error("Ảnh phải ở định dạng data:image hợp lệ.");
+    throw new Error("Tệp phải là ảnh (data:image) hoặc PDF (data:application/pdf) hợp lệ.");
   }
   const mime = match[1].toLowerCase();
   const ext = MIME_EXT[mime];
@@ -71,9 +74,10 @@ export function saveDataUrlToFile(dataUrl: unknown, category: string, subfolder?
   }
 
   const buffer = Buffer.from(match[2], "base64");
-  if (buffer.length === 0) throw new Error("Ảnh rỗng hoặc hỏng.");
-  if (buffer.length > MAX_IMAGE_BYTES) {
-    throw new Error("Ảnh quá lớn. Vui lòng để app tối ưu ảnh trước khi lưu.");
+  if (buffer.length === 0) throw new Error("Tệp rỗng hoặc hỏng.");
+  const maxBytes = ext === "pdf" ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
+  if (buffer.length > maxBytes) {
+    throw new Error(ext === "pdf" ? "PDF quá lớn (tối đa 10MB)." : "Ảnh quá lớn. Vui lòng để app tối ưu ảnh trước khi lưu.");
   }
 
   const sub = sanitizeSegment(subfolder);

@@ -349,6 +349,50 @@ export function Dashboard({
       .sort((a, b) => a.daysUntil - b.daysUntil);
   }, [users]);
 
+  // 6. Đếm ngược sự kiện lớn: ngày lễ sắp tới + sinh nhật gần nhất + sự kiện
+  // "Quan trọng" (một lần, chưa qua). Hiển thị 4 mục gần nhất dạng "Còn X ngày".
+  const countdowns = useMemo(() => {
+    const today = new Date();
+    const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const daysTo = (d: Date) => Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - todayMid) / 86400000);
+    const fmt = (d: Date) => d.toLocaleDateString("vi-VN", { day: "numeric", month: "numeric" });
+
+    type CountdownItem = { key: string; icon: string; title: string; daysUntil: number; dateLabel: string; accent: string };
+    const items: CountdownItem[] = [];
+
+    // Ngày lễ trong ~13 tháng tới (đảm bảo luôn bắt được Tết kế tiếp)
+    for (let off = 0; off < 13; off++) {
+      const m = new Date(today.getFullYear(), today.getMonth() + off, 1);
+      getVietnamHolidaysForMonth(m.getFullYear(), m.getMonth()).forEach(h => {
+        const hd = new Date(`${h.date}T00:00:00`);
+        const days = daysTo(hd);
+        if (isNaN(hd.getTime()) || days < 0) return;
+        items.push({ key: `h-${h.date}`, icon: "🎉", title: h.shortTitle, daysUntil: days, dateLabel: fmt(hd), accent: "amber" });
+      });
+    }
+
+    // Sinh nhật gần nhất của mỗi thành viên (không giới hạn 30 ngày)
+    users.forEach(u => {
+      if (!u.dateOfBirth) return;
+      const dob = new Date(u.dateOfBirth);
+      if (isNaN(dob.getTime())) return;
+      let bd = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+      if (bd.getTime() < todayMid) bd = new Date(today.getFullYear() + 1, dob.getMonth(), dob.getDate());
+      items.push({ key: `b-${u.id}`, icon: "🎂", title: `Sinh nhật ${u.fullName}`, daysUntil: daysTo(bd), dateLabel: fmt(bd), accent: "pink" });
+    });
+
+    // Sự kiện đánh dấu "Quan trọng" (một lần) chưa diễn ra
+    plans.forEach(p => {
+      if (p.color !== "rose" || p.isRecurring) return;
+      const d = new Date(`${p.startDate.slice(0, 10)}T00:00:00`);
+      const days = daysTo(d);
+      if (isNaN(d.getTime()) || days < 0) return;
+      items.push({ key: `p-${p.id}`, icon: "⭐", title: p.title, daysUntil: days, dateLabel: fmt(d), accent: "rose" });
+    });
+
+    return items.sort((a, b) => a.daysUntil - b.daysUntil).slice(0, 4);
+  }, [users, plans]);
+
   // Time of day drives both the greeting and the hero's aurora palette.
   const aurora = useMemo(() => {
     const hours = new Date().getHours();
@@ -439,6 +483,32 @@ export function Dashboard({
       <motion.div {...fadeUp(0.06)}>
         <QuickNudge currentUser={currentUser} users={users} />
       </motion.div>
+
+      {/* Đếm ngược sự kiện lớn (lễ / sinh nhật / sự kiện Quan trọng) */}
+      {countdowns.length > 0 && (
+        <motion.div {...fadeUp(0.09)} className="grid grid-cols-2 lg:grid-cols-4 gap-3" id="dashboard-countdowns">
+          {countdowns.map(c => {
+            const accentMap: Record<string, { ring: string; text: string; bg: string }> = {
+              amber: { ring: "border-amber-500/25", text: "text-amber-400", bg: "from-amber-500/10" },
+              pink: { ring: "border-pink-500/25", text: "text-pink-400", bg: "from-pink-500/10" },
+              rose: { ring: "border-rose-500/25", text: "text-rose-400", bg: "from-rose-500/10" }
+            };
+            const a = accentMap[c.accent] || accentMap.amber;
+            return (
+              <div key={c.key} className={`relative overflow-hidden bg-gradient-to-br ${a.bg} via-slate-900 to-slate-900 border ${a.ring} rounded-2xl px-3.5 py-3 flex items-center gap-3 shadow-md`}>
+                <span className="text-2xl leading-none shrink-0">{c.icon}</span>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-slate-300 truncate" title={c.title}>{c.title}</p>
+                  <p className={`text-sm font-extrabold ${a.text} leading-tight`}>
+                    {c.daysUntil === 0 ? "Hôm nay!" : `Còn ${c.daysUntil} ngày`}
+                    <span className="text-[10px] font-mono font-medium text-slate-500 ml-1.5">{c.dateLabel}</span>
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </motion.div>
+      )}
 
       {/* Weather + Markets widgets — always rendered (skeleton while loading) to avoid layout shift */}
       <motion.div {...fadeUp(0.12)} className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
