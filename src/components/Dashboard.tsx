@@ -29,6 +29,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { QuickNudge } from "./QuickNudge.js";
 import { ShimmerLine, IconChip } from "./Lively.js";
+import { getVietnamHolidaysForMonth } from "../utils/vietnamHolidays.js";
 
 interface DashboardProps {
   currentUser: User;
@@ -229,17 +230,88 @@ export function Dashboard({
   const incomePct = financeTotal > 0 ? (financialSummary.income / financeTotal) * 100 : 0;
   const expensePct = financeTotal > 0 ? (financialSummary.expense / financeTotal) * 100 : 0;
 
-  // 3. Upcoming schedule events (next 20 days)
+  // 3. Sự kiện sắp diễn ra (30 ngày tới) — mở rộng cả sự kiện LẶP LẠI theo đúng
+  // logic lịch (hằng ngày/tuần/tháng) và gộp thêm NGÀY LỄ, để khớp với lịch trình.
   const upcomingPlans = useMemo(() => {
+    const WINDOW_DAYS = 30;
     const now = new Date();
-    const threshold = new Date(Date.now() + 86400000 * 20);
-    return plans
-      .filter(p => {
-        const pDate = new Date(p.startDate.replace(" ", "T"));
-        return pDate >= now && pDate <= threshold;
-      })
-      .sort((a, b) => a.startDate.localeCompare(b.startDate))
-      .slice(0, 8);
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const windowEnd = new Date(startOfToday.getTime() + 86400000 * WINDOW_DAYS);
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const fmtDate = (d: Date) => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
+    const recurLabel = (t?: string) => t === "daily" ? "Hằng ngày" : t === "weekly" ? "Hằng tuần" : t === "monthly" ? "Hằng tháng" : "";
+
+    type UpcomingItem = {
+      key: string; title: string; description: string; color: string;
+      date: Date; dateLabel: string; timeLabel: string;
+      isHoliday: boolean; recur: string;
+    };
+    const items: UpcomingItem[] = [];
+
+    plans.forEach(plan => {
+      const start = new Date(`${plan.startDate.slice(0, 10)}T00:00:00`);
+      if (isNaN(start.getTime())) return;
+      const timeLabel = (plan.startDate.split(" ")[1] || "").slice(0, 5);
+      const recur = plan.isRecurring && plan.recurrenceType && plan.recurrenceType !== "none" ? recurLabel(plan.recurrenceType) : "";
+
+      const pushOcc = (day: Date) => {
+        if (day < startOfToday || day > windowEnd) return;
+        items.push({
+          key: `${plan.id}-${day.getTime()}`,
+          title: plan.title,
+          description: plan.description || "",
+          color: plan.color || "sky",
+          date: day, dateLabel: fmtDate(day), timeLabel,
+          isHoliday: false, recur
+        });
+      };
+
+      if (recur) {
+        const endParsed = new Date(`${(plan.endDate || plan.startDate).slice(0, 10)}T00:00:00`);
+        const last = isNaN(endParsed.getTime()) || endParsed < start ? start : endParsed;
+        const cursor = new Date(Math.max(startOfToday.getTime(), start.getTime()));
+        let guard = 0;
+        while (cursor <= windowEnd && cursor <= last && guard < 400) {
+          let matches = false;
+          if (plan.recurrenceType === "daily") matches = true;
+          else if (plan.recurrenceType === "weekly") {
+            const weekdays = (plan.recurrenceWeekdays && plan.recurrenceWeekdays.length > 0) ? plan.recurrenceWeekdays : [start.getDay()];
+            matches = weekdays.includes(cursor.getDay());
+          } else if (plan.recurrenceType === "monthly") matches = cursor.getDate() === start.getDate();
+          if (matches) pushOcc(new Date(cursor));
+          cursor.setDate(cursor.getDate() + 1);
+          guard++;
+        }
+      } else {
+        pushOcc(start);
+      }
+    });
+
+    // Ngày lễ trong khoảng cửa sổ (quét các tháng mà cửa sổ trải qua)
+    const seenMonth = new Set<string>();
+    const cm = new Date(startOfToday);
+    while (cm <= windowEnd) {
+      const mk = `${cm.getFullYear()}-${cm.getMonth()}`;
+      if (!seenMonth.has(mk)) {
+        seenMonth.add(mk);
+        getVietnamHolidaysForMonth(cm.getFullYear(), cm.getMonth()).forEach(h => {
+          const hd = new Date(`${h.date}T00:00:00`);
+          if (isNaN(hd.getTime()) || hd < startOfToday || hd > windowEnd) return;
+          items.push({
+            key: `holiday-${h.date}`,
+            title: h.title,
+            description: h.meaning || "",
+            color: "holiday",
+            date: hd, dateLabel: fmtDate(hd), timeLabel: "",
+            isHoliday: true, recur: ""
+          });
+        });
+      }
+      cm.setMonth(cm.getMonth() + 1);
+      cm.setDate(1);
+    }
+
+    return items.sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [plans]);
 
   // 4. Pinned notes
@@ -669,7 +741,7 @@ export function Dashboard({
           <ShimmerLine via="via-amber-500/50" />
           <div aria-hidden className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-amber-500/10 blur-2xl group-hover:bg-amber-500/20 transition-colors duration-500" />
           <div className="relative flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-medium">Lịch 20 ngày tới</span>
+            <span className="text-slate-400 text-xs font-medium">Lịch 30 ngày tới</span>
             <div className="bg-gradient-to-br from-amber-500/25 to-amber-500/5 ring-1 ring-amber-500/20 p-2 rounded-xl text-amber-400 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
               <Calendar className="w-5 h-5" />
             </div>
@@ -706,30 +778,34 @@ export function Dashboard({
 
             {upcomingPlans.length === 0 ? (
               <div className="bg-slate-950/40 border border-dashed border-slate-800 p-6 rounded-xl text-center">
-                <p className="text-sm text-slate-500">Không có kế hoạch quan trọng nào trong 20 ngày tới.</p>
+                <p className="text-sm text-slate-500">Không có sự kiện nào trong 30 ngày tới.</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingPlans.map((plan) => {
-                  const sDate = plan.startDate.split(" ");
+                {upcomingPlans.slice(0, 12).map((item) => {
                   const colorMap: any = {
                     emerald: "border-l-4 border-emerald-500 bg-emerald-500/5",
                     sky: "border-l-4 border-sky-500 bg-sky-500/5",
                     amber: "border-l-4 border-amber-500 bg-amber-500/5",
-                    rose: "border-l-4 border-rose-500 bg-rose-500/5"
+                    rose: "border-l-4 border-rose-500 bg-rose-500/5",
+                    holiday: "border-l-4 border-amber-500 bg-amber-500/10"
                   };
                   return (
                     <div
-                      key={plan.id}
-                      className={`p-3 rounded-xl flex items-center justify-between ${colorMap[plan.color] || "border-l-4 border-slate-600 bg-slate-800/10"} hover:bg-slate-800/30 hover:translate-x-1 transition-all duration-300`}
+                      key={item.key}
+                      className={`p-3 rounded-xl flex items-center justify-between ${colorMap[item.color] || "border-l-4 border-slate-600 bg-slate-800/10"} hover:bg-slate-800/30 hover:translate-x-1 transition-all duration-300`}
                     >
-                      <div className="space-y-0.5 max-w-[70%]">
-                        <span className="text-sm font-semibold text-slate-200 block truncate">{plan.title}</span>
-                        <p className="text-xs text-slate-500 truncate">{plan.description || "Không có miêu tả"}</p>
+                      <div className="space-y-0.5 max-w-[70%] min-w-0">
+                        <span className="text-sm font-semibold text-slate-200 flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{item.title}</span>
+                          {item.isHoliday && <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/25">Lễ</span>}
+                          {item.recur && <span className="shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">{item.recur}</span>}
+                        </span>
+                        <p className="text-xs text-slate-500 truncate">{item.description || "Không có miêu tả"}</p>
                       </div>
                       <div className="text-right flex flex-col justify-center shrink-0">
-                        <span className="text-xs font-semibold text-slate-300 font-mono">{sDate[0]}</span>
-                        <span className="text-[10px] font-mono text-amber-400/80">{sDate[1]}</span>
+                        <span className="text-xs font-semibold text-slate-300 font-mono">{item.dateLabel}</span>
+                        <span className="text-[10px] font-mono text-amber-400/80">{item.isHoliday ? "Cả ngày" : item.timeLabel}</span>
                       </div>
                     </div>
                   );
