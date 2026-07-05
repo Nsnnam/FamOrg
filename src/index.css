@@ -154,10 +154,18 @@ input::placeholder, textarea::placeholder {
   }
 }
 
-/* Set scrollbar style matching light/dark theme dynamics */
+/* ── THANH CUỘN: đồng bộ theme Sáng/Tối, bo tròn, thanh thoát ───────────────
+   Mặc định áp cho TOÀN bộ scroll (trang chính + mọi panel con) qua ::-webkit
+   và Firefox (scrollbar-width/color trên html). Mẹo `border trong suốt` +
+   `background-clip: content-box` tạo đệm quanh thumb → viên thuốc mảnh, không
+   thô. Biến thể: .scrollbar-thin (mảnh hơn), .scrollbar-none (ẩn hẳn). */
+html {
+  scrollbar-width: thin;                          /* Firefox */
+  scrollbar-color: var(--slate-800) transparent;  /* thumb | track */
+}
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -165,18 +173,21 @@ input::placeholder, textarea::placeholder {
 ::-webkit-scrollbar-thumb {
   background: var(--slate-800);
   border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--slate-500);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
-/* Thanh cuộn MẢNH, bo tròn, theme-aware cho các panel cuộn bên trong
-   (Sự kiện sắp diễn ra, Nhật ký gia đình, dropdown…). Mẹo border trong suốt +
-   background-clip: content-box tạo khoảng đệm quanh thumb → nhìn thanh thoát,
-   không thô như scrollbar mặc định. */
+/* Mảnh hơn cho panel con nhỏ (Sự kiện sắp diễn ra, Nhật ký, dropdown, danh sách…) */
 .scrollbar-thin {
   scrollbar-width: thin;                          /* Firefox */
-  scrollbar-color: var(--slate-800) transparent;  /* Firefox: thumb | track */
+  scrollbar-color: var(--slate-800) transparent;  /* thumb | track */
 }
 .scrollbar-thin::-webkit-scrollbar {
   width: 8px;
@@ -194,6 +205,17 @@ input::placeholder, textarea::placeholder {
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: var(--slate-500);
   background-clip: content-box;
+}
+
+/* Ẩn hẳn thanh cuộn nhưng vẫn cuộn được (bánh xe chọn giờ/ngày, hàng chip ngang) */
+.scrollbar-none {
+  scrollbar-width: none;        /* Firefox */
+  -ms-overflow-style: none;     /* IE/Edge cũ */
+}
+.scrollbar-none::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 
