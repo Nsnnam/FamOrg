@@ -2,6 +2,13 @@
 @import "tailwindcss";
 
 /*
+ * `dark:` variant bám theo class `.dark` trên <html> (do nút đổi theme toggle),
+ * KHÔNG theo prefers-color-scheme của HĐH. Thiếu dòng này thì mọi `dark:*`
+ * sẽ ăn theo cài đặt OS và hiện sai khi theme app khác theme OS.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * THEME CONVENTION — read before adding colors.
  * Light/dark is implemented by REMAPPING the slate + sky scales below (the value
  * of slate-950 is light in :root and dark in .dark, etc). Only these remapped
