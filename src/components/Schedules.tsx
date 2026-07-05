@@ -734,7 +734,7 @@ export function Schedules({
               return (
                 <div
                   key={`day-${day.dayNum}`}
-                  className={`p-1.5 sm:p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isSaturday ? "bg-amber-50 dark:bg-amber-950/20" : ""} ${isSunday ? "bg-red-50 dark:bg-red-950/20" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
+                  className={`p-1.5 sm:p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isSaturday ? "bg-yellow-100/60 dark:bg-amber-950/20" : ""} ${isSunday ? "bg-yellow-100/60 dark:bg-red-950/20" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
                 >
                   <div className="flex justify-between items-start gap-1.5 min-h-9">
                     <div className="min-w-0">
