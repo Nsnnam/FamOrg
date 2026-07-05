@@ -704,21 +704,21 @@ export function Schedules({
           </div>
 
           {/* Weekday labels — tuần bắt đầu Thứ 2 */}
-          <div className="grid grid-cols-7 border-b border-slate-200 dark:border-slate-800 text-center bg-slate-100 dark:bg-slate-950/40 text-[10px] sm:text-[11px] font-bold py-2.5">
+          <div className="grid grid-cols-7 border-b border-slate-800 text-center bg-slate-950/40 text-[10px] sm:text-[11px] font-bold py-2.5">
             <div className="text-slate-500"><span className="hidden sm:inline">Thứ Hai</span><span className="sm:hidden">T2</span></div>
             <div className="text-slate-500"><span className="hidden sm:inline">Thứ Ba</span><span className="sm:hidden">T3</span></div>
             <div className="text-slate-500"><span className="hidden sm:inline">Thứ Tư</span><span className="sm:hidden">T4</span></div>
             <div className="text-slate-500"><span className="hidden sm:inline">Thứ Năm</span><span className="sm:hidden">T5</span></div>
             <div className="text-slate-500"><span className="hidden sm:inline">Thứ Sáu</span><span className="sm:hidden">T6</span></div>
-            <div className="text-amber-600 dark:text-amber-400"><span className="hidden sm:inline">Thứ Bảy</span><span className="sm:hidden">T7</span></div>
-            <div className="text-red-600 dark:text-red-400"><span className="hidden sm:inline">Chủ Nhật</span><span className="sm:hidden">CN</span></div>
+            <div className="text-amber-400"><span className="hidden sm:inline">Thứ Bảy</span><span className="sm:hidden">T7</span></div>
+            <div className="text-red-400"><span className="hidden sm:inline">Chủ Nhật</span><span className="sm:hidden">CN</span></div>
           </div>
 
           {/* 30 block spaces */}
-          <div className="grid grid-cols-7 auto-rows-[112px] sm:auto-rows-[118px] lg:auto-rows-[132px] bg-white dark:bg-slate-900">
+          <div className="grid grid-cols-7 auto-rows-[112px] sm:auto-rows-[118px] lg:auto-rows-[132px] bg-slate-900">
             {calendarDays.map((day, i) => {
               if (day.blank) {
-                return <div key={`blank-${i}`} className="bg-slate-100 dark:bg-slate-950/25 border-r border-b border-slate-200 dark:border-slate-800/60" />;
+                return <div key={`blank-${i}`} className="bg-slate-950/25 border-r border-b border-slate-800/60" />;
               }
 
               const dayPlans = plansByDayNum[day.dayNum] || [];
@@ -734,11 +734,11 @@ export function Schedules({
               return (
                 <div
                   key={`day-${day.dayNum}`}
-                  className={`p-1.5 sm:p-2 border-r border-b border-slate-200 dark:border-slate-800/80 hover:bg-slate-100/60 dark:hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isSaturday ? "bg-yellow-50 dark:bg-amber-950/20" : "bg-white dark:bg-transparent"} ${isSunday ? "!bg-yellow-50 dark:!bg-red-950/20" : ""} ${dayHolidays.length > 0 ? "!bg-amber-50 dark:!bg-amber-500/5" : ""} ${isToday ? "!bg-gradient-to-b !from-sky-50 dark:!from-sky-500/12 !to-transparent" : ""}`}
+                  className={`p-1.5 sm:p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isSaturday ? "bg-amber-950/20" : ""} ${isSunday ? "bg-red-950/20" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
                 >
                   <div className="flex justify-between items-start gap-1.5 min-h-9">
                     <div className="min-w-0">
-                      <span className={`inline-flex h-7 min-w-7 sm:h-8 sm:min-w-8 items-center justify-center rounded-lg border px-1 sm:px-1.5 text-sm sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-600 border-amber-300 dark:text-amber-500 dark:border-amber-500/25" : isSaturday ? "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50" : isSunday ? "bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800/50" : "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-950/60 dark:text-slate-200 dark:border-slate-800"}`}>
+                      <span className={`inline-flex h-7 min-w-7 sm:h-8 sm:min-w-8 items-center justify-center rounded-lg border px-1 sm:px-1.5 text-sm sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : isSaturday ? "bg-amber-950/40 text-amber-300 border-amber-800/50" : isSunday ? "bg-red-950/40 text-red-300 border-red-800/50" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
                         {day.dayNum}
                       </span>
 
