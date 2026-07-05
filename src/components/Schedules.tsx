@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { 
   Calendar as CalendarIcon, 
   Plus, 
@@ -44,6 +44,9 @@ interface SchedulesProps {
   plans: FamilyPlan[];
   onSavePlan: (plan: Partial<FamilyPlan>) => Promise<any>;
   onDeletePlan: (id: string) => Promise<any>;
+  requestedViewPlanId?: string;
+  requestedViewPlanSeq?: number;
+  onConsumeViewPlan?: () => void;
 }
 
 // Loại sự kiện — nguồn chân lý chung cho form chọn loại, nhãn thẻ và chú thích lịch.
@@ -61,7 +64,10 @@ export function Schedules({
   users,
   plans,
   onSavePlan,
-  onDeletePlan
+  onDeletePlan,
+  requestedViewPlanId,
+  requestedViewPlanSeq,
+  onConsumeViewPlan
 }: SchedulesProps) {
   const [viewMode, setViewMode] = useState<"list" | "board">("board"); // 'list' = agenda, 'board' = monthly style grid
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -186,6 +192,18 @@ export function Schedules({
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!viewingBirthday, closeBirthday, birthdayRef);
   useModalA11y(!!viewingHoliday, closeHoliday, holidayRef);
+
+  // Deep-link: khi bấm một sự kiện ở "Sự kiện sắp diễn ra" (Tổng quan) → mở đúng
+  // popup chi tiết của sự kiện đó. seq đổi mỗi lần bấm để mở lại kể cả cùng 1 sự kiện.
+  useEffect(() => {
+    if (!requestedViewPlanSeq || !requestedViewPlanId) return;
+    const plan = plans.find(p => p.id === requestedViewPlanId);
+    if (plan) {
+      setIsFormOpen(false);
+      setViewingPlan(plan);
+    }
+    onConsumeViewPlan?.();
+  }, [requestedViewPlanSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter plans according to user permission and filters
   const filteredPlans = useMemo(() => {
