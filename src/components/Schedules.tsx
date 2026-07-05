@@ -216,9 +216,10 @@ export function Schedules({
 
   const calendarDays = useMemo(() => {
     const firstWeekday = new Date(calYear, calMonth, 1).getDay(); // 0=Sunday
+    const firstWeekdayMon = (firstWeekday + 6) % 7; // Mon=0 … Sun=6
     const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
     const days: { blank: boolean; dayNum: number }[] = [];
-    for (let b = 0; b < firstWeekday; b++) {
+    for (let b = 0; b < firstWeekdayMon; b++) {
       days.push({ blank: true, dayNum: 0 });
     }
     for (let d = 1; d <= daysInMonth; d++) {
@@ -702,15 +703,15 @@ export function Schedules({
             </div>
           </div>
 
-          {/* Weekday labels */}
-          <div className="grid grid-cols-7 border-b border-slate-800 text-center bg-slate-950/40 text-[10px] sm:text-[11px] text-slate-500 font-bold py-2.5">
-            <div><span className="hidden sm:inline">Chủ Nhật</span><span className="sm:hidden">CN</span></div>
-            <div><span className="hidden sm:inline">Thứ Hai</span><span className="sm:hidden">T2</span></div>
-            <div><span className="hidden sm:inline">Thứ Ba</span><span className="sm:hidden">T3</span></div>
-            <div><span className="hidden sm:inline">Thứ Tư</span><span className="sm:hidden">T4</span></div>
-            <div><span className="hidden sm:inline">Thứ Năm</span><span className="sm:hidden">T5</span></div>
-            <div><span className="hidden sm:inline">Thứ Sáu</span><span className="sm:hidden">T6</span></div>
-            <div><span className="hidden sm:inline">Thứ Bảy</span><span className="sm:hidden">T7</span></div>
+          {/* Weekday labels — tuần bắt đầu Thứ 2 */}
+          <div className="grid grid-cols-7 border-b border-slate-800 text-center bg-slate-950/40 text-[10px] sm:text-[11px] font-bold py-2.5">
+            <div className="text-slate-500"><span className="hidden sm:inline">Thứ Hai</span><span className="sm:hidden">T2</span></div>
+            <div className="text-slate-500"><span className="hidden sm:inline">Thứ Ba</span><span className="sm:hidden">T3</span></div>
+            <div className="text-slate-500"><span className="hidden sm:inline">Thứ Tư</span><span className="sm:hidden">T4</span></div>
+            <div className="text-slate-500"><span className="hidden sm:inline">Thứ Năm</span><span className="sm:hidden">T5</span></div>
+            <div className="text-slate-500"><span className="hidden sm:inline">Thứ Sáu</span><span className="sm:hidden">T6</span></div>
+            <div className="text-amber-500/80"><span className="hidden sm:inline">Thứ Bảy</span><span className="sm:hidden">T7</span></div>
+            <div className="text-amber-500/80"><span className="hidden sm:inline">Chủ Nhật</span><span className="sm:hidden">CN</span></div>
           </div>
 
           {/* 30 block spaces */}
@@ -726,7 +727,7 @@ export function Schedules({
               const lunarDate = lunarByDayNum[day.dayNum];
               const hasEvents = dayPlans.length > 0 || dayBirthdays.length > 0 || dayHolidays.length > 0;
               const isToday = isViewingToday && day.dayNum === today.getDate();
-              const isWeekend = i % 7 === 0 || i % 7 === 6;
+              const isWeekend = i % 7 === 5 || i % 7 === 6; // cột T7=5, CN=6
 
               return (
                 <div
