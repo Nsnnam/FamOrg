@@ -11,6 +11,7 @@ import { useConfirm } from "./ConfirmDialog.js";
 import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { generateMealPlan, FOOD_CATEGORY_ORDER, GroceryLine, FoodCategory } from "../utils/mealPlan.js";
+import { classifyMarketZone, MARKET_ZONE_ORDER, MARKET_ZONE_META, MarketZone } from "../utils/marketZones.js";
 
 const WEEKDAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 const dayLabel = (i: number) => (i < WEEKDAYS.length ? WEEKDAYS[i] : `Ngày ${i + 1}`);
@@ -232,7 +233,7 @@ export function Shopping({
     setPlanError("");
     try {
       for (const g of toAdd) {
-        await onSaveItem({ name: g.name, quantity: g.quantity, note: groceryNote(g) });
+        await onSaveItem({ name: g.name, quantity: g.quantity, note: groceryNote(g), cat: g.cat });
       }
       setAddedCount(toAdd.length);
     } catch (err: any) {
@@ -262,6 +263,18 @@ export function Shopping({
     () => shoppingItems.filter(i => i.isPurchased).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [shoppingItems]
   );
+
+  // Gom danh sách "Cần mua" theo KHU QUẦY chợ/siêu thị — người đi chợ đi tới
+  // khu nào là mua đủ đồ khu đó, không phải chạy tới chạy lui.
+  const pendingByZone = useMemo(() => {
+    const map = new Map<MarketZone, ShoppingItem[]>();
+    for (const it of pending) {
+      const zone = classifyMarketZone(it.name, it.cat);
+      const arr = map.get(zone);
+      if (arr) arr.push(it); else map.set(zone, [it]);
+    }
+    return MARKET_ZONE_ORDER.filter(z => map.has(z)).map(z => ({ zone: z, items: map.get(z)! }));
+  }, [pending]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -521,11 +534,16 @@ export function Shopping({
       <Reveal delay={0.12} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3" id="shopping-pending">
         <ShimmerLine accent="emerald" />
         <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cần mua ({pending.length})</h4>
+          <div>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Cần mua ({pending.length})</h4>
+            {pending.length > 0 && (
+              <p className="text-[10px] text-slate-500 mt-0.5">Đã gom theo khu quầy — đi từng khu là mua đủ, khỏi chạy tới lui.</p>
+            )}
+          </div>
           {shoppingItems.length > 0 && (
             <button
               onClick={handleClearAll}
-              className="text-[11px] text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors cursor-pointer"
+              className="text-[11px] text-slate-400 hover:text-rose-400 flex items-center gap-1 transition-colors cursor-pointer shrink-0"
               title="Xóa toàn bộ danh sách đi chợ"
             >
               <Trash2 className="w-3.5 h-3.5" /> Xóa tất cả
@@ -537,8 +555,23 @@ export function Shopping({
             <p className="text-sm text-slate-500">Danh sách đi chợ đang trống. Thêm món cần mua ở trên nhé!</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            <AnimatePresence>{pending.map(item => renderItem(item, false))}</AnimatePresence>
+          <div className="space-y-4">
+            {pendingByZone.map(group => {
+              const meta = MARKET_ZONE_META[group.zone];
+              return (
+                <div key={group.zone} className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                    <span aria-hidden>{meta.emoji}</span>
+                    <span className={`uppercase tracking-wider ${meta.accent}`}>{meta.label}</span>
+                    <span className="text-slate-500 font-mono">({group.items.length})</span>
+                    <span className="flex-1 h-px bg-slate-800 ml-1" />
+                  </div>
+                  <div className="space-y-2">
+                    <AnimatePresence>{group.items.map(item => renderItem(item, false))}</AnimatePresence>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </Reveal>

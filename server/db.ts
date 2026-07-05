@@ -1669,6 +1669,7 @@ export class FamilyDB {
       name: (data.name || "Món đồ").trim(),
       quantity: data.quantity?.trim() || "",
       note: data.note?.trim() || "",
+      cat: data.cat?.trim() || "",
       isPurchased: false,
       creatorId: userId,
       purchasedById: null,

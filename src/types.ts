@@ -384,6 +384,7 @@ export interface ShoppingItem {
   name: string;
   quantity?: string; // free text e.g. "2 kg", "1 hộp"
   note?: string;
+  cat?: string; // nhóm chất từ thực đơn (Đạm/Rau củ/…) — gợi ý phân khu quầy khi tên không khớp từ khóa
   isPurchased: boolean;
   creatorId: string;
   purchasedById?: string | null;
