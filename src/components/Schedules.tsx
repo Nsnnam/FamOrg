@@ -247,10 +247,9 @@ export function Schedules({
       const last = isNaN(endParsed.getTime()) || endParsed < start ? start : endParsed;
 
       if (plan.isRecurring && plan.recurrenceType && plan.recurrenceType !== "none") {
-        const durationDays = Math.max(0, Math.round((last.getTime() - start.getTime()) / 86400000));
         const cursor = new Date(Math.max(monthStart.getTime(), start.getTime()));
         let guard = 0;
-        while (cursor <= monthEnd && guard < 370) {
+        while (cursor <= monthEnd && cursor <= last && guard < 370) {
           let matches = false;
           if (plan.recurrenceType === "daily") matches = true;
           if (plan.recurrenceType === "weekly") {
@@ -261,11 +260,7 @@ export function Schedules({
           }
           if (plan.recurrenceType === "monthly") matches = cursor.getDate() === start.getDate();
           if (matches) {
-            for (let offset = 0; offset <= durationDays; offset += 1) {
-              const occurrenceDay = new Date(cursor);
-              occurrenceDay.setDate(cursor.getDate() + offset);
-              addPlanForDate(occurrenceDay, plan);
-            }
+            addPlanForDate(new Date(cursor), plan);
           }
           cursor.setDate(cursor.getDate() + 1);
           guard++;
