@@ -50,6 +50,10 @@ import { ShimmerLine, Reveal } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
+import {
+  PeriodMode, PERIOD_LABELS, periodBounds, toDateStr, stepAnchor, periodLabel,
+  periodMonths, pctDelta, calcTotals as calcTotalsUtil, accountBalances as accountBalancesUtil
+} from "../utils/financePeriod.js";
 import { useTabFab } from "./FabHost.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 
@@ -273,66 +277,8 @@ function payButtonLabel(frequency: RecurringBill["frequency"]): string {
 
 // ─── Kỳ xem: Tháng (mặc định) / Quý / Năm ────────────────────────────────
 // Mỗi kỳ được cô lập để so sánh với kỳ liền trước. Mốc `anchor` là một ngày
-// bất kỳ nằm trong kỳ đang xem; các hàm dưới suy ra biên & nhãn từ đó.
-type PeriodMode = "month" | "quarter" | "year";
-
-const PERIOD_LABELS: Record<PeriodMode, string> = { month: "Tháng", quarter: "Quý", year: "Năm" };
-
-// Biên [đầu, cuối] của kỳ chứa `anchor` (theo giờ địa phương).
-function periodBounds(mode: PeriodMode, anchor: Date): { start: Date; end: Date } {
-  const y = anchor.getFullYear();
-  const m = anchor.getMonth();
-  if (mode === "year") return { start: new Date(y, 0, 1), end: new Date(y, 11, 31) };
-  if (mode === "quarter") {
-    const qs = Math.floor(m / 3) * 3;
-    return { start: new Date(y, qs, 1), end: new Date(y, qs + 3, 0) };
-  }
-  return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0) };
-}
-
-// YYYY-MM-DD theo giờ địa phương (khớp định dạng tx.date để so sánh chuỗi).
-function toDateStr(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-
-// Dời mốc sang kỳ liền trước/sau (dir = -1 / +1). Luôn ghim ngày = 1 và dựng
-// Date qua constructor (y, m+offset, 1) để JS tự chuẩn hoá tràn tháng/năm,
-// tránh lỗi tràn ngày của setMonth() khi anchor rơi vào ngày 29–31.
-function stepAnchor(mode: PeriodMode, anchor: Date, dir: number): Date {
-  const y = anchor.getFullYear();
-  const m = anchor.getMonth();
-  if (mode === "year") return new Date(y + dir, m, 1);
-  if (mode === "quarter") return new Date(y, m + dir * 3, 1);
-  return new Date(y, m + dir, 1);
-}
-
-function periodLabel(mode: PeriodMode, anchor: Date): string {
-  const y = anchor.getFullYear();
-  if (mode === "year") return `Năm ${y}`;
-  if (mode === "quarter") return `Quý ${Math.floor(anchor.getMonth() / 3) + 1}/${y}`;
-  return `Tháng ${String(anchor.getMonth() + 1).padStart(2, "0")}/${y}`;
-}
-
-// Danh sách khóa "YYYY-MM" các tháng nằm trong kỳ (để gộp ngân sách theo tháng).
-function periodMonths(mode: PeriodMode, anchor: Date): string[] {
-  const { start, end } = periodBounds(mode, anchor);
-  const res: string[] = [];
-  const d = new Date(start.getFullYear(), start.getMonth(), 1);
-  while (d <= end) {
-    res.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-    d.setMonth(d.getMonth() + 1);
-  }
-  return res;
-}
-
-// % thay đổi giữa kỳ này và kỳ trước (làm tròn).
-function pctDelta(cur: number, prev: number): number {
-  if (prev === 0) return cur === 0 ? 0 : 100;
-  return Math.round(((cur - prev) / Math.abs(prev)) * 100);
-}
+// bất kỳ nằm trong kỳ đang xem; logic kỳ/tổng/số dư ví tách ở utils/financePeriod
+// (thuần, có test) — file này chỉ giữ phần UI.
 
 export function Finance({
   currentUser,
@@ -481,16 +427,8 @@ export function Finance({
     }).sort((a, b) => b.date.localeCompare(a.date));
   }, [transactions, startStr, endStr, searchTerm, categoryFilter, accountFilter, typeFilter, memberFilter]);
 
-  // Tổng Thu/Chi/Cân đối của một tập giao dịch
-  const calcTotals = useCallback((list: FinancialTransaction[]) => {
-    let totalIncome = 0;
-    let totalExpense = 0;
-    list.forEach(tx => {
-      if (tx.type === "income") totalIncome += tx.amount;
-      else totalExpense += tx.amount;
-    });
-    return { totalIncome, totalExpense, balance: totalIncome - totalExpense };
-  }, []);
+  // Tổng Thu/Chi/Cân đối của một tập giao dịch (logic thuần ở utils/financePeriod)
+  const calcTotals = useCallback((list: FinancialTransaction[]) => calcTotalsUtil(list), []);
 
   // Chỉ số của kỳ đang xem + kỳ liền trước (để hiện delta)
   const metrics = useMemo(() => calcTotals(periodTx), [calcTotals, periodTx]);
@@ -510,16 +448,8 @@ export function Finance({
     [curCatMap, prevCatMap]
   );
 
-  // Số dư theo từng ví (tính từ giao dịch: thu cộng, chi trừ). Chưa có "số dư đầu kỳ".
-  const accountBalances = useMemo(() => {
-    const bal: Record<string, number> = { cash: 0, bank: 0, e_wallet: 0 };
-    transactions.forEach(tx => {
-      const delta = tx.type === "income" ? tx.amount : -tx.amount;
-      if (bal[tx.account] === undefined) bal[tx.account] = 0;
-      bal[tx.account] += delta;
-    });
-    return bal;
-  }, [transactions]);
+  // Số dư theo từng ví (logic thuần ở utils/financePeriod). Chưa có "số dư đầu kỳ".
+  const accountBalances = useMemo(() => accountBalancesUtil(transactions), [transactions]);
 
   // Xuất danh sách giao dịch (theo bộ lọc đang xem) ra file CSV (mở được bằng Excel).
   const exportTransactionsCsv = () => {

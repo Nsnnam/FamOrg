@@ -37,6 +37,7 @@ import { Avatar } from "./Avatar.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
 import { getVietnamHolidaysForMonth, getVietnamLunarDateForSolarDate, type VietnamHoliday, type VietnamLunarDate } from "../utils/vietnamHolidays.js";
+import { expandRecurringOccurrences } from "../utils/recurrence.js";
 
 interface SchedulesProps {
   currentUser: User;
@@ -280,24 +281,8 @@ export function Schedules({
       const last = isNaN(endParsed.getTime()) || endParsed < start ? start : endParsed;
 
       if (plan.isRecurring && plan.recurrenceType && plan.recurrenceType !== "none") {
-        const cursor = new Date(Math.max(monthStart.getTime(), start.getTime()));
-        let guard = 0;
-        while (cursor <= monthEnd && cursor <= last && guard < 370) {
-          let matches = false;
-          if (plan.recurrenceType === "daily") matches = true;
-          if (plan.recurrenceType === "weekly") {
-            const weekdays = (plan.recurrenceWeekdays && plan.recurrenceWeekdays.length > 0)
-              ? plan.recurrenceWeekdays
-              : [start.getDay()];
-            matches = weekdays.includes(cursor.getDay());
-          }
-          if (plan.recurrenceType === "monthly") matches = cursor.getDate() === start.getDate();
-          if (matches) {
-            addPlanForDate(new Date(cursor), plan);
-          }
-          cursor.setDate(cursor.getDate() + 1);
-          guard++;
-        }
+        // Logic mở rộng lặp lại dùng chung ở utils/recurrence (có test)
+        expandRecurringOccurrences(plan, monthStart, monthEnd).forEach(day => addPlanForDate(day, plan));
         return;
       }
 
