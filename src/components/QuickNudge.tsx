@@ -17,10 +17,6 @@ function authHeaders(): Record<string, string> {
 const PRESETS = [
   "Về nhà ăn cơm nhé! 🍚",
   "Gọi điện cho mình nha 📞",
-  "Đến giờ uống thuốc rồi 💊",
-  "Làm bài tập đi nào 📚",
-  "Nhớ uống nước nhé 💧",
-  "Thương lắm ❤️",
 ];
 
 interface QuickNudgeProps {
