@@ -29,8 +29,6 @@ import { motion, useReducedMotion } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { QuickNudge } from "./QuickNudge.js";
 import { ShimmerLine, IconChip } from "./Lively.js";
-import { FancySelect } from "./FancySelect.js";
-import { VN_LOCATIONS } from "../utils/vnLocations.js";
 
 interface DashboardProps {
   currentUser: User;
@@ -41,8 +39,6 @@ interface DashboardProps {
   transactions: FinancialTransaction[];
   activityLogs: any[];
   widgets: any;
-  weatherLoc: string;
-  onChangeWeatherLoc: (code: string) => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -178,8 +174,6 @@ export function Dashboard({
   transactions,
   activityLogs,
   widgets,
-  weatherLoc,
-  onChangeWeatherLoc,
   onNavigate
 }: DashboardProps) {
   const reduceMotion = useReducedMotion();
@@ -391,17 +385,10 @@ export function Dashboard({
               <ShimmerLine via="via-sky-500/60" />
               <div aria-hidden className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-sky-500/10 blur-2xl" />
 
-              {/* Bộ chọn địa phương — mỗi người một cài đặt riêng */}
-              <div className="relative flex items-center gap-1.5 mb-2">
+              {/* Địa phương (đổi trong Thiết lập → Hồ sơ của tôi) */}
+              <div className="relative flex items-center gap-1.5 mb-1">
                 <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                <div className="min-w-0 flex-1 max-w-[190px]">
-                  <FancySelect
-                    value={weatherLoc}
-                    onChange={onChangeWeatherLoc}
-                    ariaLabel="Chọn địa phương xem thời tiết"
-                    options={VN_LOCATIONS.map(l => ({ value: l.code, label: l.name }))}
-                  />
-                </div>
+                <p className="text-xs text-slate-400 font-semibold truncate">{hasW ? w.city : "Thời tiết"}</p>
               </div>
 
               <div className="relative flex items-start justify-between">

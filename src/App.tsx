@@ -1777,8 +1777,6 @@ export default function App() {
                   transactions={transactions}
                   activityLogs={activityLogs}
                   widgets={widgets}
-                  weatherLoc={weatherLoc}
-                  onChangeWeatherLoc={handleChangeWeatherLoc}
                   onNavigate={(tab) => {
                     setActiveTab(tab);
                     // Also query log history if navigating to settings
@@ -1919,6 +1917,8 @@ export default function App() {
                   onCreateBackup={handleCreateBackup}
                   onRestoreBackup={handleRestoreBackup}
                   onDeleteBackup={handleDeleteBackup}
+                  weatherLoc={weatherLoc}
+                  onChangeWeatherLoc={handleChangeWeatherLoc}
                 />
               )}
             </motion.div>
