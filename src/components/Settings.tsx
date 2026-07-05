@@ -25,7 +25,8 @@ import {
   Pencil,
   Tag,
   Rocket,
-  Sparkles
+  Sparkles,
+  MapPin
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -66,6 +67,7 @@ import { reloadOnce, scheduleReloadFallback } from "../utils/appReload.js";
 import { PushNotificationsCard } from "./PushNotificationsCard.js";
 import { ShimmerLine, Reveal } from "./Lively.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
+import { VN_LOCATIONS } from "../utils/vnLocations.js";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
 
@@ -85,6 +87,8 @@ interface SettingsProps {
   onCreateBackup: () => Promise<any>;
   onRestoreBackup: (id: string) => Promise<any>;
   onDeleteBackup: (id: string) => Promise<any>;
+  weatherLoc: string;
+  onChangeWeatherLoc: (code: string) => void;
 }
 
 export function Settings({
@@ -102,7 +106,9 @@ export function Settings({
   requestedTabSeq = 0,
   onCreateBackup,
   onRestoreBackup,
-  onDeleteBackup
+  onDeleteBackup,
+  weatherLoc,
+  onChangeWeatherLoc
 }: SettingsProps) {
   // In-app confirmation dialog (replaces native browser confirm)
   const { confirm, ConfirmDialog } = useConfirm();
@@ -781,6 +787,25 @@ export function Settings({
               </button>
             </div>
           </form>
+
+          {/* Địa phương thời tiết (lưu riêng từng người trên máy này) */}
+          <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 space-y-3 max-w-md">
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <MapPin className="w-4.5 h-4.5 text-sky-400" /> Địa phương xem thời tiết
+            </h3>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Chọn tỉnh/thành của bạn để trang Tổng quan hiển thị thời tiết và cảnh báo động đất theo khu vực. Cài đặt này riêng cho từng người và lưu trên thiết bị này.
+            </p>
+            <div className="text-xs">
+              <FancySelect
+                value={weatherLoc}
+                onChange={onChangeWeatherLoc}
+                ariaLabel="Chọn địa phương xem thời tiết"
+                className="bg-slate-900"
+                options={VN_LOCATIONS.map(l => ({ value: l.code, label: l.name }))}
+              />
+            </div>
+          </div>
 
           {/* Change password */}
           <form onSubmit={handleChangePasswordSubmit} className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 space-y-3.5 max-w-md">
