@@ -224,6 +224,12 @@ function normalizeDB(db: any): FamilyOrganizerDB {
     recurrenceInterval: Number(task.recurrenceInterval || 1),
     sourceRecurringTaskId: task.sourceRecurringTaskId ?? null
   }));
+  db.plans = db.plans.map((plan: any) => ({
+    ...plan,
+    recurrenceWeekdays: Array.isArray(plan.recurrenceWeekdays)
+      ? plan.recurrenceWeekdays.map((d: any) => Number(d)).filter((d: number) => Number.isInteger(d) && d >= 0 && d <= 6)
+      : undefined
+  }));
   return db as FamilyOrganizerDB;
 }
 

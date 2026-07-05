@@ -152,6 +152,7 @@ export interface FamilyPlan {
   endDate: string; // YYYY-MM-DD HH:mm
   isRecurring: boolean;
   recurrenceType: "none" | "daily" | "weekly" | "monthly";
+  recurrenceWeekdays?: number[]; // 0=Chủ nhật, 1=Thứ hai...
   creatorId: string;
   isShared: boolean;
   color: string; // e.g. 'emerald', 'sky', 'amber', 'rose'

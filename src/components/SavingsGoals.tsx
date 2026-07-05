@@ -9,6 +9,7 @@ import { SavingsGoal, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
+import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 
 interface SavingsGoalsProps {
   currentUser: User;
@@ -134,7 +135,7 @@ export function SavingsGoals({
           >
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Tên mục tiêu (vd: Tết 2027, Du lịch...)" className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500" />
             <input inputMode="numeric" value={target > 0 ? fmtMoney(target) : ""} onChange={e => setTarget(parseMoney(e.target.value))} placeholder="Số tiền mục tiêu" className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500" />
-            <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 font-mono" />
+            <DateInputDMY value={deadline} onChange={setDeadline} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 font-mono" />
             <FancySelect
               value={color}
               onChange={setColor}
@@ -235,7 +236,7 @@ export function SavingsGoals({
                           const canRemove = canManage || c.byId === currentUser.id;
                           return (
                             <div key={c.id} className="flex items-center justify-between text-[10px] bg-slate-900/60 rounded-lg px-2 py-1">
-                              <span className="font-mono text-slate-400">{c.date}</span>
+                              <span className="font-mono text-slate-400">{formatDateVN(c.date)}</span>
                               <span className={`font-bold ${c.amount >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{c.amount >= 0 ? "+" : ""}{fmtMoney(c.amount)}đ</span>
                               <span className="text-slate-500 truncate max-w-[70px]">{by?.fullName || ""}</span>
                               {canRemove && (

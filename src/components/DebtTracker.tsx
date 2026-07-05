@@ -9,6 +9,7 @@ import { Debt, User } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
+import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 
 interface DebtTrackerProps {
   currentUser: User;
@@ -214,9 +215,9 @@ export function DebtTracker({
         {(debt.loanDate || debt.dueDate) && (
           <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-mono">
             <Calendar className="w-3 h-3 shrink-0" />
-            <span>{debt.loanDate || "—"}</span>
+            <span>{debt.loanDate ? formatDateVN(debt.loanDate) : "—"}</span>
             <span className="text-slate-600">→</span>
-            <span className={!settled && dleft !== null && dleft <= 7 ? (dleft < 0 ? "text-rose-400" : "text-amber-400") : "text-slate-400"}>{debt.dueDate || "—"}</span>
+            <span className={!settled && dleft !== null && dleft <= 7 ? (dleft < 0 ? "text-rose-400" : "text-amber-400") : "text-slate-400"}>{debt.dueDate ? formatDateVN(debt.dueDate) : "—"}</span>
           </div>
         )}
 
@@ -246,7 +247,7 @@ export function DebtTracker({
                   const by = users.find(u => u.id === p.byId);
                   return (
                     <div key={p.id} className="flex items-center justify-between text-[10px] bg-slate-900/60 rounded-lg px-2 py-1">
-                      <span className="font-mono text-slate-400">{p.date}</span>
+                      <span className="font-mono text-slate-400">{formatDateVN(p.date)}</span>
                       <span className="font-bold text-emerald-400">{fmtMoney(p.amount)}đ</span>
                       <span className="text-slate-500 truncate max-w-[70px]">{by?.fullName || ""}</span>
                       <button onClick={() => onRemoveDebtPayment(debt.id, p.id)} className="text-slate-600 hover:text-rose-400 cursor-pointer" title="Xóa">
@@ -300,11 +301,11 @@ export function DebtTracker({
             <input inputMode="numeric" value={amount > 0 ? fmtMoney(amount) : ""} onChange={e => setAmount(parseMoney(e.target.value))} placeholder="Số tiền" className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500" />
             <div className="space-y-1">
               <label className="text-[10px] text-slate-500 font-semibold">{direction === "borrowed" ? "Ngày mượn" : "Ngày cho mượn"} <span className="text-rose-400">*</span></label>
-              <input type="date" value={loanDate} max={dueDate || undefined} onChange={e => setLoanDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
+              <DateInputDMY value={loanDate} max={dueDate || undefined} onChange={setLoanDate} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
             </div>
             <div className="space-y-1">
               <label className="text-[10px] text-slate-500 font-semibold">Ngày hẹn trả <span className="text-rose-400">*</span></label>
-              <input type="date" value={dueDate} min={loanDate || undefined} onChange={e => setDueDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
+              <DateInputDMY value={dueDate} min={loanDate || undefined} onChange={setDueDate} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
             </div>
 
             <div className="relative">

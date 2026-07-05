@@ -13,6 +13,7 @@ import { useConfirm } from "./ConfirmDialog.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
+import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 
 interface DocumentsProps {
   currentUser: User;
@@ -232,7 +233,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     if (n < 0) return { text: `Đã hết hạn ${-n} ngày`, cls: "bg-rose-500/15 text-rose-400 border-rose-500/30" };
     if (n === 0) return { text: "Hết hạn hôm nay", cls: "bg-rose-500/15 text-rose-400 border-rose-500/30" };
     if (n <= 30) return { text: `Còn ${n} ngày`, cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" };
-    return { text: `HSD ${dateStr}`, cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" };
+    return { text: `HSD ${formatDateVN(dateStr)}`, cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" };
   };
 
   return (
@@ -300,11 +301,11 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
 
           <div className="md:col-span-3 space-y-1">
             <label className="text-slate-500 text-[10px] block">Ngày cấp</label>
-            <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} className="w-full min-w-0 box-border appearance-none bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500 font-mono" />
+            <DateInputDMY value={issueDate} onChange={setIssueDate} className="w-full min-w-0 box-border appearance-none bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500 font-mono" />
           </div>
           <div className="md:col-span-3 space-y-1">
             <label className="text-slate-500 text-[10px] block">Ngày hết hạn (để nhắc)</label>
-            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} className="w-full min-w-0 box-border appearance-none bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500 font-mono" />
+            <DateInputDMY value={expiryDate} onChange={setExpiryDate} className="w-full min-w-0 box-border appearance-none bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500 font-mono" />
           </div>
 
           <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú thêm..." className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-indigo-500" />

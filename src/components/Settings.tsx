@@ -65,6 +65,7 @@ import { uploadDataUrl } from "../utils/uploadImage.js";
 import { reloadOnce, scheduleReloadFallback } from "../utils/appReload.js";
 import { PushNotificationsCard } from "./PushNotificationsCard.js";
 import { ShimmerLine, Reveal } from "./Lively.js";
+import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
 
@@ -741,10 +742,9 @@ export function Settings({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1 text-xs min-w-0">
                   <label className="text-slate-400 font-semibold flex items-center gap-1"><Cake className="w-3.5 h-3.5 text-pink-400" /> Ngày sinh</label>
-                  <input
-                    type="date"
+                  <DateInputDMY
                     value={profDob}
-                    onChange={(e) => setProfDob(e.target.value)}
+                    onChange={setProfDob}
                     className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
@@ -849,7 +849,7 @@ export function Settings({
                         {(u.dateOfBirth || u.phone) && (
                           <p className="text-slate-500 text-[10px] flex items-center gap-2.5 flex-wrap">
                             {u.dateOfBirth && (
-                              <span className="flex items-center gap-1"><Cake className="w-3 h-3 text-pink-400" />{new Date(u.dateOfBirth).toLocaleDateString("vi-VN")}</span>
+                              <span className="flex items-center gap-1"><Cake className="w-3 h-3 text-pink-400" />{formatDateVN(u.dateOfBirth)}</span>
                             )}
                             {u.phone && (
                               <span className="flex items-center gap-1"><Phone className="w-3 h-3 text-emerald-400" />{u.phone}</span>
@@ -985,10 +985,9 @@ export function Settings({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1 min-w-0">
                       <label className="text-slate-400 font-semibold flex items-center gap-1"><Cake className="w-3.5 h-3.5 text-pink-400" /> Ngày sinh</label>
-                      <input
-                        type="date"
+                      <DateInputDMY
                         value={regDob}
-                        onChange={(e) => setRegDob(e.target.value)}
+                        onChange={setRegDob}
                         className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                       />
                     </div>
@@ -1235,10 +1234,9 @@ export function Settings({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1 min-w-0">
                   <label className="text-slate-400 font-semibold flex items-center gap-1"><Cake className="w-3.5 h-3.5 text-pink-400" /> Ngày sinh</label>
-                  <input
-                    type="date"
+                  <DateInputDMY
                     value={euDob}
-                    onChange={(e) => setEuDob(e.target.value)}
+                    onChange={setEuDob}
                     className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                   />
                 </div>
