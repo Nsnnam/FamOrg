@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Plus, Trash2, Pencil, X, Calendar, User as UserIcon, Paperclip, ExternalLink, ShieldAlert, ChevronLeft, ChevronRight } from "lucide-react";
 import { FamilyDocument, DocumentFile, DocumentType, DOCUMENT_TYPE_LABELS, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
-import { optimizeAndUpload } from "../utils/uploadImage.js";
+import { optimizeAndUpload, uploadDataUrl } from "../utils/uploadImage.js";
 import { useTabFab } from "./FabHost.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -128,12 +128,11 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files || []);
-    e.target.value = ""; // cho phép chọn lại cùng tệp
+  // Nhận cả ảnh (tối ưu trước khi tải) lẫn PDF (tải nguyên bản, tối đa 10MB).
+  const addPickedFiles = async (picked: File[]) => {
     if (picked.length === 0) return;
     if (files.length + picked.length > MAX_DOC_FILES) {
-      setError(`Mỗi giấy tờ chỉ đính kèm tối đa ${MAX_DOC_FILES} ảnh.`);
+      setError(`Mỗi giấy tờ chỉ đính kèm tối đa ${MAX_DOC_FILES} tệp.`);
       return;
     }
     setError("");
@@ -141,28 +140,67 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     try {
       const added: DocumentFile[] = [];
       for (const file of picked) {
-        const up = await optimizeAndUpload(file, "documents", {
-          maxSourceBytes: 25 * 1024 * 1024,
-          targetBytes: 1000 * 1024,
-          maxSizes: [1600, 1280, 1024, 768],
-          qualities: [0.86, 0.78, 0.68, 0.58],
-          backgroundColor: "#ffffff"
-        });
+        const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+        let url: string; let sizeKb: number;
+        if (isPdf) {
+          if (file.size > 10 * 1024 * 1024) throw new Error(`PDF "${file.name}" quá lớn (tối đa 10MB).`);
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(String(r.result));
+            r.onerror = () => reject(new Error("Không đọc được tệp PDF."));
+            r.readAsDataURL(file);
+          });
+          url = await uploadDataUrl(dataUrl, "documents");
+          sizeKb = Math.max(1, Math.round(file.size / 1024));
+        } else {
+          const up = await optimizeAndUpload(file, "documents", {
+            maxSourceBytes: 25 * 1024 * 1024,
+            targetBytes: 1000 * 1024,
+            maxSizes: [1600, 1280, 1024, 768],
+            qualities: [0.86, 0.78, 0.68, 0.58],
+            backgroundColor: "#ffffff"
+          });
+          url = up.url;
+          sizeKb = up.sizeKb;
+        }
         added.push({
           id: `docfile_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
           fileName: file.name,
-          url: up.url,
-          sizeKb: up.sizeKb,
+          url,
+          sizeKb,
           createdAt: new Date().toISOString()
         });
       }
       setFiles(prev => [...prev, ...added]);
     } catch (err: any) {
-      setError(err.message || "Không tải được ảnh giấy tờ.");
+      setError(err.message || "Không tải được tệp giấy tờ.");
     } finally {
       setUploading(false);
     }
   };
+
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = ""; // cho phép chọn lại cùng tệp
+    void addPickedFiles(picked);
+  };
+
+  // Dán ảnh từ clipboard (Ctrl+V) vào form — chụp màn hình scan/CCCD dán thẳng.
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const imgs = Array.from(e.clipboardData?.items || [])
+      .filter(it => it.kind === "file" && (it.type.startsWith("image/") || it.type === "application/pdf"))
+      .map(it => it.getAsFile())
+      .filter((f): f is File => !!f)
+      .map((f, i) => (f.name && !/^image\.(png|jpe?g)$/i.test(f.name))
+        ? f
+        : new File([f], `dan-tu-clipboard-${Date.now()}-${i + 1}.png`, { type: f.type }));
+    if (imgs.length === 0) return;
+    e.preventDefault();
+    if (uploading || files.length >= MAX_DOC_FILES) return;
+    void addPickedFiles(imgs);
+  };
+
+  const isPdfFile = (f: DocumentFile) => /\.pdf$/i.test(f.url) || /\.pdf$/i.test(f.fileName);
 
   const removeFile = (id: string) => setFiles(prev => prev.filter(f => f.id !== id));
 
@@ -256,7 +294,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
+        <form onSubmit={handleSubmit} onPaste={handlePaste} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
           <div className="md:col-span-2">
             <FancySelect
               value={type}
@@ -321,21 +359,31 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
             />
           </div>
 
-          {/* Đính kèm ảnh/scan */}
+          {/* Đính kèm ảnh/scan/PDF — hỗ trợ dán ảnh từ clipboard (Ctrl+V) vào form */}
           <div className="md:col-span-6 bg-slate-950/40 border border-slate-800 rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-slate-400 font-semibold flex items-center gap-1.5"><Paperclip className="w-3.5 h-3.5 text-indigo-400" /> Ảnh/scan đính kèm ({files.length}/{MAX_DOC_FILES})</label>
-              <label className={`text-[11px] font-bold rounded-lg px-2.5 py-1 cursor-pointer flex items-center gap-1 ${uploading || files.length >= MAX_DOC_FILES ? "bg-slate-800 text-slate-600 cursor-not-allowed" : "bg-slate-800 hover:bg-slate-700 text-indigo-400"}`}>
-                <Plus className="w-3 h-3" /> {uploading ? "Đang tải..." : "Thêm ảnh"}
-                <input type="file" accept="image/*" multiple disabled={uploading || files.length >= MAX_DOC_FILES} onChange={handleFilePick} className="hidden" />
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-slate-400 font-semibold flex items-center gap-1.5 min-w-0">
+                <Paperclip className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> Ảnh/PDF đính kèm ({files.length}/{MAX_DOC_FILES})
+                <span className="hidden sm:inline text-[10px] text-slate-600 font-normal">— dán ảnh Ctrl+V được</span>
+              </label>
+              <label className={`text-[11px] font-bold rounded-lg px-2.5 py-1 cursor-pointer flex items-center gap-1 shrink-0 ${uploading || files.length >= MAX_DOC_FILES ? "bg-slate-800 text-slate-600 cursor-not-allowed" : "bg-slate-800 hover:bg-slate-700 text-indigo-400"}`}>
+                <Plus className="w-3 h-3" /> {uploading ? "Đang tải..." : "Thêm tệp"}
+                <input type="file" accept="image/*,application/pdf,.pdf" multiple disabled={uploading || files.length >= MAX_DOC_FILES} onChange={handleFilePick} className="hidden" />
               </label>
             </div>
             {files.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {files.map(f => (
                   <div key={f.id} className="relative group">
-                    <img src={f.url} alt={f.fileName} className="w-16 h-16 object-cover rounded-lg border border-slate-700" />
-                    <button type="button" onClick={() => removeFile(f.id)} className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-0.5 cursor-pointer" title="Gỡ ảnh">
+                    {isPdfFile(f) ? (
+                      <a href={f.url} target="_blank" rel="noreferrer" title={f.fileName} className="w-16 h-16 rounded-lg border border-slate-700 bg-slate-900 flex flex-col items-center justify-center gap-0.5 text-rose-400 hover:bg-slate-800">
+                        <FileText className="w-5 h-5" />
+                        <span className="text-[8px] font-bold">PDF</span>
+                      </a>
+                    ) : (
+                      <img src={f.url} alt={f.fileName} className="w-16 h-16 object-cover rounded-lg border border-slate-700" />
+                    )}
+                    <button type="button" onClick={() => removeFile(f.id)} className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-0.5 cursor-pointer" title="Gỡ tệp">
                       <X className="w-3 h-3" />
                     </button>
                   </div>
@@ -438,18 +486,35 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
                   {doc.files && doc.files.length > 0 && (
                     <div className="flex flex-wrap gap-2 pt-1">
                       {doc.files.map((f, i) => (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => setViewer({ files: doc.files, index: i, title: doc.title })}
-                          className="relative group cursor-pointer"
-                          title={`Xem ${f.fileName}`}
-                        >
-                          <img src={f.url} alt={f.fileName} className="w-14 h-14 object-cover rounded-lg border border-slate-700" />
-                          <span className="absolute inset-0 bg-slate-950/0 group-hover:bg-slate-950/40 rounded-lg flex items-center justify-center transition-colors">
-                            <ExternalLink className="w-4 h-4 text-white opacity-0 group-hover:opacity-100" />
-                          </span>
-                        </button>
+                        isPdfFile(f) ? (
+                          <a
+                            key={f.id}
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={`Mở ${f.fileName}`}
+                            className="w-14 h-14 rounded-lg border border-slate-700 bg-slate-950/60 flex flex-col items-center justify-center gap-0.5 text-rose-400 hover:bg-slate-800 transition-colors"
+                          >
+                            <FileText className="w-5 h-5" />
+                            <span className="text-[8px] font-bold">PDF</span>
+                          </a>
+                        ) : (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => {
+                              const imgs = doc.files.filter(x => !isPdfFile(x));
+                              setViewer({ files: imgs, index: Math.max(0, imgs.findIndex(x => x.id === f.id)), title: doc.title });
+                            }}
+                            className="relative group cursor-pointer"
+                            title={`Xem ${f.fileName}`}
+                          >
+                            <img src={f.url} alt={f.fileName} className="w-14 h-14 object-cover rounded-lg border border-slate-700" />
+                            <span className="absolute inset-0 bg-slate-950/0 group-hover:bg-slate-950/40 rounded-lg flex items-center justify-center transition-colors">
+                              <ExternalLink className="w-4 h-4 text-white opacity-0 group-hover:opacity-100" />
+                            </span>
+                          </button>
+                        )
                       ))}
                     </div>
                   )}
