@@ -1317,7 +1317,23 @@ app.delete("/api/documents/:id", requireAuth, requireRole([UserRole.ADMIN, UserR
 // --- SỨC KHỎE TRẺ: TIÊM CHỦNG & TĂNG TRƯỞNG (chỉ Admin/Member) ---
 // Sổ sức khỏe cả nhà đều xem được; thêm/sửa/xóa vẫn giới hạn Admin/Member ở các route ghi bên dưới.
 app.get("/api/child-health", requireAuth, (_req: AuthRequest, res: Response) => {
-  res.json({ vaccinations: FamilyDB.getVaccinations(), growthRecords: FamilyDB.getGrowthRecords() });
+  res.json({
+    vaccinations: FamilyDB.getVaccinations(),
+    growthRecords: FamilyDB.getGrowthRecords(),
+    healthProfiles: FamilyDB.getHealthProfiles()
+  });
+});
+
+// Thẻ khẩn cấp: mọi thành viên xem được (GET ở trên), Admin/Member cập nhật.
+app.post("/api/child-health/emergency", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const profile = FamilyDB.saveHealthProfile(req.body, session.userId, session.username);
+    broadcastSyncEvent("CHILD_HEALTH_UPDATE", { healthProfileId: profile.id });
+    res.json({ profile });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 app.post("/api/child-health/vaccinations", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {

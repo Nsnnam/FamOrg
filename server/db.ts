@@ -29,6 +29,7 @@ import {
   DebtPayment,
   VaccinationRecord,
   GrowthRecord,
+  EmergencyProfile,
   ShoppingItem,
   Notification,
   PushSubscriptionRecord,
@@ -177,6 +178,7 @@ const initialDBState = (): FamilyOrganizerDB => {
     medicationLogs: [],
     vaccinations: [],
     growthRecords: [],
+    healthProfiles: [],
     documents: [],
     shoppingItems: [],
     dishLibrary: [],
@@ -206,6 +208,7 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.medicationLogs = db.medicationLogs || [];
   db.vaccinations = db.vaccinations || [];
   db.growthRecords = db.growthRecords || [];
+  db.healthProfiles = db.healthProfiles || [];
   db.documents = db.documents || [];
   db.shoppingItems = db.shoppingItems || [];
   db.dishLibrary = db.dishLibrary || [];
@@ -1535,6 +1538,57 @@ export class FamilyDB {
     const db = this.readRaw();
     db.growthRecords = db.growthRecords.filter(g => g.id !== id);
     this.writeRaw(db);
+  }
+
+  // --- Thẻ khẩn cấp / hồ sơ sức khỏe (mỗi thành viên đúng 1 hồ sơ, id = hp_<userId>) ---
+
+  public static getHealthProfiles(): EmergencyProfile[] {
+    return this.readRaw().healthProfiles || [];
+  }
+
+  public static saveHealthProfile(data: Partial<EmergencyProfile>, userId: string, username: string): EmergencyProfile {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    if (!data.userId) throw new Error("Thiếu thông tin thành viên");
+    const member = db.users.find(u => u.id === data.userId);
+    if (!member) throw new Error("Không tìm thấy thành viên");
+
+    const clean = (v: any, max = 500) => {
+      const s = String(v ?? "").trim().slice(0, max);
+      return s || undefined;
+    };
+    const contacts = (Array.isArray(data.emergencyContacts) ? data.emergencyContacts : [])
+      .map(c => ({
+        name: String(c?.name ?? "").trim().slice(0, 80),
+        phone: String(c?.phone ?? "").trim().slice(0, 20),
+        relation: clean(c?.relation, 40)
+      }))
+      .filter(c => c.name && c.phone)
+      .slice(0, 5);
+
+    const fields = {
+      bloodType: clean(data.bloodType, 5),
+      allergies: clean(data.allergies),
+      chronicConditions: clean(data.chronicConditions),
+      currentMedications: clean(data.currentMedications),
+      healthInsuranceNumber: clean(data.healthInsuranceNumber, 30),
+      emergencyContacts: contacts,
+      notes: clean(data.notes, 1000)
+    };
+
+    const id = `hp_${data.userId}`;
+    const idx = db.healthProfiles.findIndex(p => p.id === id);
+    let profile: EmergencyProfile;
+    if (idx !== -1) {
+      profile = { ...db.healthProfiles[idx], ...fields, updatedAt: now };
+      db.healthProfiles[idx] = profile;
+    } else {
+      profile = { id, userId: data.userId, ...fields, createdAt: now, updatedAt: now };
+      db.healthProfiles.unshift(profile);
+    }
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Thẻ khẩn cấp", `Đã cập nhật hồ sơ sức khỏe của ${member.fullName}.`);
+    return profile;
   }
 
   public static payRecurringBill(id: string, userId: string, username: string): { bill: RecurringBill; transaction: FinancialTransaction } {

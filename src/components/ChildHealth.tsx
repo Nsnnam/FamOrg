@@ -4,8 +4,8 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Syringe, Plus, Trash2, Check, Calendar, Ruler, HeartPulse, Pill } from "lucide-react";
-import { VaccinationRecord, GrowthRecord, MedicationReminder, MedicationLog, User } from "../types.js";
+import { Syringe, Plus, Trash2, Check, Calendar, Ruler, HeartPulse, Pill, ShieldAlert, Phone, Pencil, X, Droplet } from "lucide-react";
+import { VaccinationRecord, GrowthRecord, MedicationReminder, MedicationLog, User, UserRole, EmergencyProfile, EmergencyContact, BLOOD_TYPE_OPTIONS, FAMILY_RELATION_LABELS } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { assessBmi, ageFromDob, BmiAssessment } from "../utils/bmi.js";
 import { Avatar } from "./Avatar.js";
@@ -14,15 +14,17 @@ import { ShimmerLine, Reveal, IconChip, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 
-type HealthSection = "growth" | "vaccination" | "medication";
+type HealthSection = "growth" | "vaccination" | "medication" | "emergency";
 
 interface ChildHealthProps {
   currentUser: User;
   users: User[];
   vaccinations: VaccinationRecord[];
   growthRecords: GrowthRecord[];
+  healthProfiles: EmergencyProfile[];
   medications: MedicationReminder[];
   medicationLogs: MedicationLog[];
+  onSaveHealthProfile: (p: Partial<EmergencyProfile>) => Promise<any>;
   onSaveVaccination: (v: Partial<VaccinationRecord>) => Promise<any>;
   onDeleteVaccination: (id: string) => Promise<any>;
   onSaveGrowth: (g: Partial<GrowthRecord>) => Promise<any>;
@@ -102,8 +104,10 @@ export function ChildHealth({
   users,
   vaccinations,
   growthRecords,
+  healthProfiles,
   medications,
   medicationLogs,
+  onSaveHealthProfile,
   onSaveVaccination,
   onDeleteVaccination,
   onSaveGrowth,
@@ -150,6 +154,61 @@ export function ChildHealth({
   const [gHeight, setGHeight] = useState("");
   const [gWeight, setGWeight] = useState("");
   const [gError, setGError] = useState("");
+
+  // Thẻ khẩn cấp: hồ sơ đang sửa (userId) + các trường form
+  const canEditEmergency = currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MEMBER;
+  const [epEditingId, setEpEditingId] = useState<string | null>(null);
+  const [epBlood, setEpBlood] = useState("");
+  const [epAllergies, setEpAllergies] = useState("");
+  const [epChronic, setEpChronic] = useState("");
+  const [epMeds, setEpMeds] = useState("");
+  const [epBhyt, setEpBhyt] = useState("");
+  const [epNotes, setEpNotes] = useState("");
+  const [epContacts, setEpContacts] = useState<EmergencyContact[]>([]);
+  const [epError, setEpError] = useState("");
+  const [epSaving, setEpSaving] = useState(false);
+
+  const profileByUser = useMemo(() => {
+    const map = new Map<string, EmergencyProfile>();
+    healthProfiles.forEach(p => map.set(p.userId, p));
+    return map;
+  }, [healthProfiles]);
+
+  const openEpEdit = (memberId: string) => {
+    const p = profileByUser.get(memberId);
+    setEpBlood(p?.bloodType || "");
+    setEpAllergies(p?.allergies || "");
+    setEpChronic(p?.chronicConditions || "");
+    setEpMeds(p?.currentMedications || "");
+    setEpBhyt(p?.healthInsuranceNumber || "");
+    setEpNotes(p?.notes || "");
+    setEpContacts(p?.emergencyContacts?.length ? p.emergencyContacts.map(c => ({ ...c })) : [{ name: "", phone: "", relation: "" }]);
+    setEpError("");
+    setEpEditingId(memberId);
+  };
+
+  const saveEp = async () => {
+    if (!epEditingId) return;
+    setEpSaving(true);
+    setEpError("");
+    try {
+      await onSaveHealthProfile({
+        userId: epEditingId,
+        bloodType: epBlood || undefined,
+        allergies: epAllergies,
+        chronicConditions: epChronic,
+        currentMedications: epMeds,
+        healthInsuranceNumber: epBhyt,
+        emergencyContacts: epContacts,
+        notes: epNotes
+      });
+      setEpEditingId(null);
+    } catch (err: any) {
+      setEpError(err.message || "Không lưu được hồ sơ.");
+    } finally {
+      setEpSaving(false);
+    }
+  };
 
   const vaccinesByChild = useMemo(() => {
     const map = new Map<string, VaccinationRecord[]>();
@@ -255,7 +314,8 @@ export function ChildHealth({
   const subTabs: { id: HealthSection; label: string; icon: typeof Ruler; active: string }[] = [
     { id: "growth", label: "Tăng trưởng", icon: Ruler, active: "bg-emerald-500 text-slate-950" },
     { id: "vaccination", label: "Tiêm chủng", icon: Syringe, active: "bg-sky-500 text-slate-950" },
-    { id: "medication", label: "Lịch thuốc", icon: Pill, active: "bg-rose-500 text-slate-950" }
+    { id: "medication", label: "Lịch thuốc", icon: Pill, active: "bg-rose-500 text-slate-950" },
+    { id: "emergency", label: "Thẻ khẩn cấp", icon: ShieldAlert, active: "bg-amber-500 text-slate-950" }
   ];
 
   return (
@@ -266,7 +326,7 @@ export function ChildHealth({
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2 px-1">
           <IconChip accent="pink"><HeartPulse className="w-4 h-4" /></IconChip> Sức khỏe gia đình
         </h3>
-        <div className="grid grid-cols-3 gap-2 text-xs font-bold">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-bold">
           {subTabs.map(t => {
             const Icon = t.icon;
             const isActive = section === t.id;
@@ -488,6 +548,149 @@ export function ChildHealth({
           onDeleteMedication={onDeleteMedication}
           onLogDose={onLogDose}
         />
+      )}
+
+      {/* ─── THẺ KHẨN CẤP ────────────────────────────────────────────── */}
+      {section === "emergency" && (
+        <div className="space-y-4">
+          <p className="text-[11px] text-slate-500 px-1">
+            Thông tin y tế quan trọng của từng thành viên — nhóm máu, dị ứng, bệnh nền, BHYT, liên hệ khẩn cấp.
+            Cả nhà đều xem được để dùng khi cấp cứu.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {users.map((member, mi) => {
+              const p = profileByUser.get(member.id);
+              const isEditing = epEditingId === member.id;
+              const relationLabel = member.familyRelation ? FAMILY_RELATION_LABELS[member.familyRelation] : "";
+              const infoRow = (label: string, value?: string) => value ? (
+                <div className="text-[11px] leading-relaxed">
+                  <span className="text-slate-500 font-semibold">{label}: </span>
+                  <span className="text-slate-300">{value}</span>
+                </div>
+              ) : null;
+              return (
+                <Reveal key={member.id} delay={0.05 + staggerDelay(mi)} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-lg p-4 space-y-3">
+                  <ShimmerLine accent="amber" />
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar user={member} className="w-9 h-9 rounded-xl text-sm" extraClass="shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-200 truncate">{member.fullName}</p>
+                        {relationLabel && <p className="text-[10px] text-slate-500">{relationLabel}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {p?.bloodType && !isEditing && (
+                        <span className="inline-flex items-center gap-1 text-xs font-extrabold text-rose-400 bg-rose-500/10 border border-rose-500/25 rounded-lg px-2 py-1">
+                          <Droplet className="w-3.5 h-3.5" /> {p.bloodType}
+                        </span>
+                      )}
+                      {canEditEmergency && !isEditing && (
+                        <button type="button" onClick={() => openEpEdit(member.id)} title="Cập nhật hồ sơ" className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-400 cursor-pointer transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {isEditing && (
+                        <button type="button" onClick={() => setEpEditingId(null)} title="Hủy" className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 cursor-pointer transition-colors">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {!isEditing ? (
+                    !p ? (
+                      <p className="text-[11px] text-slate-600 border border-dashed border-slate-800 rounded-xl px-3 py-4 text-center">
+                        Chưa có hồ sơ.{canEditEmergency ? " Bấm ✏️ để cập nhật." : ""}
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {infoRow("Dị ứng", p.allergies)}
+                        {infoRow("Bệnh nền", p.chronicConditions)}
+                        {infoRow("Thuốc đang dùng", p.currentMedications)}
+                        {infoRow("Số BHYT", p.healthInsuranceNumber)}
+                        {p.emergencyContacts?.length > 0 && (
+                          <div className="pt-1.5 border-t border-slate-800/70 space-y-1">
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">Liên hệ khẩn cấp</p>
+                            {p.emergencyContacts.map((c, i) => (
+                              <a key={i} href={`tel:${c.phone.replace(/\s/g, "")}`} className="flex items-center gap-2 text-[11px] text-slate-300 hover:text-sky-400 transition-colors">
+                                <Phone className="w-3 h-3 text-emerald-400 shrink-0" />
+                                <span className="font-semibold">{c.name}</span>
+                                {c.relation && <span className="text-slate-500">({c.relation})</span>}
+                                <span className="font-mono text-sky-400">{c.phone}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                        {infoRow("Ghi chú", p.notes)}
+                      </div>
+                    )
+                  ) : (
+                    <div className="space-y-2 text-xs">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-slate-500 text-[10px] block">Nhóm máu</label>
+                          <FancySelect
+                            value={epBlood}
+                            onChange={setEpBlood}
+                            ariaLabel="Nhóm máu"
+                            placeholder="Chưa rõ"
+                            options={[{ value: "", label: "Chưa rõ" }, ...BLOOD_TYPE_OPTIONS.map(b => ({ value: b, label: b }))]}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-slate-500 text-[10px] block">Số BHYT</label>
+                          <input value={epBhyt} onChange={e => setEpBhyt(e.target.value)} placeholder="GD-4-79-..." className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-slate-500 text-[10px] block">Dị ứng (thuốc, thức ăn...)</label>
+                        <input value={epAllergies} onChange={e => setEpAllergies(e.target.value)} placeholder="Ví dụ: Penicillin, hải sản" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-slate-500 text-[10px] block">Bệnh nền</label>
+                        <input value={epChronic} onChange={e => setEpChronic(e.target.value)} placeholder="Ví dụ: Tiểu đường, cao huyết áp" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-slate-500 text-[10px] block">Thuốc đang dùng thường xuyên</label>
+                        <input value={epMeds} onChange={e => setEpMeds(e.target.value)} placeholder="Ví dụ: Metformin 500mg sáng/tối" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500" />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-slate-500 text-[10px] block">Liên hệ khẩn cấp (tối đa 5)</label>
+                        {epContacts.map((c, i) => (
+                          <div key={i} className="flex gap-1.5">
+                            <input value={c.name} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, name: e.target.value } : x))} placeholder="Tên" className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500" />
+                            <input value={c.phone} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, phone: e.target.value } : x))} placeholder="SĐT" inputMode="tel" className="w-28 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
+                            <input value={c.relation || ""} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, relation: e.target.value } : x))} placeholder="Quan hệ" className="w-20 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500" />
+                            <button type="button" onClick={() => setEpContacts(prev => prev.filter((_, xi) => xi !== i))} title="Xóa liên hệ" className="p-2 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 cursor-pointer shrink-0">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {epContacts.length < 5 && (
+                          <button type="button" onClick={() => setEpContacts(prev => [...prev, { name: "", phone: "", relation: "" }])} className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer">
+                            <Plus className="w-3 h-3" /> Thêm liên hệ
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-slate-500 text-[10px] block">Ghi chú thêm</label>
+                        <textarea value={epNotes} onChange={e => setEpNotes(e.target.value)} rows={2} placeholder="Ví dụ: đang mang thai, có máy trợ tim..." className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 resize-none" />
+                      </div>
+
+                      {epError && <p className="text-[11px] text-rose-400">{epError}</p>}
+                      <button type="button" disabled={epSaving} onClick={saveEp} className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 rounded-lg px-3 py-2 font-bold flex items-center justify-center gap-1.5 cursor-pointer">
+                        <Check className="w-4 h-4" /> {epSaving ? "Đang lưu..." : "Lưu hồ sơ"}
+                      </button>
+                    </div>
+                  )}
+                </Reveal>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
