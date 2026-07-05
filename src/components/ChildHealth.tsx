@@ -12,6 +12,7 @@ import { Avatar } from "./Avatar.js";
 import { Medication } from "./Medication.js";
 import { ShimmerLine, Reveal, IconChip, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
+import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 
 type HealthSection = "growth" | "vaccination" | "medication";
 
@@ -295,7 +296,7 @@ export function ChildHealth({
               {renderMemberSelect("focus:border-emerald-500", "col-span-2 sm:col-span-4")}
               <div className="space-y-1 col-span-2 sm:col-span-1">
                 <label className="text-slate-500 text-[10px] block">Ngày đo</label>
-                <input type="date" value={gDate} onChange={e => setGDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 font-mono" />
+                <DateInputDMY value={gDate} onChange={setGDate} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 font-mono" />
               </div>
               <div className="space-y-1">
                 <label className="text-slate-500 text-[10px] block">Chiều cao</label>
@@ -361,7 +362,7 @@ export function ChildHealth({
                               <span className="text-sm font-bold text-slate-400 ml-1.5">cm</span>
                             </p>
                             <p className="mt-2 text-[10px] text-slate-500 font-mono">
-                              {lastH ? <>đo {lastH.date} {deltaText(lastH.heightCm!, prevH?.heightCm ?? undefined, "cm")}</> : "Chưa có số đo"}
+                              {lastH ? <>đo {formatDateVN(lastH.date)} {deltaText(lastH.heightCm!, prevH?.heightCm ?? undefined, "cm")}</> : "Chưa có số đo"}
                             </p>
                           </div>
                           <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3.5">
@@ -371,7 +372,7 @@ export function ChildHealth({
                               <span className="text-sm font-bold text-slate-400 ml-1.5">kg</span>
                             </p>
                             <p className="mt-2 text-[10px] text-slate-500 font-mono">
-                              {lastW ? <>đo {lastW.date} {deltaText(lastW.weightKg!, prevW?.weightKg ?? undefined, "kg")}</> : "Chưa có số đo"}
+                              {lastW ? <>đo {formatDateVN(lastW.date)} {deltaText(lastW.weightKg!, prevW?.weightKg ?? undefined, "kg")}</> : "Chưa có số đo"}
                             </p>
                           </div>
                         </div>
@@ -390,7 +391,7 @@ export function ChildHealth({
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
                       {[...records].reverse().map(g => (
                         <div key={g.id} className="flex items-center justify-between text-xs bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2">
-                          <span className="font-mono text-slate-400">{g.date}</span>
+                          <span className="font-mono text-slate-400">{formatDateVN(g.date)}</span>
                           <span className="text-slate-100 font-bold tabular-nums">
                             {g.heightCm != null ? `${g.heightCm} cm` : "—"} <span className="text-slate-500 font-normal">·</span> {g.weightKg != null ? `${g.weightKg} kg` : "—"}
                           </span>
@@ -421,7 +422,7 @@ export function ChildHealth({
               <input value={vDose} onChange={e => setVDose(e.target.value)} placeholder="Mũi (vd: Mũi 1, nhắc lại)" className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-sky-500" />
               <div className="space-y-1">
                 <label className="text-slate-500 text-[10px] block">Ngày hẹn tiêm</label>
-                <input type="date" value={vScheduled} onChange={e => setVScheduled(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-sky-500 font-mono" />
+                <DateInputDMY value={vScheduled} onChange={setVScheduled} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-sky-500 font-mono" />
               </div>
               <input value={vNote} onChange={e => setVNote(e.target.value)} placeholder="Ghi chú" className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-sky-500 self-end" />
               {vError && <p className="sm:col-span-2 text-[11px] text-rose-400">{vError}</p>}
@@ -449,10 +450,10 @@ export function ChildHealth({
                               <p className="text-xs font-bold text-slate-100 truncate">{v.name} {v.doseLabel && <span className="text-slate-400 font-normal">• {v.doseLabel}</span>}</p>
                               <p className="text-[10px] text-slate-500 font-mono flex items-center gap-2 flex-wrap">
                                 {v.status === "done" ? (
-                                  <span className="text-emerald-400">✓ Đã tiêm {v.doneDate || ""}</span>
+                                  <span className="text-emerald-400">✓ Đã tiêm {formatDateVN(v.doneDate) || ""}</span>
                                 ) : (
                                   <>
-                                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {v.scheduledDate || "chưa đặt"}</span>
+                                    <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {v.scheduledDate ? formatDateVN(v.scheduledDate) : "chưa đặt"}</span>
                                     {dleft !== null && <span className={dleft < 0 ? "text-rose-400" : dleft <= 7 ? "text-amber-400" : "text-slate-500"}>{dleft < 0 ? `trễ ${-dleft}d` : `còn ${dleft}d`}</span>}
                                   </>
                                 )}

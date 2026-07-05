@@ -51,6 +51,7 @@ import { FancySelect } from "./FancySelect.js";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
+import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 
 interface FinanceProps {
   currentUser: User;
@@ -1198,7 +1199,7 @@ export function Finance({
           <form onSubmit={handleCreateBill} className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <input value={billTitle} onChange={(e) => setBillTitle(e.target.value)} placeholder="Tên hóa đơn" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
             <input type="text" inputMode="numeric" value={formatMoneyInput(billAmount)} onChange={(e) => setBillAmount(parseMoneyInput(e.target.value))} placeholder="Số tiền" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
-            <input type="date" value={billDueDate} onChange={(e) => setBillDueDate(e.target.value)} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none" />
+            <DateInputDMY value={billDueDate} onChange={setBillDueDate} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none font-mono" />
             <FancySelect
               value={billFrequency}
               onChange={(v) => setBillFrequency(v as RecurringBill["frequency"])}
@@ -1221,7 +1222,7 @@ export function Finance({
               <div key={b.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-slate-200 truncate">{b.title}</p>
-                  <p className="text-[10px] text-slate-500 font-mono">{b.amount.toLocaleString()} VNĐ • {translateBillCategory(b.category)} • hạn {b.nextDueDate}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{b.amount.toLocaleString()} VNĐ • {translateBillCategory(b.category)} • hạn {formatDateVN(b.nextDueDate)}</p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {isAlreadyPaidThisPeriod(b) ? (
@@ -1509,7 +1510,7 @@ export function Finance({
                       {/* Secondary descriptors */}
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-slate-500">
                         {/* Date */}
-                        <span className="flex items-center gap-1 font-mono text-[10px]"><Calendar className="w-3 h-3 text-slate-500" /> {tx.date}</span>
+                        <span className="flex items-center gap-1 font-mono text-[10px]"><Calendar className="w-3 h-3 text-slate-500" /> {formatDateVN(tx.date)}</span>
                         {/* Account */}
                         <span>{translateAccount(tx.account)}</span>
                         {/* Category tag */}
@@ -1649,10 +1650,9 @@ export function Finance({
               {/* Date — hàng riêng */}
               <div className="space-y-1">
                 <label className="text-slate-400 block font-semibold">Mốc ngày sự kiện</label>
-                <input
-                  type="date"
+                <DateInputDMY
                   value={formDate}
-                  onChange={(e) => setFormDate(e.target.value)}
+                  onChange={setFormDate}
                   className="w-full min-w-0 bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
                 />
               </div>
@@ -1808,10 +1808,9 @@ export function Finance({
                 placeholder="Số tiền"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
               />
-              <input
-                type="date"
+              <DateInputDMY
                 value={editDueDate}
-                onChange={e => setEditDueDate(e.target.value)}
+                onChange={setEditDueDate}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none"
               />
               <FancySelect

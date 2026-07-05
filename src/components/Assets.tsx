@@ -46,6 +46,7 @@ import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
+import { DateInputDMY } from "./DateTimePicker24.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
@@ -1026,7 +1027,7 @@ export function Assets({
                   </div>
                   <div className="space-y-1">
                     <label className="text-slate-400 block font-semibold">Ngày mua / ghi nhận</label>
-                    <input type="date" value={formPurchaseDate} onChange={(e) => setFormPurchaseDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono" />
+                    <DateInputDMY value={formPurchaseDate} onChange={setFormPurchaseDate} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono" />
                   </div>
                 </div>
 
@@ -1303,7 +1304,7 @@ export function Assets({
                 </div>
                 <div className="space-y-1">
                   <label className="text-slate-400 block font-semibold">Ngày bán</label>
-                  <input type="date" value={sellDate} onChange={(e) => setSellDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono" />
+                  <DateInputDMY value={sellDate} onChange={setSellDate} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono" />
                 </div>
               </div>
 

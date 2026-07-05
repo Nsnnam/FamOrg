@@ -28,7 +28,7 @@ import { Avatar } from "./Avatar.js";
 import { ShimmerLine, Reveal, IconChip, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
 import { useConfirm } from "./ConfirmDialog.js";
-import { DateTimePicker24 } from "./DateTimePicker24.js";
+import { DateInputDMY, DateTimePicker24, formatDateTimeVN, formatDateVN } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 
@@ -720,7 +720,7 @@ export function Tasks({
                             const assignee = users.find(u => u.id === task.assigneeId);
                             const creator = users.find(u => u.id === task.creatorId);
                             const next = quickNextStatus(task);
-                            const dueDate = task.dueDate?.split(" ")[0] || "Chưa đặt hạn";
+                            const dueDate = task.dueDate ? formatDateVN(task.dueDate) : "Chưa đặt hạn";
                             const recurrence = recurrenceLabel(task.recurrenceType);
 
                             return (
@@ -942,7 +942,7 @@ export function Tasks({
                 <div>
                   <span className="text-slate-500">Ngày hết hạn:</span>
                   <p className="text-slate-300 mt-0.5 font-mono">
-                    {activeTaskDetails.dueDate}
+                    {formatDateTimeVN(activeTaskDetails.dueDate)}
                   </p>
                 </div>
                 <div>
@@ -1084,25 +1084,23 @@ export function Tasks({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1 min-w-0">
-                  <label className="text-slate-400 block font-semibold">Độ ưu tiên</label>
-                  <FancySelect
-                    value={newPriority}
-                    onChange={(v) => setNewPriority(v as TaskPriority)}
-                    ariaLabel="Độ ưu tiên"
-                    options={[
-                      { value: "low", label: "Thấp / Thường nhật" },
-                      { value: "medium", label: "Bình thường" },
-                      { value: "high", label: "Cao / Khẩn cấp" }
-                    ]}
-                  />
-                </div>
+              <div className="space-y-1 min-w-0">
+                <label className="text-slate-400 block font-semibold">Độ ưu tiên</label>
+                <FancySelect
+                  value={newPriority}
+                  onChange={(v) => setNewPriority(v as TaskPriority)}
+                  ariaLabel="Độ ưu tiên"
+                  options={[
+                    { value: "low", label: "Thấp / Thường nhật" },
+                    { value: "medium", label: "Bình thường" },
+                    { value: "high", label: "Cao / Khẩn cấp" }
+                  ]}
+                />
+              </div>
 
-                <div className="space-y-1 min-w-0">
-                  <label className="text-slate-400 block font-semibold">Hạn hoàn thành</label>
-                  <DateTimePicker24 value={newDueDate} onChange={setNewDueDate} />
-                </div>
+              <div className="space-y-1 min-w-0">
+                <label className="text-slate-400 block font-semibold">Hạn hoàn thành</label>
+                <DateTimePicker24 value={newDueDate} onChange={setNewDueDate} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1162,10 +1160,9 @@ export function Tasks({
                 {newRecurrenceType !== "none" && (
                   <div className="space-y-1 col-span-2">
                     <label className="text-slate-400 block font-semibold">Kết thúc lặp</label>
-                    <input
-                      type="date"
+                    <DateInputDMY
                       value={newRecurrenceEndDate}
-                      onChange={(e) => setNewRecurrenceEndDate(e.target.value)}
+                      onChange={setNewRecurrenceEndDate}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-indigo-500"
                     />
                   </div>

@@ -26,7 +26,7 @@ import {
 import { FamilyPlan, User, UserRole, isLimitedViewer, FAMILY_RELATION_LABELS } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
-import { DateTimePicker24 } from "./DateTimePicker24.js";
+import { DateTimePicker24, formatDateTimeVN } from "./DateTimePicker24.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { Avatar } from "./Avatar.js";
@@ -68,6 +68,7 @@ export function Schedules({
   const [newEndDate, setNewEndDate] = useState("");
   const [newIsRecurring, setNewIsRecurring] = useState(false);
   const [newRecurrenceType, setNewRecurrenceType] = useState<"none" | "daily" | "weekly" | "monthly">("none");
+  const [newRecurrenceWeekdays, setNewRecurrenceWeekdays] = useState<number[]>([]);
   const [newIsShared, setNewIsShared] = useState(true);
   const [newColor, setNewColor] = useState("sky");
 
@@ -83,6 +84,7 @@ export function Schedules({
     setNewEndDate("");
     setNewIsRecurring(false);
     setNewRecurrenceType("none");
+    setNewRecurrenceWeekdays([]);
     setNewIsShared(true);
     setNewColor("sky");
   };
@@ -142,6 +144,7 @@ export function Schedules({
     setNewEndDate(plan.endDate || plan.startDate || "");
     setNewIsRecurring(plan.isRecurring);
     setNewRecurrenceType(plan.recurrenceType || "none");
+    setNewRecurrenceWeekdays(plan.recurrenceWeekdays || []);
     setNewIsShared(plan.isShared);
     setNewColor(plan.color || "sky");
     setEditingPlan(plan);
@@ -227,6 +230,14 @@ export function Schedules({
   // Map plans to EVERY day in their range (start..end) that falls in the current month
   const plansByDayNum = useMemo(() => {
     const mapping: Record<number, FamilyPlan[]> = {};
+    const monthStart = new Date(calYear, calMonth, 1);
+    const monthEnd = new Date(calYear, calMonth + 1, 0);
+    const addPlanForDate = (date: Date, plan: FamilyPlan) => {
+      if (date.getFullYear() !== calYear || date.getMonth() !== calMonth) return;
+      const dayNum = date.getDate();
+      if (!mapping[dayNum]) mapping[dayNum] = [];
+      mapping[dayNum].push(plan);
+    };
     filteredPlans.forEach(plan => {
       const startStr = plan.startDate.slice(0, 10);
       const endStr = (plan.endDate || plan.startDate).slice(0, 10);
@@ -235,14 +246,37 @@ export function Schedules({
       if (isNaN(start.getTime())) return;
       const last = isNaN(endParsed.getTime()) || endParsed < start ? start : endParsed;
 
+      if (plan.isRecurring && plan.recurrenceType && plan.recurrenceType !== "none") {
+        const durationDays = Math.max(0, Math.round((last.getTime() - start.getTime()) / 86400000));
+        const cursor = new Date(Math.max(monthStart.getTime(), start.getTime()));
+        let guard = 0;
+        while (cursor <= monthEnd && guard < 370) {
+          let matches = false;
+          if (plan.recurrenceType === "daily") matches = true;
+          if (plan.recurrenceType === "weekly") {
+            const weekdays = (plan.recurrenceWeekdays && plan.recurrenceWeekdays.length > 0)
+              ? plan.recurrenceWeekdays
+              : [start.getDay()];
+            matches = weekdays.includes(cursor.getDay());
+          }
+          if (plan.recurrenceType === "monthly") matches = cursor.getDate() === start.getDate();
+          if (matches) {
+            for (let offset = 0; offset <= durationDays; offset += 1) {
+              const occurrenceDay = new Date(cursor);
+              occurrenceDay.setDate(cursor.getDate() + offset);
+              addPlanForDate(occurrenceDay, plan);
+            }
+          }
+          cursor.setDate(cursor.getDate() + 1);
+          guard++;
+        }
+        return;
+      }
+
       const cur = new Date(start);
       let guard = 0;
       while (cur <= last && guard < 370) {
-        if (cur.getFullYear() === calYear && cur.getMonth() === calMonth) {
-          const dayNum = cur.getDate();
-          if (!mapping[dayNum]) mapping[dayNum] = [];
-          mapping[dayNum].push(plan);
-        }
+        addPlanForDate(cur, plan);
         cur.setDate(cur.getDate() + 1);
         guard++;
       }
@@ -306,6 +340,9 @@ export function Schedules({
       endDate: newEndDate.trim() || newStartDate.trim(),
       isRecurring: newIsRecurring,
       recurrenceType: newIsRecurring ? newRecurrenceType : "none",
+      recurrenceWeekdays: newIsRecurring && newRecurrenceType === "weekly"
+        ? (newRecurrenceWeekdays.length > 0 ? newRecurrenceWeekdays : [new Date(`${newStartDate.slice(0, 10)}T00:00:00`).getDay()])
+        : undefined,
       isShared: newIsShared,
       color: newColor
     };
@@ -399,7 +436,10 @@ export function Schedules({
     if (plan.description) lines.push(`DESCRIPTION:${escapeICS(plan.description)}`);
     if (plan.isRecurring && plan.recurrenceType && plan.recurrenceType !== "none") {
       const freq = plan.recurrenceType === "daily" ? "DAILY" : plan.recurrenceType === "weekly" ? "WEEKLY" : "MONTHLY";
-      lines.push(`RRULE:FREQ=${freq}`);
+      const byDay = plan.recurrenceType === "weekly" && plan.recurrenceWeekdays?.length
+        ? `;BYDAY=${plan.recurrenceWeekdays.map(d => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][d]).join(",")}`
+        : "";
+      lines.push(`RRULE:FREQ=${freq}${byDay}`);
     }
     lines.push("END:VEVENT", "END:VCALENDAR");
     return lines.join("\r\n");
@@ -479,6 +519,26 @@ export function Schedules({
   const lunarCellTitle = (lunar?: VietnamLunarDate) => {
     if (!lunar) return "";
     return `Âm lịch: ngày ${lunar.day}/${lunar.month}${lunar.isLeapMonth ? " nhuận" : ""}/${lunar.year}`;
+  };
+
+  const WEEKDAY_OPTIONS = [
+    { value: 1, label: "T2" },
+    { value: 2, label: "T3" },
+    { value: 3, label: "T4" },
+    { value: 4, label: "T5" },
+    { value: 5, label: "T6" },
+    { value: 6, label: "T7" },
+    { value: 0, label: "CN" }
+  ];
+
+  const recurrenceText = (plan: FamilyPlan) => {
+    if (!plan.isRecurring) return "";
+    if (plan.recurrenceType === "daily") return "Hằng ngày";
+    if (plan.recurrenceType === "weekly") {
+      const days = (plan.recurrenceWeekdays || []).map(d => WEEKDAY_OPTIONS.find(o => o.value === d)?.label).filter(Boolean);
+      return days.length ? `Hằng tuần: ${days.join(", ")}` : "Hằng tuần";
+    }
+    return "Hằng tháng";
   };
 
   // Decide how a plan should render in ONE calendar cell.
@@ -683,12 +743,7 @@ export function Schedules({
                       <span className={`inline-flex h-7 min-w-7 sm:h-8 sm:min-w-8 items-center justify-center rounded-lg border px-1 sm:px-1.5 text-sm sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
                         {day.dayNum}
                       </span>
-                      {/* "Hôm nay" xuống dòng dưới số — chỉ mobile (desktop hiện bên phải) */}
-                      {isToday && (
-                        <div className="sm:hidden mt-0.5 flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide text-sky-400 leading-none">
-                          <span className="w-1 h-1 rounded-full bg-sky-400 animate-pulse" /> Hôm nay
-                        </div>
-                      )}
+
                       {lunarDate && (
                         <div
                           className={`mt-1 text-[8px] sm:text-[9px] leading-none font-mono font-semibold ${lunarDate.day === 1 ? "text-emerald-400" : "text-slate-500"}`}
@@ -756,7 +811,7 @@ export function Schedules({
                           key={plan.id}
                           type="button"
                           onClick={() => setViewingPlan(plan)}
-                          title={`${plan.title}\n(${plan.startDate} → ${plan.endDate || plan.startDate})`}
+                          title={`${plan.title}\n(${formatDateTimeVN(plan.startDate)} → ${formatDateTimeVN(plan.endDate || plan.startDate)})`}
                           className={`w-full text-left text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 sm:py-1 rounded-md font-medium flex items-center gap-0.5 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity ${badgeColorClass(plan.color)}`}
                         >
                           {meta.contFrom && <ChevronLeft className="w-2.5 h-2.5 shrink-0 opacity-60" />}
@@ -785,8 +840,8 @@ export function Schedules({
               {filteredPlans.map((plan, planIndex) => {
                 const creator = users.find(u => u.id === plan.creatorId);
                 const canManage = canManagePlan(plan);
-                const sDate = plan.startDate.split(" ");
-                const eDate = plan.endDate.split(" ");
+                const sDate = formatDateTimeVN(plan.startDate).split(" ");
+                const eDate = formatDateTimeVN(plan.endDate).split(" ");
                 return (
                   <Reveal
                     key={plan.id}
@@ -823,7 +878,7 @@ export function Schedules({
                       {/* Recurrence Indicator */}
                       {plan.isRecurring && (
                         <span className="flex items-center gap-1 bg-indigo-500/10 text-indigo-400 text-[10px] px-1.5 py-0.5 border border-indigo-500/20 rounded-md">
-                          <Repeat className="w-3 h-3 animate-spin" /> {plan.recurrenceType === "daily" ? "Hằng ngày" : plan.recurrenceType === "weekly" ? "Hằng tuần" : "Hằng tháng"}
+                          <Repeat className="w-3 h-3 animate-spin" /> {recurrenceText(plan)}
                         </span>
                       )}
                     </div>
@@ -914,16 +969,16 @@ export function Schedules({
               <div className="space-y-2 bg-slate-950/40 border border-slate-800 rounded-xl p-3.5 text-xs font-mono">
                 <div className="flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5 text-amber-500/80 shrink-0" />
-                  <span className="text-slate-300">Bắt đầu: <span className="text-amber-400">{viewingPlan.startDate}</span></span>
+                  <span className="text-slate-300">Bắt đầu: <span className="text-amber-400">{formatDateTimeVN(viewingPlan.startDate)}</span></span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5 text-indigo-400/80 shrink-0" />
-                  <span className="text-slate-300">Kết thúc: <span className="text-indigo-400">{viewingPlan.endDate || viewingPlan.startDate}</span></span>
+                  <span className="text-slate-300">Kết thúc: <span className="text-indigo-400">{formatDateTimeVN(viewingPlan.endDate || viewingPlan.startDate)}</span></span>
                 </div>
                 {viewingPlan.isRecurring && (
                   <div className="flex items-center gap-2 text-indigo-400">
                     <Repeat className="w-3.5 h-3.5 shrink-0" />
-                    <span>Lặp lại: {viewingPlan.recurrenceType === "daily" ? "Hằng ngày" : viewingPlan.recurrenceType === "weekly" ? "Hằng tuần" : "Hằng tháng"}</span>
+                    <span>Lặp lại: {recurrenceText(viewingPlan)}</span>
                   </div>
                 )}
               </div>
@@ -1194,16 +1249,14 @@ export function Schedules({
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1 min-w-0">
-                  <label className="text-slate-400 block font-semibold">Bắt đầu <span className="text-rose-400">*</span></label>
-                  <DateTimePicker24 value={newStartDate} onChange={setNewStartDate} required />
-                </div>
+              <div className="space-y-1 min-w-0">
+                <label className="text-slate-400 block font-semibold">Bắt đầu <span className="text-rose-400">*</span></label>
+                <DateTimePicker24 value={newStartDate} onChange={setNewStartDate} required />
+              </div>
 
-                <div className="space-y-1 min-w-0">
-                  <label className="text-slate-400 block font-semibold">Kết thúc</label>
-                  <DateTimePicker24 value={newEndDate} onChange={setNewEndDate} />
-                </div>
+              <div className="space-y-1 min-w-0">
+                <label className="text-slate-400 block font-semibold">Kết thúc</label>
+                <DateTimePicker24 value={newEndDate} onChange={setNewEndDate} />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
@@ -1233,6 +1286,26 @@ export function Schedules({
                         { value: "monthly", label: "Hằng tháng" }
                       ]}
                     />
+                  </div>
+                )}
+                {newIsRecurring && newRecurrenceType === "weekly" && (
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-slate-400 block font-semibold">Lặp vào thứ nào trong tuần</label>
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {WEEKDAY_OPTIONS.map(day => {
+                        const active = newRecurrenceWeekdays.includes(day.value);
+                        return (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => setNewRecurrenceWeekdays(prev => active ? prev.filter(v => v !== day.value) : [...prev, day.value].sort((a, b) => a - b))}
+                            className={`px-2 py-2 rounded-lg text-[11px] font-bold border cursor-pointer transition-colors ${active ? "bg-indigo-500 text-white border-indigo-400" : "bg-slate-950 text-slate-400 border-slate-800 hover:border-indigo-500/50"}`}
+                          >
+                            {day.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

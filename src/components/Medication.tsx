@@ -7,7 +7,7 @@ import React, { useMemo, useState, useRef } from "react";
 import { Pill, Plus, Trash2, Clock, X, Check, Ban } from "lucide-react";
 import { MedicationReminder, MedicationLog, User, canManageMedication } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
-import { TimeSelect24 } from "./DateTimePicker24.js";
+import { DateInputDMY, TimeSelect24 } from "./DateTimePicker24.js";
 import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
@@ -215,11 +215,11 @@ export function Medication({
 
             <div className="md:col-span-3 space-y-1">
               <label className="text-slate-500 text-[10px] block">Ngày bắt đầu</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
+              <DateInputDMY value={startDate} onChange={setStartDate} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
             </div>
             <div className="md:col-span-3 space-y-1">
               <label className="text-slate-500 text-[10px] block">Ngày kết thúc (tùy chọn)</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
+              <DateInputDMY value={endDate} onChange={setEndDate} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500 font-mono" />
             </div>
 
             <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ghi chú, sau ăn..." className="md:col-span-4 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-slate-200 outline-none focus:border-rose-500" />
