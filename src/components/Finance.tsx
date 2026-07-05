@@ -531,11 +531,7 @@ export function Finance({
   }, [filteredTransactions]);
 
   // Optimize the receipt photo in the browser, then store it as a file (DB keeps only the URL).
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-
+  const uploadReceiptFile = async (file: File) => {
     setFormError("");
     setReceiptProcessing(true);
     try {
@@ -552,6 +548,22 @@ export function Finance({
     } finally {
       setReceiptProcessing(false);
     }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void uploadReceiptFile(file);
+  };
+
+  // Dán ảnh hóa đơn từ clipboard (Ctrl+V) khi form thu chi đang mở.
+  const handleReceiptPaste = (e: React.ClipboardEvent) => {
+    const img = Array.from(e.clipboardData?.items || [])
+      .find(it => it.kind === "file" && it.type.startsWith("image/"))
+      ?.getAsFile();
+    if (!img || receiptProcessing) return;
+    e.preventDefault();
+    void uploadReceiptFile(img);
   };
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
@@ -1522,7 +1534,7 @@ export function Finance({
               </button>
             </div>
 
-            <form onSubmit={handleCreateTransaction} className="flex flex-col min-h-0 flex-1 overflow-hidden text-xs">
+            <form onSubmit={handleCreateTransaction} onPaste={handleReceiptPaste} className="flex flex-col min-h-0 flex-1 overflow-hidden text-xs">
               <div className="space-y-4 overflow-y-auto px-5 py-4 flex-1 min-h-0">
               {formError && (
                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl font-medium">
@@ -1640,7 +1652,7 @@ export function Finance({
 
               {/* Receipt File upload */}
               <div className="space-y-1 bg-slate-950/40 p-4 border border-slate-800 rounded-xl">
-                <label className="text-slate-400 block font-semibold mb-1">Đính kèm ảnh chụp hóa đơn (tự tối ưu trước khi lưu)</label>
+                <label className="text-slate-400 block font-semibold mb-1">Đính kèm ảnh chụp hóa đơn (tự tối ưu trước khi lưu — dán Ctrl+V được)</label>
                 <input
                   type="file"
                   accept="image/*,.heic,.heif"
