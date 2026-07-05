@@ -233,7 +233,7 @@ export function Dashboard({
   // 3. Sự kiện sắp diễn ra (30 ngày tới) — mở rộng cả sự kiện LẶP LẠI theo đúng
   // logic lịch (hằng ngày/tuần/tháng) và gộp thêm NGÀY LỄ, để khớp với lịch trình.
   const upcomingPlans = useMemo(() => {
-    const WINDOW_DAYS = 30;
+    const WINDOW_DAYS = 20;
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const windowEnd = new Date(startOfToday.getTime() + 86400000 * WINDOW_DAYS);
@@ -741,7 +741,7 @@ export function Dashboard({
           <ShimmerLine via="via-amber-500/50" />
           <div aria-hidden className="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-amber-500/10 blur-2xl group-hover:bg-amber-500/20 transition-colors duration-500" />
           <div className="relative flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-medium">Lịch 30 ngày tới</span>
+            <span className="text-slate-400 text-xs font-medium">Lịch 20 ngày tới</span>
             <div className="bg-gradient-to-br from-amber-500/25 to-amber-500/5 ring-1 ring-amber-500/20 p-2 rounded-xl text-amber-400 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300">
               <Calendar className="w-5 h-5" />
             </div>
@@ -778,11 +778,11 @@ export function Dashboard({
 
             {upcomingPlans.length === 0 ? (
               <div className="bg-slate-950/40 border border-dashed border-slate-800 p-6 rounded-xl text-center">
-                <p className="text-sm text-slate-500">Không có sự kiện nào trong 30 ngày tới.</p>
+                <p className="text-sm text-slate-500">Không có sự kiện nào trong 20 ngày tới.</p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {upcomingPlans.slice(0, 12).map((item) => {
+              <div className="space-y-3 max-h-72 overflow-y-auto overscroll-contain scrollbar-thin pr-1">
+                {upcomingPlans.map((item) => {
                   const colorMap: any = {
                     emerald: "border-l-4 border-emerald-500 bg-emerald-500/5",
                     sky: "border-l-4 border-sky-500 bg-sky-500/5",
