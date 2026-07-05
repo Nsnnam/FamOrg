@@ -715,7 +715,7 @@ export function Schedules({
           </div>
 
           {/* 30 block spaces */}
-          <div className="grid grid-cols-7 auto-rows-[112px] sm:auto-rows-[118px] lg:auto-rows-[132px] bg-slate-900">
+          <div className="grid grid-cols-7 auto-rows-[112px] sm:auto-rows-[118px] lg:auto-rows-[132px] bg-slate-200 dark:bg-slate-900">
             {calendarDays.map((day, i) => {
               if (day.blank) {
                 return <div key={`blank-${i}`} className="bg-slate-950/25 border-r border-b border-slate-800/60" />;
@@ -734,7 +734,7 @@ export function Schedules({
               return (
                 <div
                   key={`day-${day.dayNum}`}
-                  className={`p-1.5 sm:p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isSaturday ? "bg-yellow-100/60 dark:bg-amber-950/20" : ""} ${isSunday ? "bg-yellow-100/60 dark:bg-red-950/20" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
+                  className={`p-1.5 sm:p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isSaturday ? "bg-yellow-50 dark:bg-amber-950/20" : ""} ${isSunday ? "bg-yellow-50 dark:bg-red-950/20" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
                 >
                   <div className="flex justify-between items-start gap-1.5 min-h-9">
                     <div className="min-w-0">
