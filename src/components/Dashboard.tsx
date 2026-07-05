@@ -30,6 +30,7 @@ import { Avatar } from "./Avatar.js";
 import { QuickNudge } from "./QuickNudge.js";
 import { ShimmerLine, IconChip } from "./Lively.js";
 import { getVietnamHolidaysForMonth } from "../utils/vietnamHolidays.js";
+import { expandRecurringOccurrences } from "../utils/recurrence.js";
 
 interface DashboardProps {
   currentUser: User;
@@ -270,21 +271,8 @@ export function Dashboard({
       };
 
       if (recur) {
-        const endParsed = new Date(`${(plan.endDate || plan.startDate).slice(0, 10)}T00:00:00`);
-        const last = isNaN(endParsed.getTime()) || endParsed < start ? start : endParsed;
-        const cursor = new Date(Math.max(startOfToday.getTime(), start.getTime()));
-        let guard = 0;
-        while (cursor <= windowEnd && cursor <= last && guard < 400) {
-          let matches = false;
-          if (plan.recurrenceType === "daily") matches = true;
-          else if (plan.recurrenceType === "weekly") {
-            const weekdays = (plan.recurrenceWeekdays && plan.recurrenceWeekdays.length > 0) ? plan.recurrenceWeekdays : [start.getDay()];
-            matches = weekdays.includes(cursor.getDay());
-          } else if (plan.recurrenceType === "monthly") matches = cursor.getDate() === start.getDate();
-          if (matches) pushOcc(new Date(cursor));
-          cursor.setDate(cursor.getDate() + 1);
-          guard++;
-        }
+        // Logic mở rộng lặp lại dùng chung ở utils/recurrence (có test)
+        expandRecurringOccurrences(plan, startOfToday, windowEnd).forEach(pushOcc);
       } else {
         pushOcc(start);
       }
