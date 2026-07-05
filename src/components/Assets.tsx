@@ -390,16 +390,7 @@ export function Assets({
     setFormUnit(defaultUnitForType(type));
   };
 
-  const handlePhotoFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files: File[] = [];
-    const fileList = e.currentTarget.files;
-    if (fileList) {
-      for (let i = 0; i < fileList.length; i++) {
-        const file = fileList.item(i);
-        if (file) files.push(file);
-      }
-    }
-    e.currentTarget.value = "";
+  const addPhotoFiles = async (files: File[]) => {
     if (files.length === 0) return;
     if (formPhotos.length + files.length > MAX_ASSET_PHOTOS) {
       setFormError(`Mỗi tài sản chỉ lưu được tối đa ${MAX_ASSET_PHOTOS} ảnh.`);
@@ -447,6 +438,30 @@ export function Assets({
     } finally {
       setImageProcessing(false);
     }
+  };
+
+  const handlePhotoFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files: File[] = [];
+    const fileList = e.currentTarget.files;
+    if (fileList) {
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList.item(i);
+        if (file) files.push(file);
+      }
+    }
+    e.currentTarget.value = "";
+    void addPhotoFiles(files);
+  };
+
+  // Dán ảnh tài sản từ clipboard (Ctrl+V) khi form đang mở.
+  const handlePhotoPaste = (e: React.ClipboardEvent) => {
+    const imgs = Array.from(e.clipboardData?.items || [])
+      .filter(it => it.kind === "file" && it.type.startsWith("image/"))
+      .map(it => it.getAsFile())
+      .filter((f): f is File => !!f);
+    if (imgs.length === 0 || imageProcessing) return;
+    e.preventDefault();
+    void addPhotoFiles(imgs);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -919,7 +934,7 @@ export function Assets({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1 overflow-hidden text-xs">
+            <form onSubmit={handleSubmit} onPaste={handlePhotoPaste} className="flex flex-col min-h-0 flex-1 overflow-hidden text-xs">
               <div className="space-y-4 overflow-y-auto px-5 py-4 flex-1 min-h-0">
                 {formError && (
                   <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl font-medium">

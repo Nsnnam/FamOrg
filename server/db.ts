@@ -973,6 +973,11 @@ export class FamilyDB {
   }
 
   // Notes Management
+  // Các URL ảnh do app quản lý (/uploads/notes/...) nhúng trong markdown của ghi chú.
+  private static extractNoteImageUrls(content: string | undefined): string[] {
+    return String(content || "").match(/\/uploads\/notes\/[a-zA-Z0-9_\-./]+/g) || [];
+  }
+
   public static saveNote(noteData: Partial<Note>, userId: string, username: string): Note {
     const db = this.readRaw();
     const nowStr = new Date().toISOString();
@@ -983,12 +988,20 @@ export class FamilyDB {
       if (idx === -1) throw new Error("Ghi chú không tồn tại");
 
       const oldNote = db.notes[idx];
-      
+
       const updatedNote: Note = {
         ...oldNote,
         ...noteData,
         updatedAt: nowStr
       } as Note;
+
+      // Ảnh nhúng bị gỡ khỏi nội dung → xóa file mồ côi trên đĩa.
+      if (noteData.content !== undefined) {
+        const kept = new Set(this.extractNoteImageUrls(updatedNote.content));
+        this.extractNoteImageUrls(oldNote.content).forEach(url => {
+          if (!kept.has(url)) deleteMediaByUrl(url);
+        });
+      }
 
       db.notes[idx] = updatedNote;
       this.writeRaw(db);
@@ -1023,6 +1036,8 @@ export class FamilyDB {
     if (idx === -1) return;
 
     const title = db.notes[idx].title;
+    // Dọn các ảnh nhúng trong ghi chú khỏi đĩa.
+    this.extractNoteImageUrls(db.notes[idx].content).forEach(url => deleteMediaByUrl(url));
     db.notes.splice(idx, 1);
     this.writeRaw(db);
     this.logActivity(userId, username, "Xóa Ghi chú", `Đã xóa ghi chú "${title}".`);

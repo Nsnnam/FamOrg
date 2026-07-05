@@ -19,7 +19,7 @@ export const UPLOADS_URL_PREFIX = "/uploads/";
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 // Categories map to top-level folders ("tab/chủ đề" buckets).
-const ALLOWED_CATEGORIES = new Set(["avatars", "assets", "receipts", "documents", "debts"]);
+const ALLOWED_CATEGORIES = new Set(["avatars", "assets", "receipts", "documents", "debts", "notes"]);
 
 // Reject anything larger than this per single image (after client-side optimize).
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;

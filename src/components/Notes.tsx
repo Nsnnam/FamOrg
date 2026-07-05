@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useCallback, useEffect, lazy, Suspense } from "react";
+import React, { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from "react";
 import {
   FileText,
   Plus,
@@ -27,6 +27,7 @@ import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
+import { optimizeAndUpload } from "../utils/uploadImage.js";
 
 interface NotesProps {
   currentUser: User;
@@ -69,6 +70,46 @@ export function Notes({
   const [formIsPinned, setFormIsPinned] = useState(false);
   const [formIsShared, setFormIsShared] = useState(true);
   const [editorPreview, setEditorPreview] = useState(false); // Soạn (false) / Xem trước (true)
+  const [imagePasting, setImagePasting] = useState(false);
+  const contentRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Dán ảnh từ clipboard (Ctrl+V) vào ô soạn: tối ưu + upload rồi chèn
+  // markdown ![ảnh](url) ngay tại vị trí con trỏ.
+  const handleContentPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const img = Array.from(e.clipboardData?.items || [])
+      .find(it => it.kind === "file" && it.type.startsWith("image/"))
+      ?.getAsFile();
+    if (!img || imagePasting) return;
+    e.preventDefault();
+    setFormError("");
+    setImagePasting(true);
+    // Ghi lại vị trí con trỏ TRƯỚC khi await (upload xong textarea có thể mất focus)
+    const el = contentRef.current;
+    const selStart = el?.selectionStart ?? formContent.length;
+    const selEnd = el?.selectionEnd ?? selStart;
+    try {
+      const up = await optimizeAndUpload(img, "notes", {
+        maxSourceBytes: 20 * 1024 * 1024,
+        targetBytes: 600 * 1024,
+        maxSizes: [1280, 1024, 768],
+        qualities: [0.82, 0.72, 0.62],
+        backgroundColor: "#ffffff"
+      });
+      const snippet = `![ảnh](${up.url})`;
+      setFormContent(prev => {
+        const before = prev.slice(0, selStart);
+        const after = prev.slice(selEnd);
+        // Tự chèn xuống dòng quanh ảnh cho markdown render thành khối riêng
+        const pre = before && !before.endsWith("\n") ? `${before}\n` : before;
+        const post = after && !after.startsWith("\n") ? `\n${after}` : after;
+        return `${pre}${snippet}${post}`;
+      });
+    } catch (err: any) {
+      setFormError(err.message || "Không dán được ảnh vào ghi chú.");
+    } finally {
+      setImagePasting(false);
+    }
+  };
 
   // AI viết nháp ghi chú
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -552,14 +593,19 @@ export function Notes({
                   </div>
                 ) : (
                   <textarea
+                    ref={contentRef}
                     rows={10}
                     placeholder={`# Tiêu đề\n\n**In đậm**, *in nghiêng*, ~~gạch ngang~~, [liên kết](https://...)\n\n## Danh sách\n- mục thường\n- [ ] việc cần làm\n- [x] đã xong\n\n1. có thứ tự\n\n> Trích dẫn\n\n\`code\` hoặc khối \`\`\` ... \`\`\`\n\n| Cột A | Cột B |\n| --- | --- |\n| 1 | 2 |`}
                     value={formContent}
                     onChange={(e) => setFormContent(e.target.value)}
+                    onPaste={handleContentPaste}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500 font-mono leading-relaxed"
                   />
                 )}
-                <p className="text-[10px] text-slate-500">Hỗ trợ Markdown đầy đủ: tiêu đề, in đậm/nghiêng, danh sách, checkbox, liên kết, trích dẫn, code, bảng…</p>
+                <p className="text-[10px] text-slate-500">
+                  Hỗ trợ Markdown đầy đủ: tiêu đề, in đậm/nghiêng, danh sách, checkbox, liên kết, trích dẫn, code, bảng… Dán ảnh Ctrl+V được.
+                  {imagePasting && <span className="text-sky-400 font-semibold"> Đang tải ảnh…</span>}
+                </p>
               </div>
 
               {/* Tags, Pinned and Shared row */}
