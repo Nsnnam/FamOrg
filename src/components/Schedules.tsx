@@ -710,8 +710,8 @@ export function Schedules({
             <div className="text-slate-500"><span className="hidden sm:inline">Thứ Tư</span><span className="sm:hidden">T4</span></div>
             <div className="text-slate-500"><span className="hidden sm:inline">Thứ Năm</span><span className="sm:hidden">T5</span></div>
             <div className="text-slate-500"><span className="hidden sm:inline">Thứ Sáu</span><span className="sm:hidden">T6</span></div>
-            <div className="text-amber-500/80"><span className="hidden sm:inline">Thứ Bảy</span><span className="sm:hidden">T7</span></div>
-            <div className="text-amber-500/80"><span className="hidden sm:inline">Chủ Nhật</span><span className="sm:hidden">CN</span></div>
+            <div className="text-amber-400"><span className="hidden sm:inline">Thứ Bảy</span><span className="sm:hidden">T7</span></div>
+            <div className="text-red-400"><span className="hidden sm:inline">Chủ Nhật</span><span className="sm:hidden">CN</span></div>
           </div>
 
           {/* 30 block spaces */}
@@ -727,16 +727,18 @@ export function Schedules({
               const lunarDate = lunarByDayNum[day.dayNum];
               const hasEvents = dayPlans.length > 0 || dayBirthdays.length > 0 || dayHolidays.length > 0;
               const isToday = isViewingToday && day.dayNum === today.getDate();
-              const isWeekend = i % 7 === 5 || i % 7 === 6; // cột T7=5, CN=6
+              const isSaturday = i % 7 === 5;
+              const isSunday = i % 7 === 6;
+              const isWeekend = isSaturday || isSunday;
 
               return (
                 <div
                   key={`day-${day.dayNum}`}
-                  className={`p-1.5 sm:p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isWeekend ? "bg-slate-950/15" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
+                  className={`p-1.5 sm:p-2 border-r border-b border-slate-800/80 hover:bg-slate-800/10 transition-colors flex flex-col overflow-hidden ${isSaturday ? "bg-amber-950/20" : ""} ${isSunday ? "bg-red-950/20" : ""} ${dayHolidays.length > 0 ? "bg-amber-500/5" : ""} ${isToday ? "bg-gradient-to-b from-sky-500/12 to-transparent" : ""}`}
                 >
                   <div className="flex justify-between items-start gap-1.5 min-h-9">
                     <div className="min-w-0">
-                      <span className={`inline-flex h-7 min-w-7 sm:h-8 sm:min-w-8 items-center justify-center rounded-lg border px-1 sm:px-1.5 text-sm sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
+                      <span className={`inline-flex h-7 min-w-7 sm:h-8 sm:min-w-8 items-center justify-center rounded-lg border px-1 sm:px-1.5 text-sm sm:text-lg font-extrabold font-mono leading-none ${isToday ? "bg-sky-500 text-slate-950 border-sky-300 shadow-lg shadow-sky-500/40 ring-2 ring-sky-500/30" : dayHolidays.length > 0 ? "bg-amber-500/10 text-amber-500 border-amber-500/25" : isSaturday ? "bg-amber-950/40 text-amber-300 border-amber-800/50" : isSunday ? "bg-red-950/40 text-red-300 border-red-800/50" : "bg-slate-950/60 text-slate-200 border-slate-800"}`}>
                         {day.dayNum}
                       </span>
 
