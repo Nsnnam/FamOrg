@@ -21,6 +21,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Users,
+  Trees,
+  Star,
+  BookOpen,
   X
 } from "lucide-react";
 import { FamilyPlan, User, UserRole, isLimitedViewer, FAMILY_RELATION_LABELS } from "../types.js";
@@ -41,6 +45,16 @@ interface SchedulesProps {
   onSavePlan: (plan: Partial<FamilyPlan>) => Promise<any>;
   onDeletePlan: (id: string) => Promise<any>;
 }
+
+// Loại sự kiện — nguồn chân lý chung cho form chọn loại, nhãn thẻ và chú thích lịch.
+// `value` giữ trùng tên màu cũ để không phá dữ liệu plan.color đã lưu.
+const PLAN_TYPES: { value: string; label: string; icon: React.ComponentType<{ className?: string }>; dotHex: string }[] = [
+  { value: "sky", label: "Họp hành / Gặp mặt", icon: Users, dotHex: "#38bdf8" },
+  { value: "emerald", label: "Dã ngoại / Ăn chơi", icon: Trees, dotHex: "#10b981" },
+  { value: "rose", label: "Quan trọng", icon: Star, dotHex: "#f43f5e" },
+  { value: "amber", label: "Bài học / Công việc", icon: BookOpen, dotHex: "#f59e0b" },
+];
+const planTypeMeta = (color: string) => PLAN_TYPES.find(t => t.value === color) || PLAN_TYPES[0];
 
 export function Schedules({
   currentUser,
@@ -825,6 +839,22 @@ export function Schedules({
               );
             })}
           </div>
+
+          {/* Chú thích loại sự kiện — giải thích ý nghĩa màu trên lịch */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 border-t border-slate-800 bg-slate-950/30">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wide shrink-0">Chú thích</span>
+            {PLAN_TYPES.map(t => {
+              const Icon = t.icon;
+              return (
+                <span key={t.value} className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-400 font-medium">
+                  <span className="w-4 h-4 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: `${t.dotHex}22`, color: t.dotHex }}>
+                    <Icon className="w-2.5 h-2.5" />
+                  </span>
+                  {t.label}
+                </span>
+              );
+            })}
+          </div>
         </Reveal>
       ) : (
         /* Agenda List View Details list */
@@ -840,6 +870,8 @@ export function Schedules({
                 const canManage = canManagePlan(plan);
                 const sDate = formatDateTimeVN(plan.startDate).split(" ");
                 const eDate = formatDateTimeVN(plan.endDate).split(" ");
+                const typeMeta = planTypeMeta(plan.color);
+                const TypeIcon = typeMeta.icon;
                 return (
                   <Reveal
                     key={plan.id}
@@ -849,8 +881,9 @@ export function Schedules({
                   >
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-[11px]">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-lg ${badgeColorClass(plan.color)} font-semibold`}>
-                          {plan.color === "emerald" ? "Dã ngoại / Ăn chơi" : plan.color === "rose" ? "Quan trọng" : plan.color === "amber" ? "Bài học / Công việc" : "Họp hành / Gặp mặt"}
+                        <span className={`text-[10px] px-2 py-0.5 rounded-lg ${badgeColorClass(plan.color)} font-semibold inline-flex items-center gap-1`}>
+                          <TypeIcon className="w-3 h-3 shrink-0" />
+                          {typeMeta.label}
                         </span>
                         
                         <div className="flex items-center gap-1.5 text-slate-500 font-medium">
@@ -1322,18 +1355,26 @@ export function Schedules({
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-slate-400 block font-semibold">Màu sắc chủ đạo</label>
-                  <div className="flex gap-2.5 pt-1.5">
-                    {["sky", "emerald", "rose", "amber"].map(c => (
-                      <button 
-                        key={c}
-                        type="button"
-                        onClick={() => setNewColor(c)}
-                        className={`w-6 h-6 rounded-full cursor-pointer flex items-center justify-center border-2 ${newColor === c ? "border-slate-100" : "border-transparent"}`}
-                        style={{ backgroundColor: c === "sky" ? "#38bdf8" : c === "emerald" ? "#10b981" : c === "rose" ? "#f43f5e" : "#f59e0b" }}
-                      />
-                    ))}
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-slate-400 block font-semibold">Loại sự kiện</label>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {PLAN_TYPES.map(t => {
+                      const Icon = t.icon;
+                      const active = newColor === t.value;
+                      return (
+                        <button
+                          key={t.value}
+                          type="button"
+                          onClick={() => setNewColor(t.value)}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left cursor-pointer transition-colors ${active ? "border-slate-100 bg-slate-800/40" : "border-slate-800 bg-slate-950 hover:border-slate-700"}`}
+                        >
+                          <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${t.dotHex}22`, color: t.dotHex }}>
+                            <Icon className="w-4 h-4" />
+                          </span>
+                          <span className="text-[11px] font-semibold text-slate-200 leading-tight min-w-0">{t.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
