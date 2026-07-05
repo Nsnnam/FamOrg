@@ -47,6 +47,7 @@ import {
   SavingsGoal,
   Debt,
   VaccinationRecord,
+  EmergencyProfile,
   GrowthRecord,
   ROLE_LABELS,
   FAMILY_RELATION_LABELS,
@@ -355,6 +356,7 @@ export default function App() {
   const [medicationLogs, setMedicationLogs] = useState<MedicationLog[]>([]);
   const [vaccinations, setVaccinations] = useState<VaccinationRecord[]>([]);
   const [growthRecords, setGrowthRecords] = useState<GrowthRecord[]>([]);
+  const [healthProfiles, setHealthProfiles] = useState<EmergencyProfile[]>([]);
   const [documents, setDocuments] = useState<FamilyDocument[]>([]);
   const [shoppingItems, setShoppingItems] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -566,6 +568,7 @@ export default function App() {
         const data = await res.json();
         setVaccinations(data.vaccinations || []);
         setGrowthRecords(data.growthRecords || []);
+        setHealthProfiles(data.healthProfiles || []);
       }
     } catch (e) {
       console.error(e);
@@ -1236,6 +1239,13 @@ export default function App() {
     if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
     return res.json();
   };
+  const handleSaveHealthProfile = async (payload: Partial<EmergencyProfile>) => {
+    const res = await fetch("/api/child-health/emergency", {
+      method: "POST", headers: { "Content-Type": "application/json", ...getAuthHeader() }, body: JSON.stringify(payload)
+    });
+    if (!res.ok) { const data = await res.json(); throw new Error(data.error); }
+    return res.json();
+  };
 
   const handleSaveDocument = async (payload: Partial<FamilyDocument>) => {
     const res = await fetch("/api/documents", {
@@ -1885,8 +1895,10 @@ export default function App() {
                   users={users}
                   vaccinations={vaccinations}
                   growthRecords={growthRecords}
+                  healthProfiles={healthProfiles}
                   medications={medications}
                   medicationLogs={medicationLogs}
+                  onSaveHealthProfile={handleSaveHealthProfile}
                   onSaveVaccination={handleSaveVaccination}
                   onDeleteVaccination={handleDeleteVaccination}
                   onSaveGrowth={handleSaveGrowth}

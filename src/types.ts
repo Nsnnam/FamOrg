@@ -471,6 +471,29 @@ export interface GrowthRecord {
   createdAt: string;
 }
 
+// --- Thẻ khẩn cấp / hồ sơ sức khỏe cơ bản (mỗi thành viên 1 hồ sơ) ---
+export const BLOOD_TYPE_OPTIONS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] as const;
+
+export interface EmergencyContact {
+  name: string;
+  phone: string;
+  relation?: string; // "Bác sĩ gia đình", "Ông nội"...
+}
+
+export interface EmergencyProfile {
+  id: string;                  // "hp_<userId>" — mỗi thành viên đúng 1 hồ sơ
+  userId: string;
+  bloodType?: string;          // một trong BLOOD_TYPE_OPTIONS
+  allergies?: string;          // dị ứng (thuốc, thức ăn...)
+  chronicConditions?: string;  // bệnh nền
+  currentMedications?: string; // thuốc đang dùng thường xuyên
+  healthInsuranceNumber?: string; // số thẻ BHYT
+  emergencyContacts: EmergencyContact[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // A Web Push subscription tied to one user's device/browser. Used to deliver
 // system notifications + app-icon badge even when the PWA is closed.
 export interface PushSubscriptionRecord {
@@ -544,6 +567,7 @@ export interface FamilyOrganizerDB {
   medicationLogs: MedicationLog[];
   vaccinations: VaccinationRecord[];
   growthRecords: GrowthRecord[];
+  healthProfiles: EmergencyProfile[];
   documents: FamilyDocument[];
   shoppingItems: ShoppingItem[];
   dishLibrary: StoredDish[];
