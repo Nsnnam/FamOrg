@@ -294,4 +294,23 @@ html {
   .holo-sheen { transition: none; }
 }
 
+/* Nền "art" trong cửa sổ hình của thẻ bài: tia sáng tỏa tròn từ tâm (sunburst
+   kiểu thẻ holo) — màu theo "hệ" qua biến --ray-color, mờ dần ra rìa bằng mask. */
+.card-art-rays {
+  background: repeating-conic-gradient(
+    from 0deg at 50% 42%,
+    var(--ray-color, #94a3b8) 0deg 6deg,
+    transparent 6deg 14deg
+  );
+  -webkit-mask-image: radial-gradient(circle at 50% 42%, black 10%, transparent 74%);
+  mask-image: radial-gradient(circle at 50% 42%, black 10%, transparent 74%);
+}
+
+/* Vòng "phép" xoay chậm quanh avatar (viền đứt). Tắt khi giảm chuyển động. */
+@keyframes card-ring-spin { to { transform: rotate(360deg); } }
+.card-ring-spin { animation: card-ring-spin 28s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .card-ring-spin { animation: none; }
+}
+
 

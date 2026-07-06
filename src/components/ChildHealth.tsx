@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Syringe, Plus, Trash2, Check, Calendar, Ruler, HeartPulse, Pill, ShieldAlert, Phone, Pencil, X, Droplet, Sparkles, AlertTriangle, Stethoscope } from "lucide-react";
+import { Syringe, Plus, Trash2, Check, Calendar, Ruler, HeartPulse, Pill, ShieldAlert, Phone, Pencil, X, Droplet, Sparkles, AlertTriangle, Stethoscope, Cake } from "lucide-react";
 import { VaccinationRecord, GrowthRecord, MedicationReminder, MedicationLog, User, UserRole, EmergencyProfile, EmergencyContact, BLOOD_TYPE_OPTIONS, FAMILY_RELATION_LABELS } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { assessBmi, ageFromDob, BmiAssessment } from "../utils/bmi.js";
@@ -52,6 +52,27 @@ function daysLeft(dateStr?: string): number | null {
   const target = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
   const t = new Date();
   return Math.round((target.getTime() - new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime()) / 86400000);
+}
+
+// Tuổi kiểu Việt Nam: bé dưới 3 tuổi nói theo "X tháng Y ngày" (dưới 1 tháng
+// thì "X ngày"), từ 3 tuổi trở lên nói "X tuổi".
+function formatAgeVi(dobStr?: string): string | null {
+  if (!dobStr) return null;
+  const dob = new Date(dobStr);
+  const now = new Date();
+  if (isNaN(dob.getTime()) || dob > now) return null;
+  let months = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth());
+  let anchor = new Date(dob);
+  anchor.setMonth(dob.getMonth() + months);
+  if (anchor > now) {
+    months -= 1;
+    anchor = new Date(dob);
+    anchor.setMonth(dob.getMonth() + months);
+  }
+  const days = Math.floor((now.getTime() - anchor.getTime()) / 86400000);
+  if (months >= 36) return `${Math.floor(months / 12)} tuổi`;
+  if (months >= 1) return `${months} tháng ${days} ngày`;
+  return `${days} ngày`;
 }
 
 function parsePositiveMeasurement(value: string): number | undefined {
@@ -102,18 +123,18 @@ function MiniChart({ data, color, unit }: { data: { date: string; value: number 
 // "Hệ" thẻ bài theo quan hệ gia đình. Viền/khung là gradient rực rỡ cố định
 // (đẹp ở cả 2 theme, như viền kim loại của thẻ thật); riêng CHỮ accent dùng cặp
 // light/dark: đậm trên nền sáng, rực trên nền tối.
-interface CardTheme { frame: string; ring: string; glow: string; accent: string; element: string; title: string; }
+interface CardTheme { frame: string; ring: string; glow: string; accent: string; element: string; title: string; rayHex: string; }
 const CARD_THEME_BY_RELATION: Record<string, CardTheme> = {
-  ba:         { frame: "from-cyan-300 via-blue-500 to-indigo-700", ring: "border-cyan-500/50 dark:border-cyan-300/60", glow: "shadow-cyan-500/40", accent: "text-cyan-700 dark:text-cyan-300", element: "🛡️", title: "Hệ Trụ Cột" },
-  me:         { frame: "from-pink-300 via-rose-500 to-fuchsia-700", ring: "border-pink-500/50 dark:border-pink-300/60", glow: "shadow-rose-500/40", accent: "text-pink-700 dark:text-pink-300", element: "🌸", title: "Hệ Yêu Thương" },
-  con:        { frame: "from-emerald-300 via-green-500 to-teal-700", ring: "border-emerald-500/50 dark:border-emerald-300/60", glow: "shadow-emerald-500/40", accent: "text-emerald-700 dark:text-emerald-300", element: "🌱", title: "Hệ Mầm Non" },
-  ong_noi:    { frame: "from-amber-200 via-yellow-500 to-orange-700", ring: "border-amber-500/50 dark:border-amber-300/60", glow: "shadow-amber-500/40", accent: "text-amber-700 dark:text-amber-300", element: "👑", title: "Hệ Trưởng Lão" },
-  ong_ngoai:  { frame: "from-amber-200 via-yellow-500 to-orange-700", ring: "border-amber-500/50 dark:border-amber-300/60", glow: "shadow-amber-500/40", accent: "text-amber-700 dark:text-amber-300", element: "👑", title: "Hệ Trưởng Lão" },
-  ba_noi:     { frame: "from-fuchsia-300 via-purple-500 to-violet-800", ring: "border-fuchsia-500/50 dark:border-fuchsia-300/60", glow: "shadow-fuchsia-500/40", accent: "text-fuchsia-700 dark:text-fuchsia-300", element: "🌟", title: "Hệ Hiền Từ" },
-  ba_ngoai:   { frame: "from-fuchsia-300 via-purple-500 to-violet-800", ring: "border-fuchsia-500/50 dark:border-fuchsia-300/60", glow: "shadow-fuchsia-500/40", accent: "text-fuchsia-700 dark:text-fuchsia-300", element: "🌟", title: "Hệ Hiền Từ" },
-  anh_chi_em: { frame: "from-violet-300 via-indigo-500 to-blue-800", ring: "border-violet-500/50 dark:border-violet-300/60", glow: "shadow-violet-500/40", accent: "text-violet-700 dark:text-violet-300", element: "⚡", title: "Hệ Đồng Hành" },
+  ba:         { frame: "from-cyan-300 via-blue-500 to-indigo-700", ring: "border-cyan-500/50 dark:border-cyan-300/60", glow: "shadow-cyan-500/40", accent: "text-cyan-700 dark:text-cyan-300", element: "🛡️", title: "Hệ Trụ Cột", rayHex: "#38bdf8" },
+  me:         { frame: "from-pink-300 via-rose-500 to-fuchsia-700", ring: "border-pink-500/50 dark:border-pink-300/60", glow: "shadow-rose-500/40", accent: "text-pink-700 dark:text-pink-300", element: "🌸", title: "Hệ Yêu Thương", rayHex: "#f472b6" },
+  con:        { frame: "from-emerald-300 via-green-500 to-teal-700", ring: "border-emerald-500/50 dark:border-emerald-300/60", glow: "shadow-emerald-500/40", accent: "text-emerald-700 dark:text-emerald-300", element: "🌱", title: "Hệ Mầm Non", rayHex: "#34d399" },
+  ong_noi:    { frame: "from-amber-200 via-yellow-500 to-orange-700", ring: "border-amber-500/50 dark:border-amber-300/60", glow: "shadow-amber-500/40", accent: "text-amber-700 dark:text-amber-300", element: "👑", title: "Hệ Trưởng Lão", rayHex: "#fbbf24" },
+  ong_ngoai:  { frame: "from-amber-200 via-yellow-500 to-orange-700", ring: "border-amber-500/50 dark:border-amber-300/60", glow: "shadow-amber-500/40", accent: "text-amber-700 dark:text-amber-300", element: "👑", title: "Hệ Trưởng Lão", rayHex: "#fbbf24" },
+  ba_noi:     { frame: "from-fuchsia-300 via-purple-500 to-violet-800", ring: "border-fuchsia-500/50 dark:border-fuchsia-300/60", glow: "shadow-fuchsia-500/40", accent: "text-fuchsia-700 dark:text-fuchsia-300", element: "🌟", title: "Hệ Hiền Từ", rayHex: "#e879f9" },
+  ba_ngoai:   { frame: "from-fuchsia-300 via-purple-500 to-violet-800", ring: "border-fuchsia-500/50 dark:border-fuchsia-300/60", glow: "shadow-fuchsia-500/40", accent: "text-fuchsia-700 dark:text-fuchsia-300", element: "🌟", title: "Hệ Hiền Từ", rayHex: "#e879f9" },
+  anh_chi_em: { frame: "from-violet-300 via-indigo-500 to-blue-800", ring: "border-violet-500/50 dark:border-violet-300/60", glow: "shadow-violet-500/40", accent: "text-violet-700 dark:text-violet-300", element: "⚡", title: "Hệ Đồng Hành", rayHex: "#a78bfa" },
 };
-const DEFAULT_CARD_THEME: CardTheme = { frame: "from-zinc-300 via-zinc-500 to-zinc-700", ring: "border-zinc-500/50 dark:border-zinc-300/50", glow: "shadow-zinc-500/30", accent: "text-zinc-600 dark:text-zinc-300", element: "✨", title: "Hệ Thành Viên" };
+const DEFAULT_CARD_THEME: CardTheme = { frame: "from-zinc-300 via-zinc-500 to-zinc-700", ring: "border-zinc-500/50 dark:border-zinc-300/50", glow: "shadow-zinc-500/30", accent: "text-zinc-600 dark:text-zinc-300", element: "✨", title: "Hệ Thành Viên", rayHex: "#a1a1aa" };
 const cardThemeFor = (relation?: string): CardTheme => (relation && CARD_THEME_BY_RELATION[relation]) || DEFAULT_CARD_THEME;
 
 export function ChildHealth({
@@ -140,8 +161,8 @@ export function ChildHealth({
     return [...users].sort((a, b) => (a.familyRelation === "con" ? -1 : 0) - (b.familyRelation === "con" ? -1 : 0));
   }, [users]);
 
-  // Sub-tab đang xem
-  const [section, setSection] = useState<HealthSection>("growth");
+  // Sub-tab đang xem — Thẻ khẩn cấp đứng đầu (thông tin sống còn cần thấy ngay)
+  const [section, setSection] = useState<HealthSection>("emergency");
   // Đáp ứng deep-link (vd: bấm thông báo thuốc mở thẳng mục Lịch thuốc)
   useEffect(() => {
     if (requestedSection) setSection(requestedSection);
@@ -329,10 +350,10 @@ export function ChildHealth({
   );
 
   const subTabs: { id: HealthSection; label: string; icon: typeof Ruler; active: string }[] = [
+    { id: "emergency", label: "Thẻ khẩn cấp", icon: ShieldAlert, active: "bg-amber-500 text-slate-950" },
     { id: "growth", label: "Tăng trưởng", icon: Ruler, active: "bg-emerald-500 text-slate-950" },
     { id: "vaccination", label: "Tiêm chủng", icon: Syringe, active: "bg-sky-500 text-slate-950" },
-    { id: "medication", label: "Lịch thuốc", icon: Pill, active: "bg-rose-500 text-slate-950" },
-    { id: "emergency", label: "Thẻ khẩn cấp", icon: ShieldAlert, active: "bg-amber-500 text-slate-950" }
+    { id: "medication", label: "Lịch thuốc", icon: Pill, active: "bg-rose-500 text-slate-950" }
   ];
 
   return (
@@ -612,16 +633,41 @@ export function ChildHealth({
                           )}
                         </div>
 
-                        {/* Cửa sổ "hình thẻ" — avatar viền kim tròn, nền theo hệ */}
+                        {/* Cửa sổ "hình thẻ" — tia holo tỏa tròn + vòng phép + avatar huy hiệu */}
                         <div className="relative z-30 px-3 pt-3">
                           <div className={`relative rounded-lg overflow-hidden border-2 ${theme.ring} bg-slate-950`}>
+                            {/* Lớp 1: tint gradient theo hệ */}
                             <div aria-hidden className={`absolute inset-0 bg-gradient-to-br ${theme.frame} opacity-15 dark:opacity-20`} />
+                            {/* Lớp 2: tia sáng tỏa tròn từ tâm (sunburst holo) */}
+                            <div
+                              aria-hidden
+                              className="card-art-rays absolute inset-0 opacity-[0.16] dark:opacity-25"
+                              style={{ "--ray-color": theme.rayHex } as React.CSSProperties}
+                            />
+                            {/* Lớp 3: dải sáng chân trời phía dưới avatar */}
+                            <div
+                              aria-hidden
+                              className="absolute inset-x-0 bottom-0 h-16 opacity-25 dark:opacity-35"
+                              style={{ background: `radial-gradient(ellipse 90% 100% at 50% 115%, ${theme.rayHex} 0%, transparent 65%)` }}
+                            />
+
                             <div className="relative flex items-center justify-center pt-5 pb-8">
-                              <HeartPulse className="absolute w-32 h-32 text-slate-500/10" strokeWidth={1} />
-                              <Sparkles className="absolute top-2 left-2 w-3.5 h-3.5 text-slate-400/40" />
-                              <Sparkles className="absolute bottom-9 right-6 w-3 h-3 text-slate-400/30" />
+                              {/* Vòng phép: 1 vòng liền + 1 vòng đứt xoay chậm quanh avatar */}
+                              <div aria-hidden className="absolute w-[8.6rem] h-[8.6rem] rounded-full border" style={{ borderColor: `${theme.rayHex}4d` }} />
+                              <div aria-hidden className="card-ring-spin absolute w-[9.8rem] h-[9.8rem] rounded-full border border-dashed" style={{ borderColor: `${theme.rayHex}38` }} />
+                              {/* Quầng sáng màu hệ ngay sau avatar */}
+                              <div aria-hidden className="absolute w-24 h-24 rounded-full blur-2xl opacity-40 dark:opacity-50" style={{ background: theme.rayHex }} />
+
+                              {/* Sao lấp lánh rải quanh */}
+                              <Sparkles className="absolute top-2.5 left-3 w-4 h-4" style={{ color: `${theme.rayHex}99` }} />
+                              <Sparkles className="absolute top-8 right-4 w-3 h-3" style={{ color: `${theme.rayHex}66` }} />
+                              <Sparkles className="absolute bottom-10 left-6 w-3 h-3" style={{ color: `${theme.rayHex}59` }} />
+                              <span aria-hidden className="absolute top-5 right-12 w-1 h-1 rounded-full" style={{ background: `${theme.rayHex}b3` }} />
+                              <span aria-hidden className="absolute bottom-12 right-8 w-1.5 h-1.5 rounded-full" style={{ background: `${theme.rayHex}80` }} />
+                              <span aria-hidden className="absolute top-12 left-10 w-1 h-1 rounded-full" style={{ background: `${theme.rayHex}8c` }} />
+
                               {/* Avatar tròn bọc viền gradient theo hệ — như huy hiệu */}
-                              <div className={`rounded-full p-[3px] bg-gradient-to-br ${theme.frame} shadow-xl`}>
+                              <div className={`relative rounded-full p-[3px] bg-gradient-to-br ${theme.frame} shadow-xl`}>
                                 <Avatar user={member} className="w-24 h-24 rounded-full text-4xl" extraClass="ring-2 ring-slate-950/40" />
                               </div>
                             </div>
@@ -642,6 +688,23 @@ export function ChildHealth({
                             <span className="text-2xl font-black text-white leading-none drop-shadow">{p?.bloodType || "?"}</span>
                           </div>
                         </div>
+
+                        {/* Ngày sinh + tuổi hiện tại (bé <3 tuổi hiện tháng/ngày) */}
+                        {member.dateOfBirth && (
+                          <div className="relative z-30 px-3 pt-2.5">
+                            <div className="flex items-center justify-between gap-2 rounded-lg bg-slate-950/70 border border-slate-850 px-3 py-1.5">
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5 shrink-0">
+                                <Cake className="w-3.5 h-3.5 text-pink-500 dark:text-pink-400" /> Ngày sinh
+                              </span>
+                              <span className="text-[11px] font-bold text-slate-200 font-mono text-right min-w-0">
+                                {formatDateVN(member.dateOfBirth)}
+                                {formatAgeVi(member.dateOfBirth) && (
+                                  <span className="text-pink-600 dark:text-pink-300"> · {formatAgeVi(member.dateOfBirth)}</span>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Hộp "chiêu thức" = thông tin y tế */}
                         <div className="relative z-30 px-3 pt-2.5 pb-3 flex-1 flex flex-col">
