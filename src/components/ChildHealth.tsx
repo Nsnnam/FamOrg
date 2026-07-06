@@ -696,10 +696,10 @@ export function ChildHealth({
                               <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5 shrink-0">
                                 <Cake className="w-3.5 h-3.5 text-pink-500 dark:text-pink-400" /> Ngày sinh
                               </span>
-                              <span className="text-[11px] font-bold text-slate-200 font-mono text-right min-w-0">
+                              <span className="text-[11px] font-bold text-slate-200 font-mono text-right min-w-0 whitespace-nowrap">
                                 {formatDateVN(member.dateOfBirth)}
                                 {formatAgeVi(member.dateOfBirth) && (
-                                  <span className="text-pink-600 dark:text-pink-300"> · {formatAgeVi(member.dateOfBirth)}</span>
+                                  <span className="text-[10px] text-pink-600 dark:text-pink-300"> · {formatAgeVi(member.dateOfBirth)}</span>
                                 )}
                               </span>
                             </div>
