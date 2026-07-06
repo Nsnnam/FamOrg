@@ -125,16 +125,16 @@ function MiniChart({ data, color, unit }: { data: { date: string; value: number 
 // light/dark: đậm trên nền sáng, rực trên nền tối.
 interface CardTheme { frame: string; ring: string; glow: string; accent: string; element: string; title: string; rayHex: string; }
 const CARD_THEME_BY_RELATION: Record<string, CardTheme> = {
-  ba:         { frame: "from-cyan-300 via-blue-500 to-indigo-700", ring: "border-cyan-500/50 dark:border-cyan-300/60", glow: "shadow-cyan-500/40", accent: "text-cyan-700 dark:text-cyan-300", element: "🛡️", title: "Hệ Trụ Cột", rayHex: "#38bdf8" },
-  me:         { frame: "from-pink-300 via-rose-500 to-fuchsia-700", ring: "border-pink-500/50 dark:border-pink-300/60", glow: "shadow-rose-500/40", accent: "text-pink-700 dark:text-pink-300", element: "🌸", title: "Hệ Yêu Thương", rayHex: "#f472b6" },
-  con:        { frame: "from-emerald-300 via-green-500 to-teal-700", ring: "border-emerald-500/50 dark:border-emerald-300/60", glow: "shadow-emerald-500/40", accent: "text-emerald-700 dark:text-emerald-300", element: "🌱", title: "Hệ Mầm Non", rayHex: "#34d399" },
-  ong_noi:    { frame: "from-amber-200 via-yellow-500 to-orange-700", ring: "border-amber-500/50 dark:border-amber-300/60", glow: "shadow-amber-500/40", accent: "text-amber-700 dark:text-amber-300", element: "👑", title: "Hệ Trưởng Lão", rayHex: "#fbbf24" },
-  ong_ngoai:  { frame: "from-amber-200 via-yellow-500 to-orange-700", ring: "border-amber-500/50 dark:border-amber-300/60", glow: "shadow-amber-500/40", accent: "text-amber-700 dark:text-amber-300", element: "👑", title: "Hệ Trưởng Lão", rayHex: "#fbbf24" },
-  ba_noi:     { frame: "from-fuchsia-300 via-purple-500 to-violet-800", ring: "border-fuchsia-500/50 dark:border-fuchsia-300/60", glow: "shadow-fuchsia-500/40", accent: "text-fuchsia-700 dark:text-fuchsia-300", element: "🌟", title: "Hệ Hiền Từ", rayHex: "#e879f9" },
-  ba_ngoai:   { frame: "from-fuchsia-300 via-purple-500 to-violet-800", ring: "border-fuchsia-500/50 dark:border-fuchsia-300/60", glow: "shadow-fuchsia-500/40", accent: "text-fuchsia-700 dark:text-fuchsia-300", element: "🌟", title: "Hệ Hiền Từ", rayHex: "#e879f9" },
-  anh_chi_em: { frame: "from-violet-300 via-indigo-500 to-blue-800", ring: "border-violet-500/50 dark:border-violet-300/60", glow: "shadow-violet-500/40", accent: "text-violet-700 dark:text-violet-300", element: "⚡", title: "Hệ Đồng Hành", rayHex: "#a78bfa" },
+  ba:         { frame: "from-cyan-300 via-blue-500 to-indigo-700", ring: "border-cyan-500/50 dark:border-cyan-300/60", glow: "shadow-cyan-500/15 dark:shadow-cyan-400/25", accent: "text-cyan-700 dark:text-cyan-300", element: "🛡️", title: "Hệ Trụ Cột", rayHex: "#38bdf8" },
+  me:         { frame: "from-pink-300 via-rose-500 to-fuchsia-700", ring: "border-pink-500/50 dark:border-pink-300/60", glow: "shadow-rose-500/15 dark:shadow-rose-400/25", accent: "text-pink-700 dark:text-pink-300", element: "🌸", title: "Hệ Yêu Thương", rayHex: "#f472b6" },
+  con:        { frame: "from-emerald-300 via-green-500 to-teal-700", ring: "border-emerald-500/50 dark:border-emerald-300/60", glow: "shadow-emerald-500/15 dark:shadow-emerald-400/25", accent: "text-emerald-700 dark:text-emerald-300", element: "🌱", title: "Hệ Mầm Non", rayHex: "#34d399" },
+  ong_noi:    { frame: "from-amber-200 via-yellow-500 to-orange-700", ring: "border-amber-500/50 dark:border-amber-300/60", glow: "shadow-amber-500/15 dark:shadow-amber-400/25", accent: "text-amber-700 dark:text-amber-300", element: "👑", title: "Hệ Trưởng Lão", rayHex: "#fbbf24" },
+  ong_ngoai:  { frame: "from-amber-200 via-yellow-500 to-orange-700", ring: "border-amber-500/50 dark:border-amber-300/60", glow: "shadow-amber-500/15 dark:shadow-amber-400/25", accent: "text-amber-700 dark:text-amber-300", element: "👑", title: "Hệ Trưởng Lão", rayHex: "#fbbf24" },
+  ba_noi:     { frame: "from-fuchsia-300 via-purple-500 to-violet-800", ring: "border-fuchsia-500/50 dark:border-fuchsia-300/60", glow: "shadow-fuchsia-500/15 dark:shadow-fuchsia-400/25", accent: "text-fuchsia-700 dark:text-fuchsia-300", element: "🌟", title: "Hệ Hiền Từ", rayHex: "#e879f9" },
+  ba_ngoai:   { frame: "from-fuchsia-300 via-purple-500 to-violet-800", ring: "border-fuchsia-500/50 dark:border-fuchsia-300/60", glow: "shadow-fuchsia-500/15 dark:shadow-fuchsia-400/25", accent: "text-fuchsia-700 dark:text-fuchsia-300", element: "🌟", title: "Hệ Hiền Từ", rayHex: "#e879f9" },
+  anh_chi_em: { frame: "from-violet-300 via-indigo-500 to-blue-800", ring: "border-violet-500/50 dark:border-violet-300/60", glow: "shadow-violet-500/15 dark:shadow-violet-400/25", accent: "text-violet-700 dark:text-violet-300", element: "⚡", title: "Hệ Đồng Hành", rayHex: "#a78bfa" },
 };
-const DEFAULT_CARD_THEME: CardTheme = { frame: "from-zinc-300 via-zinc-500 to-zinc-700", ring: "border-zinc-500/50 dark:border-zinc-300/50", glow: "shadow-zinc-500/30", accent: "text-zinc-600 dark:text-zinc-300", element: "✨", title: "Hệ Thành Viên", rayHex: "#a1a1aa" };
+const DEFAULT_CARD_THEME: CardTheme = { frame: "from-zinc-300 via-zinc-500 to-zinc-700", ring: "border-zinc-500/50 dark:border-zinc-300/50", glow: "shadow-zinc-500/10 dark:shadow-zinc-400/20", accent: "text-zinc-600 dark:text-zinc-300", element: "✨", title: "Hệ Thành Viên", rayHex: "#a1a1aa" };
 const cardThemeFor = (relation?: string): CardTheme => (relation && CARD_THEME_BY_RELATION[relation]) || DEFAULT_CARD_THEME;
 
 export function ChildHealth({
@@ -163,9 +163,11 @@ export function ChildHealth({
 
   // Sub-tab đang xem — Thẻ khẩn cấp đứng đầu (thông tin sống còn cần thấy ngay)
   const [section, setSection] = useState<HealthSection>("emergency");
-  // Đáp ứng deep-link (vd: bấm thông báo thuốc mở thẳng mục Lịch thuốc)
+  // Đáp ứng deep-link (vd: bấm thông báo thuốc mở thẳng mục Lịch thuốc).
+  // seq = 0 nghĩa là chưa có yêu cầu thật — bỏ qua để giữ mặc định Thẻ khẩn cấp
+  // khi mở tab (giá trị khởi tạo "growth" bên App không được ghi đè).
   useEffect(() => {
-    if (requestedSection) setSection(requestedSection);
+    if (requestedSectionSeq && requestedSection) setSection(requestedSection);
   }, [requestedSectionSeq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Thành viên đang chọn ở FORM thêm mới (danh sách hiển thị tất cả thành viên)
@@ -201,6 +203,8 @@ export function ChildHealth({
   const [epChronic, setEpChronic] = useState("");
   const [epMeds, setEpMeds] = useState("");
   const [epBhyt, setEpBhyt] = useState("");
+  const [epHeight, setEpHeight] = useState("");
+  const [epWeight, setEpWeight] = useState("");
   const [epNotes, setEpNotes] = useState("");
   const [epContacts, setEpContacts] = useState<EmergencyContact[]>([]);
   const [epError, setEpError] = useState("");
@@ -219,17 +223,42 @@ export function ChildHealth({
     setEpChronic(p?.chronicConditions || "");
     setEpMeds(p?.currentMedications || "");
     setEpBhyt(p?.healthInsuranceNumber || "");
+    const m = latestMeasureFor(memberId);
+    setEpHeight(m.height != null ? String(m.height) : "");
+    setEpWeight(m.weight != null ? String(m.weight) : "");
     setEpNotes(p?.notes || "");
     setEpContacts(p?.emergencyContacts?.length ? p.emergencyContacts.map(c => ({ ...c })) : [{ name: "", phone: "", relation: "" }]);
     setEpError("");
     setEpEditingId(memberId);
   };
 
+  // "112" / "18,5" → số dương; null nếu không hợp lệ
+  const parseMeasure = (s: string): number | null => {
+    const n = parseFloat(s.trim().replace(",", "."));
+    return isNaN(n) || n <= 0 ? null : n;
+  };
+
   const saveEp = async () => {
     if (!epEditingId) return;
+    const h = epHeight.trim() ? parseMeasure(epHeight) : undefined;
+    const w = epWeight.trim() ? parseMeasure(epWeight) : undefined;
+    if (h === null || w === null) {
+      setEpError("Chiều cao/cân nặng không hợp lệ (nhập số dương, vd 112 hoặc 18,5).");
+      return;
+    }
     setEpSaving(true);
     setEpError("");
     try {
+      // Số đo thay đổi → ghi thêm một dòng vào sổ Tăng trưởng (ngày hôm nay)
+      const prev = latestMeasureFor(epEditingId);
+      if ((h != null && h !== prev.height) || (w != null && w !== prev.weight)) {
+        await onSaveGrowth({
+          childId: epEditingId,
+          date: new Date().toISOString().slice(0, 10),
+          heightCm: h,
+          weightKg: w
+        });
+      }
       await onSaveHealthProfile({
         userId: epEditingId,
         bloodType: epBlood || undefined,
@@ -269,6 +298,19 @@ export function ChildHealth({
     map.forEach(list => list.sort((a, b) => a.date.localeCompare(b.date)));
     return map;
   }, [growthRecords]);
+
+  // Số đo gần nhất của một thành viên — chiều cao và cân nặng tìm riêng
+  // (bản ghi tăng trưởng có thể chỉ điền một trong hai).
+  const latestMeasureFor = (memberId: string): { height?: number; weight?: number; date?: string } => {
+    const list = growthByChild.get(memberId) ?? [];
+    let height: number | undefined, weight: number | undefined, date: string | undefined;
+    for (let i = list.length - 1; i >= 0; i--) {
+      if (height == null && list[i].heightCm != null) { height = list[i].heightCm; date = date || list[i].date; }
+      if (weight == null && list[i].weightKg != null) { weight = list[i].weightKg; date = date || list[i].date; }
+      if (height != null && weight != null) break;
+    }
+    return { height, weight, date };
+  };
 
   // BMI từ bản ghi mới nhất có ĐỦ cả chiều cao & cân nặng của một thành viên.
   const bmiFor = (member: User, records: GrowthRecord[]): BmiAssessment | null => {
@@ -604,6 +646,7 @@ export function ChildHealth({
 
               // ─── NHÁNH XEM: thẻ bài sưu tầm ───
               if (!isEditing) {
+                const measure = latestMeasureFor(member.id);
                 const abilities: { label: string; value: string; icon: typeof Droplet; tone: string }[] = [];
                 if (p?.allergies) abilities.push({ label: "Dị ứng", value: p.allergies, icon: AlertTriangle, tone: "text-rose-600 dark:text-rose-300" });
                 if (p?.chronicConditions) abilities.push({ label: "Bệnh nền", value: p.chronicConditions, icon: HeartPulse, tone: "text-orange-600 dark:text-orange-300" });
@@ -612,7 +655,7 @@ export function ChildHealth({
 
                 return (
                   <Reveal key={member.id} delay={0.05 + staggerDelay(mi)} className="w-full max-w-[330px]">
-                    <div className={`holo-card rounded-2xl p-[3px] bg-gradient-to-br ${theme.frame} shadow-xl ${theme.glow} h-full`}>
+                    <div className={`holo-card rounded-2xl p-[2px] bg-gradient-to-br ${theme.frame} shadow-lg ${theme.glow} h-full`}>
                       <div className="relative h-full rounded-[14px] bg-gradient-to-b from-slate-900 to-slate-950 overflow-hidden flex flex-col">
                         {/* Lớp hologram + foil lấp lánh (theme-aware trong index.css) */}
                         <div className="holo-foil absolute inset-0 pointer-events-none z-10" />
@@ -635,7 +678,7 @@ export function ChildHealth({
 
                         {/* Cửa sổ "hình thẻ" — tia holo tỏa tròn + vòng phép + avatar huy hiệu */}
                         <div className="relative z-30 px-3 pt-3">
-                          <div className={`relative rounded-lg overflow-hidden border-2 ${theme.ring} bg-slate-950`}>
+                          <div className={`relative rounded-lg overflow-hidden border ${theme.ring} bg-slate-950`}>
                             {/* Lớp 1: tint gradient theo hệ */}
                             <div aria-hidden className={`absolute inset-0 bg-gradient-to-br ${theme.frame} opacity-15 dark:opacity-20`} />
                             {/* Lớp 2: tia sáng tỏa tròn từ tâm (sunburst holo) */}
@@ -667,14 +710,16 @@ export function ChildHealth({
                               <span aria-hidden className="absolute top-12 left-10 w-1 h-1 rounded-full" style={{ background: `${theme.rayHex}8c` }} />
 
                               {/* Avatar tròn bọc viền gradient theo hệ — như huy hiệu */}
-                              <div className={`relative rounded-full p-[3px] bg-gradient-to-br ${theme.frame} shadow-xl`}>
+                              <div className={`relative rounded-full p-[2px] bg-gradient-to-br ${theme.frame} shadow-lg`}>
                                 <Avatar user={member} className="w-24 h-24 rounded-full text-4xl" extraClass="ring-2 ring-slate-950/40" />
                               </div>
                             </div>
-                            {/* Nhãn loại thẻ */}
-                            <div className="absolute bottom-0 inset-x-0 bg-slate-900/85 backdrop-blur-sm border-t border-slate-850 px-2.5 py-1.5 flex items-center gap-1.5">
-                              <ShieldAlert className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" />
-                              <span className="text-[10px] font-black text-amber-600 dark:text-amber-300 uppercase tracking-widest">Thẻ Y Tế Khẩn Cấp</span>
+                            {/* Nhãn loại thẻ — huy hiệu pill bo tròn, đồng bộ bo góc của layout */}
+                            <div className="absolute bottom-2 inset-x-0 flex justify-center px-2">
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-900/85 backdrop-blur-sm border border-slate-850 px-3 py-1 shadow-sm">
+                                <ShieldAlert className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" />
+                                <span className="text-[10px] font-black text-amber-600 dark:text-amber-300 uppercase tracking-widest whitespace-nowrap">Thẻ Y Tế Khẩn Cấp</span>
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -701,6 +746,20 @@ export function ChildHealth({
                                 {formatAgeVi(member.dateOfBirth) && (
                                   <span className="text-[10px] text-pink-600 dark:text-pink-300"> · {formatAgeVi(member.dateOfBirth)}</span>
                                 )}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Chiều cao · cân nặng gần nhất (từ sổ Tăng trưởng) */}
+                        {(measure.height != null || measure.weight != null) && (
+                          <div className="relative z-30 px-3 pt-2.5">
+                            <div className="flex items-center justify-between gap-2 rounded-lg bg-slate-950/70 border border-slate-850 px-3 py-1.5">
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500 flex items-center gap-1.5 shrink-0">
+                                <Ruler className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" /> Cao · Nặng
+                              </span>
+                              <span className="text-[11px] font-bold text-slate-200 font-mono text-right whitespace-nowrap">
+                                {measure.height != null ? `${measure.height} cm` : "—"} · {measure.weight != null ? `${measure.weight} kg` : "—"}
                               </span>
                             </div>
                           </div>
@@ -760,7 +819,7 @@ export function ChildHealth({
 
               // ─── NHÁNH SỬA: form chức năng (nền slate cho dễ nhập) ───
               return (
-                <Reveal key={member.id} delay={0.05 + staggerDelay(mi)} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-lg p-4 space-y-3">
+                <Reveal key={member.id} delay={0.05 + staggerDelay(mi)} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-lg p-3.5 sm:p-4 space-y-3 w-full max-w-[330px] sm:max-w-none">
                   <ShimmerLine accent="amber" />
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -792,6 +851,17 @@ export function ChildHealth({
                           <input value={epBhyt} onChange={e => setEpBhyt(e.target.value)} placeholder="GD-4-79-..." className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
                         </div>
                       </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-slate-500 text-[10px] block">Chiều cao (cm)</label>
+                          <input value={epHeight} onChange={e => setEpHeight(e.target.value)} placeholder="112" inputMode="decimal" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-slate-500 text-[10px] block">Cân nặng (kg)</label>
+                          <input value={epWeight} onChange={e => setEpWeight(e.target.value)} placeholder="18,5" inputMode="decimal" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
+                        </div>
+                        <p className="col-span-2 text-[9px] text-slate-600 -mt-0.5">Đổi số đo sẽ ghi thêm một dòng vào mục Tăng trưởng (ngày hôm nay).</p>
+                      </div>
                       <div className="space-y-1">
                         <label className="text-slate-500 text-[10px] block">Dị ứng (thuốc, thức ăn...)</label>
                         <input value={epAllergies} onChange={e => setEpAllergies(e.target.value)} placeholder="Ví dụ: Penicillin, hải sản" className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500" />
@@ -808,10 +878,12 @@ export function ChildHealth({
                       <div className="space-y-1.5">
                         <label className="text-slate-500 text-[10px] block">Liên hệ khẩn cấp (tối đa 5)</label>
                         {epContacts.map((c, i) => (
-                          <div key={i} className="flex gap-1.5">
-                            <input value={c.name} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, name: e.target.value } : x))} placeholder="Tên" className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500" />
-                            <input value={c.phone} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, phone: e.target.value } : x))} placeholder="SĐT" inputMode="tel" className="w-28 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
-                            <input value={c.relation || ""} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, relation: e.target.value } : x))} placeholder="Quan hệ" className="w-20 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500" />
+                          // Mobile: Tên chiếm trọn hàng 1, SĐT + Quan hệ + nút xóa xuống hàng 2.
+                          // sm trở lên: đủ rộng nên gộp lại 1 hàng như cũ.
+                          <div key={i} className="flex flex-wrap gap-1.5">
+                            <input value={c.name} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, name: e.target.value } : x))} placeholder="Tên" className="basis-full sm:basis-0 sm:flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500" />
+                            <input value={c.phone} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, phone: e.target.value } : x))} placeholder="SĐT" inputMode="tel" className="flex-1 min-w-0 sm:flex-none sm:w-28 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />
+                            <input value={c.relation || ""} onChange={e => setEpContacts(prev => prev.map((x, xi) => xi === i ? { ...x, relation: e.target.value } : x))} placeholder="Quan hệ" className="w-24 sm:w-20 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-200 outline-none focus:border-amber-500" />
                             <button type="button" onClick={() => setEpContacts(prev => prev.filter((_, xi) => xi !== i))} title="Xóa liên hệ" className="p-2 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-500 hover:text-rose-400 cursor-pointer shrink-0">
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
