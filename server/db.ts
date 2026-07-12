@@ -1043,6 +1043,38 @@ export class FamilyDB {
     this.logActivity(userId, username, "Xóa Ghi chú", `Đã xóa ghi chú "${title}".`);
   }
 
+  // Nhãn tiếng Việt cho nhật ký tài chính (đồng bộ với translateCategory/translateAccount phía client).
+  // Hạng mục thu nhập là free-text tiếng Việt nên trả nguyên văn nếu không có trong map.
+  private static readonly TX_CATEGORY_LABELS: Record<string, string> = {
+    food: "Ăn uống", education2: "Học tập", utilities: "Điện nước", shopping: "Mua sắm",
+    medical: "Y tế", transport: "Đi lại", debt_bank: "Trả nợ NH", debt_personal: "Trả nợ CN",
+    funeral: "Ma chay", ceremony: "Hiếu hỉ", rent: "Thuê nhà", internet: "Cước Internet",
+    phone: "Điện thoại", insurance: "Bảo hiểm", loan: "Trả nợ NH", other: "Khác"
+  };
+  private static readonly TX_ACCOUNT_LABELS: Record<string, string> = {
+    cash: "Tiền mặt", bank: "Ngân hàng", e_wallet: "Ví điện tử"
+  };
+
+  // Liệt kê các thay đổi "cũ → mới" giữa 2 bản giao dịch — để nhật ký minh bạch từng chỉnh sửa.
+  private static describeTransactionChanges(oldTx: FinancialTransaction, newTx: FinancialTransaction): string[] {
+    const changes: string[] = [];
+    if (oldTx.type !== newTx.type)
+      changes.push(`loại ${oldTx.type === "income" ? "Thu" : "Chi"} → ${newTx.type === "income" ? "Thu" : "Chi"}`);
+    if (oldTx.amount !== newTx.amount)
+      changes.push(`số tiền ${oldTx.amount.toLocaleString()} → ${newTx.amount.toLocaleString()} VNĐ`);
+    if (oldTx.description !== newTx.description)
+      changes.push(`nội dung "${oldTx.description}" → "${newTx.description}"`);
+    if (oldTx.date !== newTx.date)
+      changes.push(`ngày ${oldTx.date} → ${newTx.date}`);
+    if (oldTx.category !== newTx.category)
+      changes.push(`hạng mục ${this.TX_CATEGORY_LABELS[oldTx.category] || oldTx.category} → ${this.TX_CATEGORY_LABELS[newTx.category] || newTx.category}`);
+    if (oldTx.account !== newTx.account)
+      changes.push(`ví ${this.TX_ACCOUNT_LABELS[oldTx.account] || oldTx.account} → ${this.TX_ACCOUNT_LABELS[newTx.account] || newTx.account}`);
+    if ((oldTx.receiptImage || "") !== (newTx.receiptImage || ""))
+      changes.push(newTx.receiptImage ? (oldTx.receiptImage ? "thay ảnh hóa đơn" : "thêm ảnh hóa đơn") : "gỡ ảnh hóa đơn");
+    return changes;
+  }
+
   // Financial transactions management
   public static saveTransaction(txData: Partial<FinancialTransaction>, userId: string, username: string): FinancialTransaction {
     const db = this.readRaw();
@@ -1061,13 +1093,22 @@ export class FamilyDB {
     };
 
     if (txData.id) {
-      // UPDATE
+      // UPDATE — giữ nguyên người tạo & thời điểm tạo gốc (admin sửa hộ không đổi chủ bản ghi)
       const idx = db.transactions.findIndex(t => t.id === txData.id);
       if (idx === -1) throw new Error("Giao dịch không tồn tại");
-      const oldReceipt = db.transactions[idx].receiptImage;
-      if (oldReceipt && oldReceipt !== newTx.receiptImage) deleteMediaByUrl(oldReceipt);
+      const oldTx = db.transactions[idx];
+      newTx.creatorId = oldTx.creatorId;
+      newTx.createdAt = oldTx.createdAt;
+      if (oldTx.receiptImage && oldTx.receiptImage !== newTx.receiptImage) deleteMediaByUrl(oldTx.receiptImage);
       db.transactions[idx] = newTx;
-      this.logActivity(userId, username, "Sửa giao dịch tài chính", `Đã điều chỉnh giao dịch "${newTx.description}" (${newTx.amount.toLocaleString()} VNĐ)`);
+      // Nhật ký minh bạch: ghi rõ từng trường đã đổi (cũ → mới) thay vì chỉ "đã điều chỉnh"
+      const changes = this.describeTransactionChanges(oldTx, newTx);
+      this.logActivity(
+        userId, username, "Sửa giao dịch tài chính",
+        changes.length > 0
+          ? `Đã sửa giao dịch "${oldTx.description}": ${changes.join("; ")}.`
+          : `Đã lưu lại giao dịch "${newTx.description}" (không có thay đổi).`
+      );
     } else {
       // CREATE
       db.transactions.push(newTx);
