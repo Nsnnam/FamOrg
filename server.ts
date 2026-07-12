@@ -15,6 +15,7 @@ import { sqliteAppendServerMetric, sqliteGetServerMetrics } from "./server/sqlit
 import { UserRole, isLimitedViewer, DishSlot, MealIngredient } from "./src/types.js";
 import { buildPlanFromLibrary, dedupeAndAnnotateGroceries } from "./src/utils/mealPlan.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
+import { streamFullBackup, fullBackupFilename, importFullBackup } from "./server/fullBackup.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
 
 // Accepted permission roles for write validation
@@ -2043,6 +2044,42 @@ app.post("/api/admin/backups/:id/restore", requireAuth, requireRole([UserRole.AD
     res.status(500).json({ error: err.message });
   }
 });
+
+// Sao lưu TOÀN PHẦN: tải về 1 tệp .zip chứa 100% hệ thống (DB + uploads + cấu hình).
+app.get("/api/admin/backups/full/export", requireAuth, requireRole([UserRole.ADMIN]), async (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const filename = fullBackupFilename();
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    await streamFullBackup(res);
+    FamilyDB.logActivity(session.userId, session.username, "Backup toàn phần", `Đã xuất tệp sao lưu toàn phần ${filename} (DB + toàn bộ tệp media + cấu hình).`);
+  } catch (err: any) {
+    console.error("Lỗi xuất backup toàn phần:", err);
+    // Nếu headers đã gửi (đang stream dở) thì chỉ còn cách cắt kết nối.
+    if (res.headersSent) res.destroy();
+    else res.status(500).json({ error: err.message || "Không xuất được backup toàn phần" });
+  }
+});
+
+// Khôi phục TOÀN PHẦN từ tệp .zip tải lên — thay thế hoàn toàn dữ liệu hiện tại.
+app.post(
+  "/api/admin/backups/full/import",
+  requireAuth,
+  requireRole([UserRole.ADMIN]),
+  express.raw({ type: () => true, limit: "2gb" }),
+  async (req: AuthRequest, res: Response) => {
+    const session = req.userSession!;
+    try {
+      const result = await importFullBackup(req.body as Buffer, session.userId, session.username);
+      broadcastSyncEvent("RESTORE_COMPLETED");
+      res.json({ success: true, restoredFiles: result.restoredFiles });
+    } catch (err: any) {
+      console.error("Lỗi import backup toàn phần:", err);
+      res.status(400).json({ error: err.message || "Không khôi phục được từ tệp backup" });
+    }
+  }
+);
 
 // --- DASHBOARD WIDGETS (weather / crypto / gold / fx) ---
 // Server-side proxy with caching: avoids CORS, respects rate limits, and keeps

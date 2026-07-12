@@ -145,6 +145,15 @@ export function setAppSetting(key: string, value: string | null): void {
   }
 }
 
+// Thay TOÀN BỘ app settings (dùng khi khôi phục từ backup toàn phần — ghi đè, không merge).
+export function replaceAppSettings(settings: Record<string, string>): void {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings || {}, null, 2), "utf8");
+  } catch (e) {
+    console.error("Không ghi được app_settings.json:", e);
+  }
+}
+
 // Initial seed data — a blank database with only a single admin account.
 // All demo members and sample content (tasks/plans/notes/transactions) were removed.
 // At least one admin is required because the app has no public sign-up; the
@@ -397,6 +406,49 @@ export class FamilyDB {
       console.error("Lỗi xóa file backup:", err);
       throw err;
     }
+  }
+
+  // Snapshot đầy đủ của DB (đã checkpoint WAL) — dùng cho backup toàn phần.
+  public static getFullSnapshot(): FamilyOrganizerDB {
+    sqliteCheckpoint();
+    return this.readRaw();
+  }
+
+  // Đối soát danh sách backup trong DB với các file thật trong data/backups:
+  // bỏ mục thiếu file, nhận nuôi file mồ côi (vd: backup an toàn tạo ngay trước khi import).
+  private static reconcileBackupsWithDisk(db: FamilyOrganizerDB): void {
+    try {
+      const onDisk = new Set(
+        fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith("backup_") && f.endsWith(".json"))
+      );
+      db.backups = (db.backups || []).filter(b => onDisk.has(b.filename));
+      const listed = new Set(db.backups.map(b => b.filename));
+      for (const filename of onDisk) {
+        if (listed.has(filename)) continue;
+        const stats = fs.statSync(path.join(BACKUP_DIR, filename));
+        db.backups.push({
+          id: `backup_${stats.mtimeMs}_${Math.random().toString(36).slice(2, 7)}`,
+          filename,
+          createdAt: stats.mtime.toISOString(),
+          sizeKb: Math.ceil(stats.size / 1024),
+          type: filename.includes("_auto_") ? "auto" : "manual"
+        });
+      }
+      db.backups.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } catch (e) {
+      console.error("Không đối soát được danh sách backup với đĩa:", e);
+    }
+  }
+
+  // Nạp một snapshot DB (đã parse từ tệp backup) vào SQLite — dùng cho import toàn phần.
+  public static restoreFromSnapshot(parsedData: any, userId: string, username: string, sourceLabel: string): void {
+    if (!parsedData || !parsedData.users || !parsedData.tasks) {
+      throw new Error("Dữ liệu backup không hợp lệ hoặc thiếu thông tin cốt lõi (users/tasks)!");
+    }
+    const restored = normalizeDB(parsedData);
+    this.reconcileBackupsWithDisk(restored);
+    sqliteSave(restored);
+    this.logActivity(userId, username, "Phục hồi toàn phần", `Đã khôi phục toàn bộ hệ thống từ ${sourceLabel}.`);
   }
 
   public static restoreBackup(backupId: string, userId: string, username: string): void {
