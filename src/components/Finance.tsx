@@ -323,6 +323,8 @@ export function Finance({
 
   // Interactive controls
   const [isFormOpen, setIsFormOpen] = useState(false);
+  // Giao dịch đang sửa (null = form đang ở chế độ tạo mới)
+  const [editingTx, setEditingTx] = useState<FinancialTransaction | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
 
@@ -362,17 +364,45 @@ export function Finance({
   const formRef = useRef<HTMLDivElement | null>(null);
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const billEditorRef = useRef<HTMLDivElement | null>(null);
-  const closeForm = useCallback(() => setIsFormOpen(false), []);
+  const closeForm = useCallback(() => { setIsFormOpen(false); setEditingTx(null); }, []);
   const closeReceipt = useCallback(() => setSelectedReceipt(null), []);
   const closeBillEditor = useCallback(() => setEditingBill(null), []);
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!selectedReceipt, closeReceipt, receiptRef);
   useModalA11y(!!editingBill, closeBillEditor, billEditorRef);
 
+  // Mở form ở chế độ TẠO MỚI: reset toàn bộ field (tránh dính dữ liệu từ lần sửa trước)
+  const openCreateForm = () => {
+    setEditingTx(null);
+    setFormType(TransactionType.EXPENSE);
+    setFormCategory(ExpenseCategory.FOOD);
+    setFormAccount(AccountType.BANK);
+    setFormAmount(0);
+    setFormDesc("");
+    setFormDate(new Date().toISOString().slice(0, 10));
+    setFormReceiptBase64("");
+    setFormError("");
+    setIsFormOpen(true);
+  };
+
+  // Mở form ở chế độ SỬA: điền sẵn dữ liệu của giao dịch được chọn
+  const openEditTransaction = (tx: FinancialTransaction) => {
+    setEditingTx(tx);
+    setFormType(tx.type);
+    setFormAmount(tx.amount);
+    setFormCategory(tx.category);
+    setFormAccount(tx.account);
+    setFormDesc(tx.description);
+    setFormDate(tx.date);
+    setFormReceiptBase64(tx.receiptImage || "");
+    setFormError("");
+    setIsFormOpen(true);
+  };
+
   // Nút nổi thêm nhanh — chỉ hiện ở view thu chi, ẩn khi đang mở form
   useTabFab(
     canAccessFinance(currentUser.role) && financeView === "cashflow" && !isFormOpen
-      ? { id: "finance", color: "emerald", title: "Thêm khoản thu chi nhanh", icon: Wallet, onClick: () => { setFormError(""); setIsFormOpen(true); } }
+      ? { id: "finance", color: "emerald", title: "Thêm khoản thu chi nhanh", icon: Wallet, onClick: openCreateForm }
       : null
   );
 
@@ -580,6 +610,8 @@ export function Finance({
     }
 
     const payload: Partial<FinancialTransaction> = {
+      // Có editingTx = đang sửa: gửi kèm id để server UPDATE thay vì tạo mới
+      ...(editingTx ? { id: editingTx.id, createdAt: editingTx.createdAt } : {}),
       type: formType,
       amount: Number(formAmount),
       category: formCategory,
@@ -596,6 +628,7 @@ export function Finance({
       setFormDesc("");
       setFormReceiptBase64("");
       setFormDate(new Date().toISOString().slice(0, 10));
+      setEditingTx(null);
       setIsFormOpen(false);
     } catch (err: any) {
       setFormError(err.message || "Không thể lưu giao dịch này");
@@ -1488,15 +1521,24 @@ export function Finance({
                       </span>
                     </div>
 
-                    {/* Trash capacity */}
+                    {/* Edit + Trash: admin hoặc chính người tạo */}
                     {(canAccessFinance(currentUser.role) && (currentUser.role === UserRole.ADMIN || tx.creatorId === currentUser.id)) && (
-                      <button 
-                        onClick={() => handleDeleteClick(tx.id)}
-                        className="p-1.5 bg-slate-950 border border-slate-800 hover:text-rose-450 hover:bg-slate-800 rounded-lg text-slate-500 transition-all cursor-pointer"
-                        title="Xóa giao dịch này"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => openEditTransaction(tx)}
+                          className="p-1.5 bg-slate-950 border border-slate-800 hover:text-sky-400 hover:bg-slate-800 rounded-lg text-slate-500 transition-all cursor-pointer"
+                          title="Sửa giao dịch này"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(tx.id)}
+                          className="p-1.5 bg-slate-950 border border-slate-800 hover:text-rose-450 hover:bg-slate-800 rounded-lg text-slate-500 transition-all cursor-pointer"
+                          title="Xóa giao dịch này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1524,10 +1566,12 @@ export function Finance({
           >
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-800 shrink-0">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
-                <CreditCard className="w-5 h-5 text-sky-400" /> Ghi biên lai tài chính mới
+                {editingTx
+                  ? <><Pencil className="w-5 h-5 text-sky-400" /> Chỉnh sửa giao dịch</>
+                  : <><CreditCard className="w-5 h-5 text-sky-400" /> Ghi biên lai tài chính mới</>}
               </h3>
               <button
-                onClick={() => setIsFormOpen(false)}
+                onClick={closeForm}
                 className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg"
               >
                 <X className="w-4 h-4" />
@@ -1681,16 +1725,16 @@ export function Finance({
               <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-slate-800 shrink-0">
                 <button
                   type="button"
-                  onClick={() => setIsFormOpen(false)}
+                  onClick={closeForm}
                   className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl transition-all cursor-pointer font-bold"
                 >
                   Đóng lại
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className={`px-4 py-2 rounded-xl font-bold transition-all cursor-pointer ${formType === TransactionType.EXPENSE ? "bg-rose-500 hover:bg-rose-450 text-slate-950" : "bg-emerald-500 hover:bg-emerald-450 text-slate-950"}`}
                 >
-                  Lưu giao dịch
+                  {editingTx ? "Lưu thay đổi" : "Lưu giao dịch"}
                 </button>
               </div>
             </form>
