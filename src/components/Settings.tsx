@@ -26,7 +26,9 @@ import {
   Tag,
   Rocket,
   Sparkles,
-  MapPin
+  MapPin,
+  Archive,
+  Upload
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -538,6 +540,77 @@ export function Settings({
     } catch (err: any) {
       setActionError(err.message || "Sao lưu thất bại");
     } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // ─── Sao lưu TOÀN PHẦN: 1 tệp .zip = DB + toàn bộ ảnh/tệp + cấu hình ──────
+  const fullImportInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleDownloadFullBackup = async () => {
+    setActionError("");
+    setActionSuccess("");
+    setLoadingAction("full-export");
+    try {
+      const res = await fetch("/api/admin/backups/full/export", { headers: authHeaders() });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Không tải được tệp sao lưu toàn phần");
+      }
+      // Server cũ chưa có API này sẽ trả về trang HTML (SPA fallback) thay vì zip —
+      // chặn lại để không lưu nhầm tệp rác.
+      const contentType = res.headers.get("Content-Type") || "";
+      if (!contentType.includes("application/zip")) {
+        throw new Error("Server chưa chạy phiên bản có API sao lưu toàn phần — hãy khởi động lại / cập nhật server rồi thử lại.");
+      }
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] || "family-organizer_full.zip";
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setActionSuccess(`Đã tải về ${filename} (${(blob.size / 1024 / 1024).toFixed(1)} MB). Hãy cất tệp ở nơi an toàn NGOÀI server (máy tính, ổ cứng rời, cloud riêng).`);
+    } catch (err: any) {
+      setActionError(err.message || "Xuất backup toàn phần thất bại");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleFullImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setActionError("");
+    setActionSuccess("");
+    const ok = await confirm({
+      title: "Khôi phục TOÀN PHẦN hệ thống?",
+      message: `CẢNH BÁO: Toàn bộ dữ liệu + ảnh/tệp hiện tại sẽ bị THAY THẾ HOÀN TOÀN bằng nội dung trong "${file.name}". Hệ thống sẽ tự tạo một backup an toàn của trạng thái hiện tại trước khi ghi đè. Bạn có chắc chắn tiếp tục?`,
+      confirmLabel: "Khôi phục toàn phần",
+      tone: "danger"
+    });
+    if (!ok) return;
+    setLoadingAction("full-import");
+    try {
+      const res = await fetch("/api/admin/backups/full/import", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/zip" },
+        body: file
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(
+          data?.error ||
+          "Khôi phục thất bại — nếu vừa cập nhật app, hãy khởi động lại server để nạp API mới rồi thử lại."
+        );
+      }
+      setActionSuccess(`Khôi phục toàn phần thành công (${data?.restoredFiles ?? 0} tệp media). Ứng dụng sẽ tự tải lại...`);
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (err: any) {
+      setActionError(err.message || "Khôi phục toàn phần thất bại");
       setLoadingAction(null);
     }
   };
@@ -1101,6 +1174,44 @@ export function Settings({
           ) : (
             /* Active backup panel */
             <div className="space-y-3.5">
+              {/* Sao lưu toàn phần: 1 tệp .zip khôi phục 100% hệ thống trên server mới */}
+              <div className="bg-slate-950/60 border border-emerald-500/20 rounded-2xl p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <Archive className="w-4 h-4 text-emerald-400" /> Sao lưu toàn phần — khôi phục 100% hệ thống
+                </h4>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  Đóng gói <b className="text-slate-300">toàn bộ</b> dữ liệu + tất cả ảnh hóa đơn, avatar, ảnh ghi chú,
+                  ảnh tài sản, tệp giấy tờ + cấu hình (gồm cả Gemini key) vào một tệp <b className="text-slate-300">.zip</b> duy nhất.
+                  Tải về và cất ở nơi an toàn <b className="text-slate-300">ngoài server</b> — nếu server hỏng, chỉ cần cài mới
+                  rồi bấm "Nhập tệp & khôi phục" là hệ thống trở lại y nguyên thời điểm sao lưu.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    disabled={loadingAction === "full-export" || loadingAction === "full-import"}
+                    onClick={handleDownloadFullBackup}
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-600 disabled:cursor-not-allowed text-slate-950 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    {loadingAction === "full-export" ? "Đang đóng gói & tải về..." : "Tải backup toàn phần (.zip)"}
+                  </button>
+                  <button
+                    disabled={loadingAction === "full-export" || loadingAction === "full-import"}
+                    onClick={() => fullImportInputRef.current?.click()}
+                    className="flex-1 bg-slate-900 hover:bg-slate-800 disabled:cursor-not-allowed disabled:text-slate-600 border border-rose-500/30 text-rose-400 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {loadingAction === "full-import" ? "Đang khôi phục toàn phần..." : "Nhập tệp & khôi phục toàn phần"}
+                  </button>
+                  <input
+                    ref={fullImportInputRef}
+                    type="file"
+                    accept=".zip,application/zip"
+                    onChange={handleFullImportFile}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
               {backups.length === 0 ? (
                 <div className="bg-slate-950 p-6 rounded-xl border border-dashed border-slate-800 text-center text-xs text-slate-500">
                   Hệ thống chưa ghi nhận điểm lưu trữ thủ công nào. (Mặc định hệ thống tự động backup mỗi 24H).
