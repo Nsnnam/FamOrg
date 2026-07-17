@@ -19,6 +19,11 @@
  */
 
 :root {
+  /* Báo cho trình duyệt/HĐH biết app đang ở gam sáng -> bàn phím iOS, ô cuộn,
+   * form control mặc định hiển thị nền sáng. Cặp với `.dark { color-scheme: dark }`
+   * bên dưới để bàn phím luôn đồng bộ theme app (không theo cài đặt OS). */
+  color-scheme: light;
+
   --slate-950: #f8fafc;  /* Main canvas bg -> light slate */
   --slate-900: #ffffff;  /* Box/card backgrounds -> pure clinical white */
   --slate-850: rgb(226, 232, 240);  /* Soft borders -> Slate 200 */
@@ -46,6 +51,8 @@
 }
 
 .dark {
+  color-scheme: dark;  /* Bàn phím iOS + form control dùng gam tối theo theme app */
+
   --slate-950: #0d121f;  /* Deep dark navy/slate canvas */
   --slate-900: #131b2e;  /* Box/card backgrounds -> dark navy card */
   --slate-850: #1e2942;  /* Soft borders -> dark slate border */
