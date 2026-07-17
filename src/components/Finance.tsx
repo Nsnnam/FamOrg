@@ -18,6 +18,7 @@ import {
   X,
   CreditCard,
   FileText,
+  FileDown,
   CheckCircle2,
   Pencil,
   RotateCcw,
@@ -506,6 +507,46 @@ export function Finance({
     a.download = `thu-chi_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Xuất báo cáo PDF của KỲ đang xem (toàn kỳ, không áp bộ lọc chi tiết).
+  // pdfmake được lazy-load trong utils/pdfExport — chỉ tải khi bấm nút.
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const exportReportPdf = async () => {
+    if (exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      const { exportFinanceReportPdf } = await import("../utils/pdfExport.js");
+      await exportFinanceReportPdf({
+        periodLabel: periodLabel(periodMode, anchor),
+        totals: metrics,
+        byCategory: Object.entries(curCatMap)
+          .sort((a, b) => b[1] - a[1])
+          .map(([cat, amount]) => ({ label: translateCategory(cat), amount })),
+        // Nhãn thuần chữ (không emoji) — font PDF không có glyph emoji
+        accountBalances: [
+          { key: "cash", label: "Tiền mặt" },
+          { key: "bank", label: "Ngân hàng" },
+          { key: "e_wallet", label: "Ví điện tử" }
+        ].map(a => ({ label: a.label, amount: accountBalances[a.key] || 0 })),
+        transactions: [...periodTx]
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .map(tx => ({
+            date: tx.date,
+            type: tx.type as "income" | "expense",
+            category: translateCategory(tx.category),
+            account: tx.account === "cash" ? "Tiền mặt" : tx.account === "bank" ? "Ngân hàng" : tx.account === "e_wallet" ? "Ví điện tử" : tx.account,
+            amount: tx.amount,
+            description: tx.description,
+            creator: users.find(u => u.id === tx.creatorId)?.fullName || ""
+          })),
+        generatedBy: currentUser.fullName
+      });
+    } catch (e) {
+      console.error("Xuất PDF thất bại:", e);
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   // Khóa tháng của mốc đang xem (ngân sách vốn đặt theo tháng)
@@ -1425,14 +1466,25 @@ export function Finance({
           <ShimmerLine accent="sky" />
           <div className="bg-slate-950 p-4 border-b border-slate-800 text-xs text-slate-400 font-semibold uppercase tracking-wider flex justify-between items-center gap-2">
             <span>Dòng tiền {periodLabel(periodMode, anchor)} ({filteredTransactions.length} bản ghi)</span>
-            <button
-              type="button"
-              onClick={exportTransactionsCsv}
-              className="flex items-center gap-1 normal-case bg-slate-900 hover:bg-slate-800 border border-slate-800 text-sky-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer"
-              title="Xuất danh sách đang lọc ra file CSV (Excel)"
-            >
-              <FileText className="w-3.5 h-3.5" /> Xuất CSV
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={exportTransactionsCsv}
+                className="flex items-center gap-1 normal-case bg-slate-900 hover:bg-slate-800 border border-slate-800 text-sky-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer"
+                title="Xuất danh sách đang lọc ra file CSV (Excel)"
+              >
+                <FileText className="w-3.5 h-3.5" /> Xuất CSV
+              </button>
+              <button
+                type="button"
+                onClick={exportReportPdf}
+                disabled={exportingPdf}
+                className="flex items-center gap-1 normal-case bg-slate-900 hover:bg-slate-800 border border-slate-800 text-indigo-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer disabled:opacity-60"
+                title="Xuất báo cáo PDF của kỳ đang xem (tổng quan + hạng mục + giao dịch)"
+              >
+                <FileDown className="w-3.5 h-3.5" /> {exportingPdf ? "Đang xuất..." : "Xuất PDF"}
+              </button>
+            </div>
           </div>
 
           {/* Chú thích màu sắc icon */}

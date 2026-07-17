@@ -68,6 +68,7 @@ import { Assistant } from "./components/Assistant.js";
 import { FabProvider } from "./components/FabHost.js";
 import { Settings } from "./components/Settings.js";
 import { ServerMonitor } from "./components/ServerMonitor.js";
+import { GlobalSearch } from "./components/GlobalSearch.js";
 import { useModalA11y } from "./hooks/useModalA11y.js";
 import { reloadOnce, scheduleReloadFallback } from "./utils/appReload.js";
 import { DEFAULT_VN_LOCATION, findVnLocation } from "./utils/vnLocations.js";
@@ -1678,7 +1679,10 @@ export default function App() {
 
           {/* User selector, alerts bells */}
           <div className="flex items-center gap-3">
-            
+
+            {/* Tìm kiếm toàn cục (⌘K) — gộp tasks/lịch/ghi chú/thu chi/giấy tờ */}
+            <GlobalSearch getAuthHeader={getAuthHeader} onNavigate={tab => setActiveTab(tab)} />
+
             {/* Quick Demo Role selection panel block */}
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-850 text-[10px] font-sans">
               <span className="text-slate-500 px-1 text-[9px] uppercase font-mono font-bold hidden md:inline">Tài khoản:</span>
