@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Syringe, Plus, Trash2, Check, Calendar, Ruler, HeartPulse, Pill, ShieldAlert, Phone, Pencil, X, Droplet, Sparkles, AlertTriangle, Stethoscope, Cake } from "lucide-react";
+import { Syringe, Plus, Trash2, Check, Calendar, Ruler, HeartPulse, Pill, ShieldAlert, Phone, Pencil, X, Droplet, Sparkles, AlertTriangle, Stethoscope, Cake, FileDown } from "lucide-react";
 import { VaccinationRecord, GrowthRecord, MedicationReminder, MedicationLog, User, UserRole, EmergencyProfile, EmergencyContact, BLOOD_TYPE_OPTIONS, FAMILY_RELATION_LABELS } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { assessBmi, ageFromDob, BmiAssessment } from "../utils/bmi.js";
@@ -310,6 +310,35 @@ export function ChildHealth({
       if (height != null && weight != null) break;
     }
     return { height, weight, date };
+  };
+
+  // Xuất thẻ khẩn cấp ra PDF khổ A6 ngang (in gập bỏ ví). pdfmake lazy-load khi bấm.
+  const [exportingCardId, setExportingCardId] = useState<string | null>(null);
+  const exportCardPdf = async (member: User, p?: EmergencyProfile) => {
+    if (exportingCardId) return;
+    setExportingCardId(member.id);
+    try {
+      const measure = latestMeasureFor(member.id);
+      const { exportEmergencyCardPdf } = await import("../utils/pdfExport.js");
+      await exportEmergencyCardPdf({
+        fullName: member.fullName,
+        relationLabel: member.familyRelation ? FAMILY_RELATION_LABELS[member.familyRelation] : undefined,
+        dateOfBirth: member.dateOfBirth,
+        bloodType: p?.bloodType,
+        heightCm: measure.height,
+        weightKg: measure.weight,
+        allergies: p?.allergies,
+        chronicConditions: p?.chronicConditions,
+        currentMedications: p?.currentMedications,
+        healthInsuranceNumber: p?.healthInsuranceNumber,
+        notes: p?.notes,
+        contacts: p?.emergencyContacts?.filter(c => c.name || c.phone) || []
+      });
+    } catch (e) {
+      console.error("Xuất thẻ khẩn cấp PDF thất bại:", e);
+    } finally {
+      setExportingCardId(null);
+    }
   };
 
   // BMI từ bản ghi mới nhất có ĐỦ cả chiều cao & cân nặng của một thành viên.
@@ -669,11 +698,26 @@ export function ChildHealth({
                               <span className="text-[11px]">{theme.element}</span> {theme.title}{relationLabel ? ` · ${relationLabel}` : ""}
                             </span>
                           </div>
-                          {canEditEmergency && (
-                            <button type="button" onClick={() => openEpEdit(member.id)} title="Cập nhật thẻ" className="shrink-0 p-1.5 rounded-lg bg-slate-800 hover:bg-slate-850 text-slate-400 hover:text-slate-200 cursor-pointer transition-colors">
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                          <div className="shrink-0 flex items-center gap-1.5">
+                            {p && (
+                              <button
+                                type="button"
+                                onClick={() => exportCardPdf(member, p)}
+                                disabled={exportingCardId !== null}
+                                title="Xuất thẻ ra PDF (khổ A6 — in gập bỏ ví)"
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-850 text-slate-400 hover:text-indigo-400 cursor-pointer transition-colors disabled:opacity-60"
+                              >
+                                {exportingCardId === member.id
+                                  ? <span className="block w-3.5 h-3.5 border-2 border-slate-700 border-t-indigo-400 rounded-full animate-spin" />
+                                  : <FileDown className="w-3.5 h-3.5" />}
+                              </button>
+                            )}
+                            {canEditEmergency && (
+                              <button type="button" onClick={() => openEpEdit(member.id)} title="Cập nhật thẻ" className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-850 text-slate-400 hover:text-slate-200 cursor-pointer transition-colors">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {/* Cửa sổ "hình thẻ" — tia holo tỏa tròn + vòng phép + avatar huy hiệu */}

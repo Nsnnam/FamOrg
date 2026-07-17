@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
+import { debtPaid, debtRemaining } from "../utils/debt.js";
 
 interface DebtTrackerProps {
   currentUser: User;
@@ -23,7 +24,7 @@ interface DebtTrackerProps {
 
 const fmtMoney = (n: number) => n.toLocaleString("vi-VN");
 const parseMoney = (s: string) => Number(s.replace(/[^\d]/g, "")) || 0;
-const paidOf = (d: Debt) => d.payments.reduce((s, p) => s + p.amount, 0);
+const paidOf = debtPaid; // logic thuần dùng chung với server (src/utils/debt)
 
 function daysLeft(dateStr?: string): number | null {
   if (!dateStr) return null;
@@ -68,7 +69,7 @@ export function DebtTracker({
     let owe = 0, lent = 0;
     debts.forEach(d => {
       if (d.isSettled) return;
-      const remaining = d.amount - paidOf(d);
+      const remaining = debtRemaining(d);
       if (remaining <= 0) return;
       if (d.direction === "borrowed") owe += remaining; else lent += remaining;
     });

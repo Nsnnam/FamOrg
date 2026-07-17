@@ -12,8 +12,9 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret, getAppSettings, setAppSetting } from "./server/db.js";
 import { sqliteAppendServerMetric, sqliteGetServerMetrics } from "./server/sqlite.js";
-import { UserRole, isLimitedViewer, DishSlot, MealIngredient } from "./src/types.js";
+import { UserRole, isLimitedViewer, DishSlot, MealIngredient, DOCUMENT_TYPE_LABELS } from "./src/types.js";
 import { buildPlanFromLibrary, dedupeAndAnnotateGroceries } from "./src/utils/mealPlan.js";
+import { normalizeSearchText, matchesQuery, excerptAround } from "./src/utils/searchText.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
 import { streamFullBackup, fullBackupFilename, importFullBackup } from "./server/fullBackup.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
@@ -827,6 +828,94 @@ app.delete("/api/notes/:id", requireAuth, (req: AuthRequest, res: Response) => {
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// --- TÌM KIẾM TOÀN CỤC ---
+// Gộp kết quả từ tasks + lịch + ghi chú + thu chi + giấy tờ trong MỘT request.
+// So khớp không phân biệt hoa/thường & bỏ dấu tiếng Việt ("giay to" khớp "Giấy tờ").
+// Quyền xem soi đúng theo từng route GET gốc: thu chi + giấy tờ chỉ Admin/Member,
+// giấy tờ lọc thêm canViewDocument; các nhóm còn lại mọi thành viên đều thấy.
+
+interface SearchResultItem {
+  kind: "task" | "plan" | "note" | "transaction" | "document";
+  id: string;
+  title: string;
+  snippet: string;
+  date: string; // ngày hiển thị (YYYY-MM-DD...) — để client format
+  tab: string;  // tab đích khi bấm vào kết quả
+}
+
+const SEARCH_LIMIT_PER_KIND = 6;
+
+app.get("/api/search", requireAuth, (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const q = normalizeSearchText(String(req.query.q || ""));
+  if (q.length < 2) {
+    res.json({ results: [], query: q });
+    return;
+  }
+
+  const results: SearchResultItem[] = [];
+  const take = <T,>(list: T[], map: (x: T) => SearchResultItem) =>
+    list.slice(0, SEARCH_LIMIT_PER_KIND).forEach(x => results.push(map(x)));
+
+  // Công việc — title/description/tags (route GET gốc trả tất cả cho mọi role)
+  take(
+    FamilyDB.getTasks().filter(t => matchesQuery(q, t.title, t.description, t.tags)),
+    t => ({
+      kind: "task", id: t.id, title: t.title,
+      snippet: excerptAround(t.description, q) || "Công việc",
+      date: t.dueDate || t.createdAt, tab: "tasks"
+    })
+  );
+
+  // Lịch / sự kiện — title/description
+  take(
+    FamilyDB.getPlans().filter(p => matchesQuery(q, p.title, p.description)),
+    p => ({
+      kind: "plan", id: p.id, title: p.title,
+      snippet: excerptAround(p.description, q) || "Sự kiện",
+      date: p.startDate, tab: "plans"
+    })
+  );
+
+  // Ghi chú — title/content/tags
+  take(
+    FamilyDB.getNotes().filter(n => matchesQuery(q, n.title, n.content, n.tags)),
+    n => ({
+      kind: "note", id: n.id, title: n.title,
+      snippet: excerptAround(n.content, q) || "Ghi chú",
+      date: n.updatedAt || n.createdAt, tab: "notes"
+    })
+  );
+
+  // Thu chi + Giấy tờ: chỉ Admin/Member (khớp quyền các route gốc)
+  if (session.role === UserRole.ADMIN || session.role === UserRole.MEMBER) {
+    take(
+      FamilyDB.getTransactions().filter(tx =>
+        matchesQuery(q, tx.description, tx.category, String(tx.amount))
+      ),
+      tx => ({
+        kind: "transaction", id: tx.id,
+        title: tx.description || "(không có mô tả)",
+        snippet: `${tx.type === "income" ? "Thu" : "Chi"} ${Number(tx.amount).toLocaleString("vi-VN")} đ`,
+        date: tx.date, tab: "finance"
+      })
+    );
+
+    take(
+      FamilyDB.getDocuments()
+        .filter(doc => canViewDocument(doc, session))
+        .filter(doc => matchesQuery(q, doc.title, doc.documentNumber, doc.issuer, doc.notes)),
+      doc => ({
+        kind: "document", id: doc.id, title: doc.title,
+        snippet: [DOCUMENT_TYPE_LABELS[doc.type] || "Giấy tờ", doc.documentNumber].filter(Boolean).join(" • "),
+        date: doc.expiryDate || doc.updatedAt || doc.createdAt, tab: "documents"
+      })
+    );
+  }
+
+  res.json({ results, query: q });
 });
 
 // --- FINANCIAL API ENDPOINTS ---

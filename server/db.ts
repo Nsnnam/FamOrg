@@ -40,6 +40,7 @@ import {
   DishSlot
 } from "../src/types.js";
 import { SEED_DISHES } from "../src/utils/mealPlan.js";
+import { isDebtFullyPaid } from "../src/utils/debt.js";
 import { sqliteIsEmpty, sqliteLoad, sqliteSave, sqliteCheckpoint } from "./sqlite.js";
 import { deleteMediaByUrl } from "./media.js";
 import { dispatchPush } from "./push.js";
@@ -1513,9 +1514,8 @@ export class FamilyDB {
       createdAt: new Date().toISOString()
     };
     debt.payments.unshift(payment);
-    // Tự đánh dấu tất toán khi đã trả đủ.
-    const paid = debt.payments.reduce((s, p) => s + p.amount, 0);
-    if (paid >= debt.amount) debt.isSettled = true;
+    // Tự đánh dấu tất toán khi đã trả đủ (logic thuần ở src/utils/debt).
+    if (isDebtFullyPaid(debt)) debt.isSettled = true;
     debt.updatedAt = new Date().toISOString();
     this.writeRaw(db);
     return debt;
@@ -1526,8 +1526,7 @@ export class FamilyDB {
     const debt = db.debts.find(d => d.id === debtId);
     if (!debt) throw new Error("Không tìm thấy khoản nợ");
     debt.payments = debt.payments.filter(p => p.id !== paymentId);
-    const paid = debt.payments.reduce((s, p) => s + p.amount, 0);
-    if (paid < debt.amount) debt.isSettled = false; // mở lại nếu chưa đủ
+    if (!isDebtFullyPaid(debt)) debt.isSettled = false; // mở lại nếu chưa đủ
     debt.updatedAt = new Date().toISOString();
     this.writeRaw(db);
     return debt;
