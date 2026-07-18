@@ -1179,6 +1179,32 @@ app.post("/api/rewards/items/:id/redeem", requireAuth, (req: AuthRequest, res: R
   }
 });
 
+// Thêm mẫu quà mặc định nếu cửa hàng đang trống (idempotent).
+app.post("/api/rewards/items/seed-defaults", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const items = FamilyDB.seedDefaultRewardItems(session.userId, session.username);
+    broadcastSyncEvent("REWARDS_UPDATE", { seeded: true });
+    res.json({ items });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Đổi quà bất ngờ: server chọn ngẫu nhiên + tính giá mystery (giảm ~30%).
+app.post("/api/rewards/items/mystery", requireAuth, (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const isAdult = session.role === UserRole.ADMIN || session.role === UserRole.MEMBER;
+  const childId = isAdult && req.body?.childId ? String(req.body.childId) : session.userId;
+  try {
+    const result = FamilyDB.redeemMysteryItem(childId, session.userId, session.username);
+    broadcastSyncEvent("REWARDS_UPDATE", { rewardId: result.entry.id });
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // --- BUDGET + RECURRING BILL API ENDPOINTS ---
 
 app.get("/api/finance/budgets", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
