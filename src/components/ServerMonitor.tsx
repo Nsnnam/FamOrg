@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Cpu, Thermometer, MemoryStick, HardDrive, Server, Activity, Clock, AlertTriangle } from "lucide-react";
+import { Cpu, Thermometer, MemoryStick, HardDrive, Server, Activity, Clock, AlertTriangle, Network, Globe, Copy, Check, Database, Smartphone, Users as UsersIcon, Wifi } from "lucide-react";
 import { ShimmerLine, Reveal, IconChip, Accent } from "./Lively.js";
 
 // Client chỉ tải dữ liệu 1 phút/lần (server cũng tự ghi telemetry 1 phút/lần
@@ -12,6 +12,12 @@ import { ShimmerLine, Reveal, IconChip, Accent } from "./Lively.js";
 const POLL_MS = 60 * 1000;
 
 type HistoryRange = "24h" | "7d";
+
+interface NetworkAddr {
+  name: string;
+  address: string;
+  kind: "tailscale" | "docker" | "lan";
+}
 
 interface ServerStats {
   at: string;
@@ -24,6 +30,9 @@ interface ServerStats {
   ssdTempC: number | null;
   memory: { totalBytes: number; usedBytes: number; availableBytes: number };
   disk: { totalBytes: number; usedBytes: number; freeBytes: number } | null;
+  network?: { interfaces: NetworkAddr[]; clientIp: string };
+  app?: { version: string; commit: string; nodeVersion: string; processUptimeSec: number; rssBytes: number };
+  data?: { dbBytes: number; uploadsBytes: number; pushDevices: number; sseClients: number; users: number };
 }
 
 // Một mẫu telemetry từ DB (server ghi 1 phút/lần).
@@ -42,6 +51,64 @@ interface ServerMonitorProps {
 
 const fmtGb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1).replace(".", ",") + " GB";
 const fmtTemp = (c: number) => c.toFixed(1).replace(".", ",") + "°C";
+
+// Tự chọn đơn vị MB/GB cho dung lượng dữ liệu (DB/media thường vài chục MB).
+const fmtBytes = (bytes: number) =>
+  bytes >= 1024 ** 3 ? fmtGb(bytes) : (bytes / 1024 ** 2).toFixed(1).replace(".", ",") + " MB";
+
+// Sao chép có fallback execCommand — app hay chạy qua http://ip:3001 (non-secure
+// context) nên navigator.clipboard có thể không tồn tại.
+async function copyText(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch { /* rơi xuống fallback */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// Giá trị mono bấm-để-copy, có tick xác nhận 1,5s.
+function CopyValue({ value, className = "" }: { value: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        if (await copyText(value)) {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1500);
+        }
+      }}
+      title="Bấm để sao chép"
+      className={`inline-flex items-center gap-1.5 font-mono text-slate-200 hover:text-sky-400 cursor-pointer min-w-0 transition-colors ${className}`}
+    >
+      <span className="truncate">{value}</span>
+      {copied
+        ? <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+        : <Copy className="w-3 h-3 text-slate-500 shrink-0" />}
+    </button>
+  );
+}
+
+// Nhãn loại địa chỉ IP theo ngữ nghĩa màu.
+const ADDR_KIND_BADGE: Record<NetworkAddr["kind"], { label: string; cls: string }> = {
+  tailscale: { label: "Tailscale", cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+  lan: { label: "LAN", cls: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
+  docker: { label: "Docker", cls: "bg-slate-800 text-slate-400 border-slate-800" }
+};
 
 const fmtUptime = (sec: number) => {
   const d = Math.floor(sec / 86400);
@@ -403,6 +470,102 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
             </p>
           </div>
           <LevelBar pct={diskPct ?? 0} accent={diskAccent} />
+        </Reveal>
+      </div>
+
+      {/* Mạng & truy cập + Ứng dụng & dữ liệu */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {/* ── Mạng & truy cập ── */}
+        <Reveal delay={0.2} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
+          <ShimmerLine accent="sky" />
+          <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
+            <IconChip accent="sky"><Network className="w-4 h-4" /></IconChip> Mạng &amp; truy cập
+          </h4>
+
+          <div className="space-y-2 text-[11px]">
+            {/* Link đang dùng để mở app — chính là link chia sẻ cho người nhà */}
+            <div className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+              <span className="flex items-center gap-1.5 text-slate-400 shrink-0"><Globe className="w-3.5 h-3.5 text-sky-400" /> Link truy cập</span>
+              <CopyValue value={window.location.origin} className="text-[11px]" />
+            </div>
+
+            {/* IP các card mạng của máy chủ */}
+            {stats?.network && stats.network.interfaces.length > 0 ? (
+              stats.network.interfaces.map(ni => {
+                const badge = ADDR_KIND_BADGE[ni.kind];
+                return (
+                  <div key={`${ni.name}_${ni.address}`} className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                    <span className="flex items-center gap-1.5 text-slate-400 min-w-0">
+                      <Wifi className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      <span className="font-mono truncate">{ni.name}</span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-lg border shrink-0 ${badge.cls}`}>{badge.label}</span>
+                    </span>
+                    <CopyValue value={ni.address} className="text-[11px]" />
+                  </div>
+                );
+              })
+            ) : (
+              <div className="bg-slate-950/40 border border-dashed border-slate-800 rounded-xl px-3 py-2 text-slate-500">
+                {stats ? "Không đọc được card mạng nào." : "Đang đọc..."}
+              </div>
+            )}
+
+            {/* IP thiết bị đang xem trang này */}
+            {stats?.network?.clientIp && (
+              <div className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                <span className="flex items-center gap-1.5 text-slate-400 shrink-0"><Smartphone className="w-3.5 h-3.5 text-emerald-400" /> IP của bạn</span>
+                <CopyValue value={stats.network.clientIp} className="text-[11px]" />
+              </div>
+            )}
+
+            {/* App chạy trong Docker bridge thì chỉ thấy IP container */}
+            {stats?.network && stats.network.interfaces.every(ni => ni.kind === "docker") && (
+              <p className="text-[10px] text-slate-500 px-1">
+                App chạy trong Docker (mạng bridge) nên chỉ thấy IP container — IP LAN/Tailscale thật của máy chủ xem trên router hoặc Tailscale admin.
+              </p>
+            )}
+          </div>
+        </Reveal>
+
+        {/* ── Ứng dụng & dữ liệu ── */}
+        <Reveal delay={0.24} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
+          <ShimmerLine accent="indigo" />
+          <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
+            <IconChip accent="indigo"><Database className="w-4 h-4" /></IconChip> Ứng dụng &amp; dữ liệu
+          </h4>
+
+          {stats?.app && stats.data ? (
+            <div className="space-y-2 text-[11px]">
+              <div className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                <span className="text-slate-400">Phiên bản app</span>
+                <span className="font-mono text-slate-200">
+                  v{stats.app.version}{stats.app.commit ? <span className="text-slate-500"> · {stats.app.commit}</span> : null}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                <span className="text-slate-400">Tiến trình Node</span>
+                <span className="font-mono text-slate-200">
+                  {stats.app.nodeVersion} · chạy {fmtUptime(stats.app.processUptimeSec)} · RAM {fmtBytes(stats.app.rssBytes)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                <span className="text-slate-400">Dữ liệu</span>
+                <span className="font-mono text-slate-200">
+                  SQLite {fmtBytes(stats.data.dbBytes)} · Media {fmtBytes(stats.data.uploadsBytes)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                <span className="flex items-center gap-1.5 text-slate-400"><UsersIcon className="w-3.5 h-3.5 text-indigo-400" /> Kết nối</span>
+                <span className="font-mono text-slate-200">
+                  {stats.data.sseClients} phiên đang mở · {stats.data.pushDevices} thiết bị push · {stats.data.users} thành viên
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-950/40 border border-dashed border-slate-800 rounded-xl py-6 text-center text-[11px] text-slate-500">
+              {stats ? "Server đang chạy bản cũ — cập nhật app để xem mục này." : "Đang đọc..."}
+            </div>
+          )}
         </Reveal>
       </div>
 

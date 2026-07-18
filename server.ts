@@ -520,14 +520,68 @@ app.get("/api/server/history", requireAuth, requireRole([UserRole.ADMIN]), (req:
   res.json({ range, points });
 });
 
-app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
+// Các địa chỉ IPv4 của máy (không tính loopback). Gắn nhãn Tailscale theo dải
+// CGNAT 100.64.0.0/10 hoặc tên card "tailscale*"; dải 172.16–31 trong container
+// thường là mạng bridge của Docker.
+const listNetworkAddrs = () => {
+  const out: { name: string; address: string; kind: "tailscale" | "docker" | "lan" }[] = [];
+  const isTailscaleIp = (ip: string) => {
+    const m = ip.match(/^100\.(\d+)\./);
+    return !!m && Number(m[1]) >= 64 && Number(m[1]) <= 127;
+  };
+  for (const [name, addrs] of Object.entries(os.networkInterfaces())) {
+    for (const a of addrs || []) {
+      if (a.internal || a.family !== "IPv4") continue;
+      const kind = (isTailscaleIp(a.address) || name.startsWith("tailscale")) ? "tailscale"
+        : /^172\.(1[6-9]|2\d|3[01])\./.test(a.address) ? "docker"
+        : "lan";
+      out.push({ name, address: a.address, kind });
+    }
+  }
+  return out;
+};
+
+// IP của client đang gọi (qua reverse proxy thì lấy hop đầu của x-forwarded-for).
+const readClientIp = (req: Request): string => {
+  const fwd = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  const raw = fwd || req.socket.remoteAddress || "";
+  return raw.replace(/^::ffff:/, "");
+};
+
+// Dung lượng dữ liệu app: file SQLite (+wal/shm) đọc mỗi lần, thư mục uploads
+// walk đệ quy nhưng cache 5 phút (có thể nhiều file media).
+let uploadsSizeCache: { at: number; bytes: number } | null = null;
+async function readDataSizes(): Promise<{ dbBytes: number; uploadsBytes: number }> {
+  let dbBytes = 0;
+  for (const f of ["family.db", "family.db-wal", "family.db-shm"]) {
+    try { dbBytes += (await fsp.stat(path.join(process.cwd(), "data", f))).size; } catch { /* file chưa tồn tại */ }
+  }
+  if (!uploadsSizeCache || Date.now() - uploadsSizeCache.at > 5 * 60 * 1000) {
+    let bytes = 0;
+    const walk = async (dir: string) => {
+      let entries;
+      try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of entries) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) await walk(p);
+        else { try { bytes += (await fsp.stat(p)).size; } catch { /* file vừa bị xóa */ } }
+      }
+    };
+    await walk(UPLOADS_DIR);
+    uploadsSizeCache = { at: Date.now(), bytes };
+  }
+  return { dbBytes, uploadsBytes: uploadsSizeCache.bytes };
+}
+
+app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (req: AuthRequest, res: Response) => {
   try {
-    const [cpuPercent, tempC, ssdTempC, memory, disk] = await Promise.all([
+    const [cpuPercent, tempC, ssdTempC, memory, disk, dataSizes] = await Promise.all([
       readCpuPercent(),
       readCpuTempC(),
       readSsdTempC(),
       readMemory(),
-      readDisk()
+      readDisk(),
+      readDataSizes()
     ]);
     const cpus = os.cpus();
     res.json({
@@ -540,7 +594,23 @@ app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (
       tempC,
       ssdTempC,
       memory,
-      disk
+      disk,
+      // Mạng & truy cập
+      network: { interfaces: listNetworkAddrs(), clientIp: readClientIp(req) },
+      // Ứng dụng & dữ liệu
+      app: {
+        version: APP_VERSION,
+        commit: GIT_SHA ? GIT_SHA.slice(0, 7) : "",
+        nodeVersion: process.version,
+        processUptimeSec: Math.round(process.uptime()),
+        rssBytes: process.memoryUsage.rss()
+      },
+      data: {
+        ...dataSizes,
+        pushDevices: FamilyDB.getPushSubscriptions().length,
+        sseClients: sseClients.length,
+        users: FamilyDB.getUsers().length
+      }
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Không đọc được thông số máy chủ." });
