@@ -1136,9 +1136,11 @@ export function Finance({
             <BarChart3 className="w-3.5 h-3.5 text-violet-400" />
             So sánh: {periodLabel(periodMode, anchor)} ↔ {periodLabel(periodMode, prevAnchor)}
           </h3>
-          <div className="overflow-x-auto -mx-1 px-1">
+          {/* Chiều cao cố định vừa phải — nội dung dài thì cuộn bên trong, không kéo
+              giãn cả hàng làm thẻ Xu hướng 12 tháng bên cạnh trống trải */}
+          <div className="overflow-x-auto overflow-y-auto max-h-72 overscroll-contain scrollbar-thin -mx-1 px-1">
             <table className="w-full text-xs border-collapse">
-              <thead>
+              <thead className="sticky top-0 bg-slate-900 z-10">
                 <tr className="text-slate-500 text-[10px] uppercase tracking-wider border-b border-slate-800">
                   <th className="text-left font-semibold py-2 pr-2">Hạng mục</th>
                   <th className="text-right font-semibold py-2 px-2 whitespace-nowrap">{periodLabel(periodMode, anchor)}</th>
@@ -1374,27 +1376,29 @@ export function Finance({
         </Reveal>
       </div>
 
-      {/* Mục tiêu tiết kiệm (sinking fund) */}
-      <SavingsGoals
-        currentUser={currentUser}
-        users={users}
-        savingsGoals={savingsGoals}
-        onSaveSavingsGoal={onSaveSavingsGoal}
-        onDeleteSavingsGoal={onDeleteSavingsGoal}
-        onContributeSavings={onContributeSavings}
-        onRemoveSavingsContribution={onRemoveSavingsContribution}
-      />
+      {/* Mục tiêu tiết kiệm + Vay/cho mượn — desktop nằm ngang hàng cho gọn;
+          items-start để mỗi thẻ cao theo nội dung riêng (danh sách dài ngắn khác nhau) */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start" id="finance-savings-debts">
+        <SavingsGoals
+          currentUser={currentUser}
+          users={users}
+          savingsGoals={savingsGoals}
+          onSaveSavingsGoal={onSaveSavingsGoal}
+          onDeleteSavingsGoal={onDeleteSavingsGoal}
+          onContributeSavings={onContributeSavings}
+          onRemoveSavingsContribution={onRemoveSavingsContribution}
+        />
 
-      {/* Theo dõi vay / cho mượn */}
-      <DebtTracker
-        currentUser={currentUser}
-        users={users}
-        debts={debts}
-        onSaveDebt={onSaveDebt}
-        onDeleteDebt={onDeleteDebt}
-        onAddDebtPayment={onAddDebtPayment}
-        onRemoveDebtPayment={onRemoveDebtPayment}
-      />
+        <DebtTracker
+          currentUser={currentUser}
+          users={users}
+          debts={debts}
+          onSaveDebt={onSaveDebt}
+          onDeleteDebt={onDeleteDebt}
+          onAddDebtPayment={onAddDebtPayment}
+          onRemoveDebtPayment={onRemoveDebtPayment}
+        />
+      </div>
 
       {/* Advanced charts & breakdowns layout */}
       {chartCategoryDistribution.length > 0 && (
