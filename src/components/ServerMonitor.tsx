@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from "react";
-import { Cpu, Thermometer, MemoryStick, HardDrive, Server, Activity, Clock, AlertTriangle, Network, Globe, Copy, Check, Database, Smartphone, Users as UsersIcon, Wifi } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Cpu, Thermometer, MemoryStick, HardDrive, Server, Activity, Clock, AlertTriangle, Network, Globe, Copy, Check, Database, Smartphone, Users as UsersIcon, Wifi, ExternalLink, Plus, Pencil, Trash2, X, Save } from "lucide-react";
 import { ShimmerLine, Reveal, IconChip, Accent } from "./Lively.js";
+import { User, UserRole } from "../types.js";
 
 // Client chỉ tải dữ liệu 1 phút/lần (server cũng tự ghi telemetry 1 phút/lần
 // vào SQLite nên biểu đồ giữ nguyên lịch sử qua các lần reload trang).
@@ -45,8 +46,17 @@ interface MetricPoint {
   disk: number | null;
 }
 
+interface HomelabLink {
+  id: string;
+  emoji: string;
+  name: string;
+  url: string;
+  desc?: string;
+}
+
 interface ServerMonitorProps {
   authHeaders: Record<string, string>;
+  currentUser?: Pick<User, "role">;
 }
 
 const fmtGb = (bytes: number) => (bytes / 1024 ** 3).toFixed(1).replace(".", ",") + " GB";
@@ -271,11 +281,74 @@ const CollectingHint = () => (
   </div>
 );
 
-export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
+export function ServerMonitor({ authHeaders, currentUser }: ServerMonitorProps) {
+  const isAdmin = currentUser?.role === UserRole.ADMIN;
   const [stats, setStats] = useState<ServerStats | null>(null);
   const [error, setError] = useState("");
   const [range, setRange] = useState<HistoryRange>("24h");
   const [history, setHistory] = useState<MetricPoint[]>([]);
+
+  // ─── Homelab quick links ─────────────────────────────────────────────────
+  const [links, setLinks] = useState<HomelabLink[]>([]);
+  const [linkForm, setLinkForm] = useState<{ open: boolean; editing: HomelabLink | null }>({ open: false, editing: null });
+  const [lfEmoji, setLfEmoji] = useState("🔗");
+  const [lfName, setLfName] = useState("");
+  const [lfUrl, setLfUrl] = useState("");
+  const [lfDesc, setLfDesc] = useState("");
+  const [linkSaving, setLinkSaving] = useState(false);
+  const linkFormRef = useRef<HTMLFormElement>(null);
+
+  const fetchLinks = async () => {
+    try {
+      const res = await fetch("/api/server/homelab-links", { headers: authHeaders });
+      if (res.ok) { const d = await res.json(); setLinks(d.links || []); }
+    } catch { /* mạng lỗi tạm thời */ }
+  };
+
+  const saveLinks = async (newLinks: HomelabLink[]) => {
+    const res = await fetch("/api/server/homelab-links", {
+      method: "PUT",
+      headers: { ...authHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ links: newLinks })
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Lưu thất bại");
+    setLinks(d.links || []);
+  };
+
+  const openLinkForm = (link?: HomelabLink) => {
+    setLinkForm({ open: true, editing: link || null });
+    setLfEmoji(link?.emoji || "🔗");
+    setLfName(link?.name || "");
+    setLfUrl(link?.url || "");
+    setLfDesc(link?.desc || "");
+    window.setTimeout(() => linkFormRef.current?.querySelector("input")?.focus(), 50);
+  };
+
+  const closeLinkForm = () => setLinkForm({ open: false, editing: null });
+
+  const handleLinkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!lfName.trim() || !lfUrl.trim() || linkSaving) return;
+    setLinkSaving(true);
+    try {
+      const id = linkForm.editing?.id || `hl_${Date.now()}`;
+      const updated = linkForm.editing
+        ? links.map(l => l.id === linkForm.editing!.id ? { id, emoji: lfEmoji.trim(), name: lfName.trim(), url: lfUrl.trim(), desc: lfDesc.trim() || undefined } : l)
+        : [...links, { id, emoji: lfEmoji.trim() || "🔗", name: lfName.trim(), url: lfUrl.trim(), desc: lfDesc.trim() || undefined }];
+      await saveLinks(updated);
+      closeLinkForm();
+    } finally {
+      setLinkSaving(false);
+    }
+  };
+
+  const handleLinkDelete = async (id: string) => {
+    await saveLinks(links.filter(l => l.id !== id));
+  };
+
+  // Tải links một lần khi mở tab (chỉ admin thấy).
+  useEffect(() => { if (isAdmin) fetchLinks(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Thẻ chỉ số hiện tại: tải ngay khi mở tab + mỗi phút (bỏ qua khi app chạy nền).
   useEffect(() => {
@@ -568,6 +641,87 @@ export function ServerMonitor({ authHeaders }: ServerMonitorProps) {
           )}
         </Reveal>
       </div>
+
+      {/* ─── Dịch vụ Homelab (admin) ─── */}
+      {isAdmin && (
+        <Reveal delay={0.26} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
+          <ShimmerLine accent="violet" />
+          <div className="flex items-center justify-between gap-2">
+            <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
+              <IconChip accent="violet"><Globe className="w-4 h-4" /></IconChip> Dịch vụ Homelab
+            </h4>
+            <button type="button" onClick={() => openLinkForm()}
+              className="flex items-center gap-1 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-violet-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer transition-all">
+              <Plus className="w-3.5 h-3.5" /> Thêm
+            </button>
+          </div>
+
+          {/* Form thêm / sửa link */}
+          {linkForm.open && (
+            <form ref={linkFormRef} onSubmit={handleLinkSubmit} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-slate-400">{linkForm.editing ? "Sửa dịch vụ" : "Thêm dịch vụ mới"}</p>
+              <div className="grid grid-cols-[56px_1fr_1fr] gap-2 text-xs">
+                <input value={lfEmoji} onChange={e => setLfEmoji(e.target.value)} placeholder="📸" maxLength={4}
+                  className="bg-slate-900 border border-slate-800 rounded-xl px-2 py-2 text-slate-200 outline-none focus:border-violet-500 text-center text-lg" />
+                <input value={lfName} onChange={e => setLfName(e.target.value)} placeholder="Tên dịch vụ (vd: Immich)" required
+                  className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-violet-500" />
+                <input value={lfDesc} onChange={e => setLfDesc(e.target.value)} placeholder="Mô tả (tùy chọn)"
+                  className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-violet-500" />
+              </div>
+              <div className="flex gap-2">
+                <input value={lfUrl} onChange={e => setLfUrl(e.target.value)} placeholder="https://dietpi.latxa-goby.ts.net:2283" required type="url"
+                  className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-slate-200 outline-none focus:border-violet-500 min-w-0" />
+                <button type="submit" disabled={linkSaving || !lfName.trim() || !lfUrl.trim()}
+                  className="flex items-center gap-1.5 bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl cursor-pointer transition-all shrink-0">
+                  <Save className="w-3.5 h-3.5" /> {linkSaving ? "Lưu..." : "Lưu"}
+                </button>
+                <button type="button" onClick={closeLinkForm}
+                  className="p-2 bg-slate-900 border border-slate-800 rounded-xl text-slate-500 hover:text-slate-300 cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Grid link tiles */}
+          {links.length === 0 && !linkForm.open ? (
+            <p className="text-[11px] text-slate-500 border border-dashed border-slate-800 rounded-xl px-3 py-4 text-center">
+              Chưa có dịch vụ nào. Bấm "Thêm" để thêm link tới Immich, Portainer, File Browser...
+            </p>
+          ) : links.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5">
+              {links.map(link => (
+                <div key={link.id} className="group relative bg-slate-950/60 border border-slate-800 hover:border-violet-500/40 rounded-xl p-3 flex flex-col gap-2 transition-colors">
+                  {/* Admin controls */}
+                  <div className="absolute top-2 right-2 hidden group-hover:flex gap-1">
+                    <button type="button" onClick={() => openLinkForm(link)} title="Sửa"
+                      className="p-1 bg-slate-900 border border-slate-800 rounded-lg text-slate-500 hover:text-sky-400 cursor-pointer">
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <button type="button" onClick={() => handleLinkDelete(link.id)} title="Xóa"
+                      className="p-1 bg-slate-900 border border-slate-800 rounded-lg text-slate-500 hover:text-rose-400 cursor-pointer">
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <a href={link.url} target="_blank" rel="noopener noreferrer"
+                    className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    <span className="text-2xl leading-none">{link.emoji}</span>
+                    <span className="text-[11px] font-bold text-slate-200 leading-snug">{link.name}</span>
+                    {link.desc && <span className="text-[10px] text-slate-500 leading-snug">{link.desc}</span>}
+                  </a>
+
+                  <a href={link.url} target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[10px] font-mono text-slate-500 hover:text-violet-400 truncate transition-colors min-w-0">
+                    <ExternalLink className="w-3 h-3 shrink-0" />
+                    <span className="truncate">{link.url.replace(/^https?:\/\//, "")}</span>
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </Reveal>
+      )}
 
       {/* Chọn khoảng xem lịch sử (lưu trong SQLite trên server, giữ 7 ngày) */}
       <Reveal delay={0.2} className="flex items-center justify-between gap-2 flex-wrap">
