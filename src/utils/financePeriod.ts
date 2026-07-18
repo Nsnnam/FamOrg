@@ -79,6 +79,38 @@ export function calcTotals(list: TxLike[]): { totalIncome: number; totalExpense:
   return { totalIncome, totalExpense, balance: totalIncome - totalExpense };
 }
 
+// Chuỗi thu/chi theo THÁNG cho biểu đồ xu hướng: N tháng gần nhất (kể cả tháng
+// hiện tại), tháng không có giao dịch vẫn xuất hiện với 0 — trục thời gian liền mạch.
+export interface DatedTxLike extends TxLike { date: string } // YYYY-MM-DD
+
+export interface MonthlyPoint {
+  key: string;     // "YYYY-MM"
+  label: string;   // "T7" (kèm năm ở tháng 1: "T1/26")
+  income: number;
+  expense: number;
+}
+
+export function monthlySeries(transactions: DatedTxLike[], monthsBack = 12, anchor = new Date()): MonthlyPoint[] {
+  const points: MonthlyPoint[] = [];
+  const byKey = new Map<string, MonthlyPoint>();
+  for (let i = monthsBack - 1; i >= 0; i--) {
+    const d = new Date(anchor.getFullYear(), anchor.getMonth() - i, 1);
+    const m = d.getMonth() + 1;
+    const key = `${d.getFullYear()}-${String(m).padStart(2, "0")}`;
+    const label = m === 1 ? `T1/${String(d.getFullYear()).slice(2)}` : `T${m}`;
+    const p: MonthlyPoint = { key, label, income: 0, expense: 0 };
+    points.push(p);
+    byKey.set(key, p);
+  }
+  transactions.forEach(tx => {
+    const p = byKey.get(String(tx.date || "").slice(0, 7));
+    if (!p) return;
+    if (tx.type === "income") p.income += tx.amount;
+    else p.expense += tx.amount;
+  });
+  return points;
+}
+
 // Số dư theo từng ví (tính từ giao dịch: thu cộng, chi trừ). Chưa có "số dư đầu kỳ".
 export function accountBalances(transactions: TxLike[]): Record<string, number> {
   const bal: Record<string, number> = { cash: 0, bank: 0, e_wallet: 0 };

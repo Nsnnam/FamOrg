@@ -28,7 +28,10 @@ import {
   Sparkles,
   MapPin,
   Archive,
-  Upload
+  Upload,
+  Send,
+  Calendar,
+  Copy
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -188,6 +191,19 @@ export function Settings({
   const [aiKeyMsg, setAiKeyMsg] = useState("");
   const [aiKeyErr, setAiKeyErr] = useState("");
 
+  // ICS subscribe feed — mọi thành viên đăng ký lịch gia đình vào Apple/Google Calendar
+  const [icsToken, setIcsToken] = useState("");
+  const [icsCopied, setIcsCopied] = useState(false);
+
+  // Backup tự động qua Telegram bot — admin only
+  interface TgBackupStatus { configured: boolean; enabled: boolean; maskedToken: string; chatId: string; lastSent: string }
+  const [tgStatus, setTgStatus] = useState<TgBackupStatus | null>(null);
+  const [tgToken, setTgToken] = useState("");
+  const [tgChatId, setTgChatId] = useState("");
+  const [tgBusy, setTgBusy] = useState<"" | "save" | "test">("");
+  const [tgMsg, setTgMsg] = useState("");
+  const [tgErr, setTgErr] = useState("");
+
   // Escape-to-close + scroll lock + focus trap for the edit-user & reset-password modals
   const editTargetRef = useRef<HTMLDivElement | null>(null);
   const resetTargetRef = useRef<HTMLDivElement | null>(null);
@@ -201,7 +217,35 @@ export function Settings({
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) setVersionInfo(d); })
       .catch(() => {});
+    fetch("/api/calendar/feed-info", { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.token) setIcsToken(d.token); })
+      .catch(() => {});
   }, []);
+
+  // URL đăng ký lịch: webcal:// để Apple Calendar nhận diện "Subscribe" ngay
+  const icsUrl = icsToken
+    ? `webcal://${window.location.host}/api/calendar.ics?token=${icsToken}`
+    : "";
+
+  const copyIcsUrl = async () => {
+    if (!icsUrl) return;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(icsUrl);
+      else {
+        const ta = document.createElement("textarea");
+        ta.value = icsUrl;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setIcsCopied(true);
+      window.setTimeout(() => setIcsCopied(false), 2000);
+    } catch { /* copy thất bại — người dùng bôi đen tay */ }
+  };
 
   useEffect(() => {
     if (currentUser.role !== UserRole.ADMIN) return;
@@ -209,7 +253,47 @@ export function Settings({
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) setAiKeyStatus(d); })
       .catch(() => {});
+    fetch("/api/settings/telegram-backup", { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) { setTgStatus(d); setTgChatId(d.chatId || ""); } })
+      .catch(() => {});
   }, []);
+
+  // Lưu cấu hình Telegram (token/chat id chỉ gửi khi người dùng có nhập) hoặc bật/tắt
+  const saveTgConfig = async (patch: { botToken?: string; chatId?: string; enabled?: boolean }) => {
+    setTgBusy("save"); setTgMsg(""); setTgErr("");
+    try {
+      const res = await fetch("/api/settings/telegram-backup", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lưu cấu hình thất bại.");
+      setTgStatus(data);
+      setTgToken("");
+      setTgMsg("Đã lưu cấu hình Telegram.");
+    } catch (err: any) {
+      setTgErr(err.message || "Lưu cấu hình thất bại.");
+    } finally {
+      setTgBusy("");
+    }
+  };
+
+  const sendTgTest = async () => {
+    setTgBusy("test"); setTgMsg(""); setTgErr("");
+    try {
+      const res = await fetch("/api/settings/telegram-backup/test", { method: "POST", headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gửi thử thất bại.");
+      setTgStatus(data);
+      setTgMsg(data.message || "Đã gửi backup qua Telegram.");
+    } catch (err: any) {
+      setTgErr(err.message || "Gửi thử thất bại.");
+    } finally {
+      setTgBusy("");
+    }
+  };
 
   const saveAiKey = async (clear = false) => {
     setAiKeyBusy(true);
@@ -1537,6 +1621,112 @@ export function Settings({
           </div>
           {aiKeyErr && <p className="text-[11px] text-rose-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {aiKeyErr}</p>}
           {aiKeyMsg && <p className="text-[11px] text-emerald-400 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5 shrink-0" /> {aiKeyMsg}</p>}
+        </div>
+      )}
+
+      {/* Backup tự động qua Telegram — bản sao offsite hằng đêm, admin only */}
+      {currentUser.role === UserRole.ADMIN && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <Send className="w-4 h-4 text-sky-400" /> Backup tự động qua Telegram
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                {tgStatus?.configured
+                  ? `Bot ${tgStatus.maskedToken} → chat ${tgStatus.chatId}.${tgStatus.lastSent ? ` Gửi gần nhất: ${tgStatus.lastSent}.` : " Chưa gửi lần nào."} Tự gửi file .zip toàn phần lúc 2h–4h sáng hằng đêm — Pi hỏng vẫn còn backup trên Telegram.`
+                  : "Tạo bot qua @BotFather, lấy chat ID từ @userinfobot rồi dán vào đây — mỗi đêm app tự gửi file backup toàn phần vào chat (tối đa 50MB)."}
+              </p>
+            </div>
+            {/* Công tắc bật/tắt gửi hằng đêm */}
+            {tgStatus?.configured && (
+              <button
+                type="button"
+                onClick={() => saveTgConfig({ enabled: !tgStatus.enabled })}
+                disabled={tgBusy !== ""}
+                title={tgStatus.enabled ? "Đang BẬT gửi hằng đêm — bấm để tắt" : "Đang TẮT — bấm để bật gửi hằng đêm"}
+                className={`shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border cursor-pointer transition-all ${tgStatus.enabled ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-slate-900 text-slate-500 border-slate-800"}`}
+              >
+                {tgStatus.enabled ? "ĐANG BẬT" : "ĐANG TẮT"}
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_150px_auto] gap-2">
+            <input
+              type="password"
+              autoComplete="off"
+              value={tgToken}
+              onChange={(e) => setTgToken(e.target.value)}
+              placeholder={tgStatus?.configured ? `Bot token (đang dùng ${tgStatus.maskedToken})` : "Bot token (123456:ABC-…)"}
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-sky-500 min-w-0"
+            />
+            <input
+              value={tgChatId}
+              onChange={(e) => setTgChatId(e.target.value)}
+              placeholder="Chat ID"
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-sky-500 font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => saveTgConfig({
+                ...(tgToken.trim() ? { botToken: tgToken.trim() } : {}),
+                chatId: tgChatId.trim(),
+                enabled: true
+              })}
+              disabled={tgBusy !== "" || (!tgToken.trim() && !tgStatus?.configured) || !tgChatId.trim()}
+              className="bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-all"
+            >
+              {tgBusy === "save" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Lưu & bật
+            </button>
+          </div>
+
+          {tgStatus?.configured && (
+            <button
+              type="button"
+              onClick={sendTgTest}
+              disabled={tgBusy !== ""}
+              className="bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+            >
+              <Send className={`w-4 h-4 ${tgBusy === "test" ? "animate-pulse" : ""}`} />
+              {tgBusy === "test" ? "Đang nén & gửi..." : "Gửi backup ngay để thử"}
+            </button>
+          )}
+
+          {tgErr && <p className="text-[11px] text-rose-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {tgErr}</p>}
+          {tgMsg && <p className="text-[11px] text-emerald-400 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5 shrink-0" /> {tgMsg}</p>}
+        </div>
+      )}
+
+      {/* Đăng ký lịch gia đình vào app Lịch (ICS subscribe) — mọi thành viên */}
+      {icsUrl && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+          <div className="space-y-0.5">
+            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-400" /> Đồng bộ với app Lịch (Apple/Google)
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Đăng ký link dưới đây trong app Lịch — mọi sự kiện + sinh nhật của cả nhà tự đồng bộ về máy, thêm/sửa trong app là lịch tự cập nhật.
+              Trên iPhone: <b className="text-slate-400">Cài đặt → Ứng dụng → Lịch → Tài khoản Lịch → Thêm tài khoản → Khác → Thêm lịch đăng ký</b>, dán link vào.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-[10px] text-slate-300 font-mono truncate select-all">
+              {icsUrl}
+            </code>
+            <button
+              type="button"
+              onClick={copyIcsUrl}
+              className={`shrink-0 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer transition-all ${icsCopied ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-slate-800 hover:bg-slate-700 text-sky-400"}`}
+            >
+              {icsCopied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              {icsCopied ? "Đã chép" : "Sao chép"}
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500">
+            ⚠️ Link chứa mã truy cập lịch của gia đình — chỉ chia sẻ cho người trong nhà. Cần truy cập được server (Tailscale/LAN) thì lịch mới đồng bộ.
+          </p>
         </div>
       )}
 

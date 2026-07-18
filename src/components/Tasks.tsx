@@ -20,9 +20,10 @@ import {
   X,
   Share2,
   Pencil,
-  CheckSquare
+  CheckSquare,
+  Gift
 } from "lucide-react";
-import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, RecurrenceType, isLimitedViewer, isAdultRole } from "../types.js";
+import { Task, TaskStatus, TaskPriority, User, UserRole, RewardPointEntry, RewardItem, RecurrenceType, isLimitedViewer, isAdultRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { Avatar } from "./Avatar.js";
 import { ShimmerLine, Reveal, IconChip, staggerDelay } from "./Lively.js";
@@ -57,7 +58,11 @@ interface TasksProps {
   tasks: Task[];
   rewardEntries: RewardPointEntry[];
   rewardTotals: Record<string, number>;
+  rewardItems: RewardItem[];
   onAddReward: (entry: Partial<RewardPointEntry>) => Promise<any>;
+  onSaveRewardItem: (item: Partial<RewardItem>) => Promise<any>;
+  onDeleteRewardItem: (id: string) => Promise<any>;
+  onRedeemRewardItem: (itemId: string, childId: string) => Promise<any>;
   onSaveTask: (task: Partial<Task>) => Promise<any>;
   onDeleteTask: (id: string) => Promise<any>;
   onAddComment: (taskId: string, content: string) => Promise<any>;
@@ -69,7 +74,11 @@ export function Tasks({
   tasks,
   rewardEntries,
   rewardTotals,
+  rewardItems,
   onAddReward,
+  onSaveRewardItem,
+  onDeleteRewardItem,
+  onRedeemRewardItem,
   onSaveTask,
   onDeleteTask,
   onAddComment
@@ -107,6 +116,16 @@ export function Tasks({
   const [manualRewardPoints, setManualRewardPoints] = useState(0);
   const [manualRewardReason, setManualRewardReason] = useState("");
   const [formError, setFormError] = useState("");
+
+  // Cửa hàng đổi thưởng: chọn bé nhận quà (người lớn), form thêm quà, trạng thái đổi
+  const [shopChildId, setShopChildId] = useState("");
+  const [shopMsg, setShopMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [redeemBusyId, setRedeemBusyId] = useState<string | null>(null);
+  const [showGiftForm, setShowGiftForm] = useState(false);
+  const [giftName, setGiftName] = useState("");
+  const [giftEmoji, setGiftEmoji] = useState("");
+  const [giftCost, setGiftCost] = useState(0);
+  const [giftSaving, setGiftSaving] = useState(false);
 
   // Quick action states
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -309,6 +328,64 @@ export function Tasks({
       setManualRewardReason("");
     } catch (err) {
       console.error("Khong cap nhat diem thuong", err);
+    }
+  };
+
+  // ─── Cửa hàng đổi thưởng ───
+  const isChildAccount = currentUser.role === UserRole.CHILD;
+  // Trẻ chỉ đổi cho chính mình; người lớn chọn bé (mặc định bé đầu tiên)
+  const shopTargetId = isChildAccount ? currentUser.id : (shopChildId || childUsers[0]?.id || "");
+  const shopTarget = users.find(u => u.id === shopTargetId);
+  const activeGifts = useMemo(() => rewardItems.filter(i => i.isActive), [rewardItems]);
+
+  const handleRedeemGift = async (item: RewardItem) => {
+    if (!shopTargetId || redeemBusyId) return;
+    const ok = await confirm({
+      title: "Đổi quà?",
+      message: `Đổi "${item.emoji ? item.emoji + " " : ""}${item.name}" cho ${shopTarget?.fullName || "bé"} với ${item.cost} điểm?`,
+      confirmLabel: "Đổi quà",
+      cancelLabel: "Để sau"
+    });
+    if (!ok) return;
+    setRedeemBusyId(item.id);
+    setShopMsg(null);
+    try {
+      await onRedeemRewardItem(item.id, shopTargetId);
+      setShopMsg({ kind: "ok", text: `Đã đổi "${item.name}" — nhớ thực hiện lời hứa với bé nhé! 🎉` });
+    } catch (err: any) {
+      setShopMsg({ kind: "err", text: err.message || "Không đổi được quà." });
+    } finally {
+      setRedeemBusyId(null);
+    }
+  };
+
+  const handleAddGift = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!giftName.trim() || giftCost <= 0 || giftSaving) return;
+    setGiftSaving(true);
+    setShopMsg(null);
+    try {
+      await onSaveRewardItem({ name: giftName.trim(), emoji: giftEmoji.trim() || undefined, cost: giftCost });
+      setGiftName(""); setGiftEmoji(""); setGiftCost(0); setShowGiftForm(false);
+    } catch (err: any) {
+      setShopMsg({ kind: "err", text: err.message || "Không thêm được quà." });
+    } finally {
+      setGiftSaving(false);
+    }
+  };
+
+  const handleDeleteGift = async (item: RewardItem) => {
+    const ok = await confirm({
+      title: "Xóa món quà?",
+      message: `Xóa "${item.name}" khỏi cửa hàng đổi thưởng? Lịch sử đổi quà cũ vẫn giữ nguyên.`,
+      confirmLabel: "Xóa",
+      tone: "danger"
+    });
+    if (!ok) return;
+    try {
+      await onDeleteRewardItem(item.id);
+    } catch (err: any) {
+      setShopMsg({ kind: "err", text: err.message || "Không xóa được quà." });
     }
   };
 
@@ -629,6 +706,88 @@ export function Tasks({
                 </div>
               );
             })}
+          </div>
+
+          {/* ─── Cửa hàng đổi thưởng: điểm đổi thành quà thật ─── */}
+          <div className="border-t border-slate-800 pt-4 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <Gift className="w-4 h-4 text-pink-400" /> Cửa hàng đổi thưởng
+              </h4>
+              <div className="flex items-center gap-2">
+                {/* Người lớn chọn bé nhận quà; trẻ luôn đổi cho chính mình */}
+                {!isChildAccount && childUsers.length > 1 && (
+                  <div className="w-36">
+                    <FancySelect
+                      value={shopTargetId}
+                      onChange={setShopChildId}
+                      ariaLabel="Chọn bé nhận quà"
+                      options={childUsers.map(u => ({ value: u.id, label: u.fullName }))}
+                    />
+                  </div>
+                )}
+                {isAdultRole(currentUser.role) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowGiftForm(v => !v)}
+                    className="flex items-center gap-1 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-pink-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Thêm quà
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Form thêm quà (người lớn) */}
+            {showGiftForm && isAdultRole(currentUser.role) && (
+              <form onSubmit={handleAddGift} className="grid grid-cols-[64px_1fr_100px_auto] gap-2 text-xs">
+                <input value={giftEmoji} onChange={e => setGiftEmoji(e.target.value)} placeholder="🎁" maxLength={4} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500 text-center" />
+                <input value={giftName} onChange={e => setGiftName(e.target.value)} placeholder="Tên quà (vd: 30 phút iPad)" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500 min-w-0" />
+                <input type="number" min={1} value={giftCost || ""} onChange={e => setGiftCost(Number(e.target.value))} placeholder="Điểm" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500" />
+                <button type="submit" disabled={giftSaving || !giftName.trim() || giftCost <= 0} className="bg-pink-500 hover:bg-pink-400 text-slate-950 rounded-xl px-3 py-2 font-bold cursor-pointer disabled:opacity-60">
+                  {giftSaving ? "Đang lưu..." : "Lưu"}
+                </button>
+              </form>
+            )}
+
+            {shopMsg && (
+              <p className={`text-[11px] ${shopMsg.kind === "ok" ? "text-emerald-400" : "text-rose-400"}`}>{shopMsg.text}</p>
+            )}
+
+            {activeGifts.length === 0 ? (
+              <p className="text-[11px] text-slate-500 border border-dashed border-slate-800 rounded-xl px-3 py-4 text-center">
+                Chưa có món quà nào.{isAdultRole(currentUser.role) ? " Bấm \"Thêm quà\" để tạo phần thưởng cho bé (vd: 🎮 30 phút chơi game — 50 điểm)." : ""}
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                {activeGifts.map(item => {
+                  const balance = shopTargetId ? (rewardTotals[shopTargetId] || 0) : 0;
+                  const affordable = balance >= item.cost;
+                  return (
+                    <div key={item.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-1">
+                        <span className="text-2xl leading-none">{item.emoji || "🎁"}</span>
+                        {isAdultRole(currentUser.role) && (
+                          <button type="button" onClick={() => handleDeleteGift(item)} title="Xóa quà" aria-label={`Xóa quà ${item.name}`} className="p-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-500 hover:text-rose-400 cursor-pointer">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] font-bold text-slate-200 leading-snug flex-1">{item.name}</p>
+                      <button
+                        type="button"
+                        onClick={() => handleRedeemGift(item)}
+                        disabled={!shopTargetId || !affordable || redeemBusyId !== null}
+                        title={affordable ? `Đổi với ${item.cost} điểm` : `Cần ${item.cost} điểm (đang có ${balance})`}
+                        className={`w-full rounded-lg px-2 py-1.5 text-[11px] font-bold cursor-pointer disabled:cursor-default ${affordable ? "bg-amber-500 hover:bg-amber-400 text-slate-950" : "bg-slate-800 text-slate-500"} disabled:opacity-70`}
+                      >
+                        {redeemBusyId === item.id ? "Đang đổi..." : `${item.cost} điểm`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </Reveal>
       )}

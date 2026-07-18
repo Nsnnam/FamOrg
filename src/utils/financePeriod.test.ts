@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   periodBounds, toDateStr, stepAnchor, periodLabel, periodMonths,
-  pctDelta, calcTotals, accountBalances, TxLike
+  pctDelta, calcTotals, accountBalances, monthlySeries, TxLike
 } from "./financePeriod.js";
 
 const d = (s: string) => new Date(`${s}T00:00:00`);
@@ -84,6 +84,36 @@ describe("calcTotals", () => {
   });
   it("danh sách rỗng → toàn 0", () => {
     expect(calcTotals([])).toEqual({ totalIncome: 0, totalExpense: 0, balance: 0 });
+  });
+});
+
+describe("monthlySeries — chuỗi thu/chi 12 tháng cho biểu đồ", () => {
+  const anchor = d("2026-07-18");
+  it("ra đúng N tháng liền mạch kết thúc ở tháng hiện tại, tháng trống = 0", () => {
+    const pts = monthlySeries([], 12, anchor);
+    expect(pts).toHaveLength(12);
+    expect(pts[0].key).toBe("2025-08");
+    expect(pts[11].key).toBe("2026-07");
+    expect(pts.every(p => p.income === 0 && p.expense === 0)).toBe(true);
+  });
+  it("cộng dồn đúng tháng, bỏ qua giao dịch ngoài khoảng", () => {
+    const pts = monthlySeries([
+      { date: "2026-07-01", type: "income", amount: 5_000_000 },
+      { date: "2026-07-15", type: "expense", amount: 1_000_000 },
+      { date: "2026-06-30", type: "expense", amount: 700_000 },
+      { date: "2024-01-01", type: "income", amount: 999 } // quá cũ — ngoài 12 tháng
+    ], 12, anchor);
+    const jul = pts.find(p => p.key === "2026-07")!;
+    const jun = pts.find(p => p.key === "2026-06")!;
+    expect(jul.income).toBe(5_000_000);
+    expect(jul.expense).toBe(1_000_000);
+    expect(jun.expense).toBe(700_000);
+    expect(pts.reduce((s, p) => s + p.income, 0)).toBe(5_000_000); // 999 bị bỏ
+  });
+  it("nhãn: tháng thường T7, tháng 1 kèm năm để đánh dấu sang năm mới", () => {
+    const pts = monthlySeries([], 12, anchor);
+    expect(pts.find(p => p.key === "2026-01")!.label).toBe("T1/26");
+    expect(pts.find(p => p.key === "2025-12")!.label).toBe("T12");
   });
 });
 

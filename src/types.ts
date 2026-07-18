@@ -220,6 +220,17 @@ export interface RewardPointEntry {
   createdAt: string;
 }
 
+// Một món quà trong "cửa hàng đổi thưởng" của trẻ — đổi bằng điểm rewardLedger.
+export interface RewardItem {
+  id: string;
+  name: string;      // "30 phút iPad", "Đi công viên nước"...
+  emoji?: string;    // 🎮 🍦 🎡 — hiển thị cho vui mắt
+  cost: number;      // số điểm cần để đổi (> 0)
+  isActive: boolean; // tắt để ẩn tạm khỏi cửa hàng mà không xóa
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface BudgetLimit {
   id: string;
   month: string; // YYYY-MM
@@ -558,6 +569,7 @@ export interface FamilyOrganizerDB {
   notes: Note[];
   transactions: FinancialTransaction[];
   rewardLedger: RewardPointEntry[];
+  rewardItems: RewardItem[];
   budgets: BudgetLimit[];
   recurringBills: RecurringBill[];
   savingsGoals: SavingsGoal[];

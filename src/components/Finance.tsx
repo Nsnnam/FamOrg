@@ -53,10 +53,78 @@ import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import {
   PeriodMode, PERIOD_LABELS, periodBounds, toDateStr, stepAnchor, periodLabel,
-  periodMonths, pctDelta, calcTotals as calcTotalsUtil, accountBalances as accountBalancesUtil
+  periodMonths, pctDelta, calcTotals as calcTotalsUtil, accountBalances as accountBalancesUtil,
+  monthlySeries, MonthlyPoint
 } from "../utils/financePeriod.js";
 import { useTabFab } from "./FabHost.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
+
+// Rút gọn số tiền cho nhãn trục/tooltip biểu đồ: 12tr, 1,5 tỷ, 500k.
+const fmtShortMoney = (n: number): string => {
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return (n / 1e9).toFixed(abs >= 1e10 ? 0 : 1).replace(".", ",").replace(",0", "") + " tỷ";
+  if (abs >= 1e6) return Math.round(n / 1e6) + "tr";
+  if (abs >= 1e3) return Math.round(n / 1e3) + "k";
+  return String(Math.round(n));
+};
+
+// Làm tròn trần "đẹp" cho trục Y (1/2/5 × 10^n) để nhãn chia đều dễ đọc.
+const niceCeil = (v: number): number => {
+  if (v <= 0) return 1;
+  const pow = 10 ** Math.floor(Math.log10(v));
+  const unit = v / pow;
+  const nice = unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10;
+  return nice * pow;
+};
+
+// Biểu đồ cột thu/chi 12 tháng — SVG thuần, tự co theo bề rộng thẻ.
+// Cột emerald = thu, cột rose = chi; <title> từng cột hiện số đầy đủ khi chạm/hover.
+function MonthlyTrendChart({ points }: { points: MonthlyPoint[] }) {
+  const W = 520, H = 132; // gọn — chart phụ trong nhóm So sánh, không phải khối chính
+  const M = { top: 8, right: 6, bottom: 20, left: 40 };
+  const iw = W - M.left - M.right;
+  const ih = H - M.top - M.bottom;
+  const rawMax = Math.max(1, ...points.map(p => Math.max(p.income, p.expense)));
+  const yMax = niceCeil(rawMax);
+  const y = (v: number) => M.top + ih - (Math.min(v, yMax) / yMax) * ih;
+  const group = iw / points.length;
+  const barW = Math.min(12, (group - 6) / 2);
+  const ticks = [0, 0.5, 1].map(f => f * yMax);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="Biểu đồ thu chi 12 tháng">
+      {ticks.map(v => (
+        <g key={v}>
+          <line x1={M.left} x2={W - M.right} y1={y(v)} y2={y(v)} className="stroke-slate-800" strokeWidth="1" strokeDasharray="3 5" />
+          <text x={M.left - 5} y={y(v) + 3.5} textAnchor="end" fontSize="9" className="fill-slate-500 font-mono">
+            {fmtShortMoney(v)}
+          </text>
+        </g>
+      ))}
+      {points.map((p, i) => {
+        const cx = M.left + i * group + group / 2;
+        return (
+          <g key={p.key}>
+            {p.income > 0 && (
+              <rect x={cx - barW - 1} y={y(p.income)} width={barW} height={Math.max(1.5, M.top + ih - y(p.income))} rx="2" fill="#34d399">
+                <title>{`${p.label}: Thu ${p.income.toLocaleString("vi-VN")} đ`}</title>
+              </rect>
+            )}
+            {p.expense > 0 && (
+              <rect x={cx + 1} y={y(p.expense)} width={barW} height={Math.max(1.5, M.top + ih - y(p.expense))} rx="2" fill="#fb7185">
+                <title>{`${p.label}: Chi ${p.expense.toLocaleString("vi-VN")} đ`}</title>
+              </rect>
+            )}
+            <text x={cx} y={H - 7} textAnchor="middle" fontSize="9" className="fill-slate-500 font-mono">
+              {p.label}
+            </text>
+          </g>
+        );
+      })}
+      <line x1={M.left} x2={W - M.right} y1={M.top + ih} y2={M.top + ih} className="stroke-slate-800" strokeWidth="1.5" />
+    </svg>
+  );
+}
 
 interface FinanceProps {
   currentUser: User;
@@ -481,6 +549,10 @@ export function Finance({
 
   // Số dư theo từng ví (logic thuần ở utils/financePeriod). Chưa có "số dư đầu kỳ".
   const accountBalances = useMemo(() => accountBalancesUtil(transactions), [transactions]);
+
+  // Chuỗi 12 tháng gần nhất cho biểu đồ xu hướng (mọi giao dịch, không theo bộ lọc)
+  const trendPoints = useMemo(() => monthlySeries(transactions, 12), [transactions]);
+  const trendHasData = useMemo(() => trendPoints.some(p => p.income > 0 || p.expense > 0), [trendPoints]);
 
   // Xuất danh sách giao dịch (theo bộ lọc đang xem) ra file CSV (mở được bằng Excel).
   const exportTransactionsCsv = () => {
@@ -1036,11 +1108,32 @@ export function Finance({
         })}
       </div>
 
-      {/* Bảng so sánh kỳ này ↔ kỳ trước (bật/tắt bằng nút "So sánh") */}
+      {/* Nhóm "So sánh" (bật/tắt bằng nút So sánh): biểu đồ xu hướng 12 tháng +
+          bảng so sánh kỳ — desktop nằm ngang hàng 2 cột cho đỡ tốn diện tích */}
       {showCompare && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-5 space-y-3" id="finance-compare">
-          <h3 className="text-sm font-bold text-slate-200 flex items-center gap-1.5">
-            <BarChart3 className="w-4 h-4 text-violet-400" />
+        <div className={`grid grid-cols-1 gap-4 ${trendHasData ? "xl:grid-cols-2" : ""}`} id="finance-compare-group">
+          {trendHasData && (
+            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-4 flex flex-col gap-2" id="finance-trend-chart">
+              <ShimmerLine accent="emerald" />
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" /> Xu hướng 12 tháng
+                </h3>
+                <div className="flex items-center gap-3 text-[10px] text-slate-400 font-semibold">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-emerald-400 inline-block" /> Thu</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-rose-400 inline-block" /> Chi</span>
+                </div>
+              </div>
+              {/* flex-1 + căn giữa: hai thẻ trong grid cao bằng nhau, chart nằm giữa khoảng trống */}
+              <div className="flex-1 flex items-center">
+                <MonthlyTrendChart points={trendPoints} />
+              </div>
+            </div>
+          )}
+
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-xl p-4 space-y-2" id="finance-compare">
+          <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5 text-violet-400" />
             So sánh: {periodLabel(periodMode, anchor)} ↔ {periodLabel(periodMode, prevAnchor)}
           </h3>
           <div className="overflow-x-auto -mx-1 px-1">
@@ -1096,6 +1189,7 @@ export function Finance({
             </table>
           </div>
           <p className="text-[10px] text-slate-500">Chênh lệch chi tiêu màu đỏ = chi nhiều hơn kỳ trước; màu xanh = tiết kiệm hơn.</p>
+          </div>
         </div>
       )}
 

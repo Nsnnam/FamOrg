@@ -39,6 +39,7 @@ import {
   FamilyAsset,
   Notification,
   RewardPointEntry,
+  RewardItem,
   BudgetLimit,
   RecurringBill,
   MedicationReminder,
@@ -349,6 +350,7 @@ export default function App() {
   const [assets, setAssets] = useState<FamilyAsset[]>([]);
   const [rewardEntries, setRewardEntries] = useState<RewardPointEntry[]>([]);
   const [rewardTotals, setRewardTotals] = useState<Record<string, number>>({});
+  const [rewardItems, setRewardItems] = useState<RewardItem[]>([]);
   const [budgets, setBudgets] = useState<BudgetLimit[]>([]);
   const [recurringBills, setRecurringBills] = useState<RecurringBill[]>([]);
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
@@ -492,6 +494,7 @@ export default function App() {
         const data = await res.json();
         setRewardEntries(data.entries || []);
         setRewardTotals(data.totals || {});
+        setRewardItems(data.items || []);
       }
     } catch (e) {
       console.error(e);
@@ -1016,6 +1019,45 @@ export default function App() {
       method: "POST",
       headers: { "Content-Type": "application/json", ...getAuthHeader() },
       body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  // Cửa hàng đổi thưởng: quản lý quà (người lớn) + đổi quà bằng điểm
+  const handleSaveRewardItem = async (payload: Partial<RewardItem>) => {
+    const res = await fetch("/api/rewards/items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleDeleteRewardItem = async (id: string) => {
+    const res = await fetch(`/api/rewards/items/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleRedeemRewardItem = async (itemId: string, childId: string) => {
+    const res = await fetch(`/api/rewards/items/${itemId}/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ childId })
     });
     if (!res.ok) {
       const data = await res.json();
@@ -1816,7 +1858,11 @@ export default function App() {
                   tasks={tasks}
                   rewardEntries={rewardEntries}
                   rewardTotals={rewardTotals}
+                  rewardItems={rewardItems}
                   onAddReward={handleAddRewardEntry}
+                  onSaveRewardItem={handleSaveRewardItem}
+                  onDeleteRewardItem={handleDeleteRewardItem}
+                  onRedeemRewardItem={handleRedeemRewardItem}
                   onSaveTask={handleSaveTask}
                   onDeleteTask={handleDeleteTask}
                   onAddComment={handleAddCommentToTask}
