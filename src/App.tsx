@@ -1999,7 +1999,7 @@ export default function App() {
               )}
 
               {activeTab === "server" && currentUser.role === UserRole.ADMIN && (
-                <ServerMonitor authHeaders={getAuthHeader()} />
+                <ServerMonitor authHeaders={getAuthHeader()} currentUser={currentUser} />
               )}
 
               {activeTab === "settings" && (

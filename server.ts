@@ -538,6 +538,29 @@ async function recordServerMetric() {
 setTimeout(recordServerMetric, 10 * 1000);
 setInterval(recordServerMetric, 60 * 1000);
 
+// Danh sách shortcut dịch vụ homelab (Immich, Portainer…) lưu trong app_settings.
+// Admin quản lý (GET xem, PUT ghi toàn bộ mảng).
+interface HomelabLink { id: string; emoji: string; name: string; url: string; desc?: string }
+const parseHomelabLinks = (): HomelabLink[] => {
+  try { return JSON.parse(getAppSettings().homelabLinks || "[]"); } catch { return []; }
+};
+app.get("/api/server/homelab-links", requireAuth, requireRole([UserRole.ADMIN]), (_req: AuthRequest, res: Response) => {
+  res.json({ links: parseHomelabLinks() });
+});
+app.put("/api/server/homelab-links", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
+  const links = req.body?.links;
+  if (!Array.isArray(links)) { res.status(400).json({ error: "links phải là mảng" }); return; }
+  const clean: HomelabLink[] = links.map((l: any) => ({
+    id: String(l.id || `hl_${Date.now()}_${Math.random().toString(36).slice(2,6)}`),
+    emoji: String(l.emoji || "🔗").trim().slice(0, 8),
+    name: String(l.name || "").trim().slice(0, 60),
+    url: String(l.url || "").trim().slice(0, 500),
+    desc: l.desc ? String(l.desc).trim().slice(0, 120) : undefined
+  })).filter(l => l.name && l.url);
+  setAppSetting("homelabLinks", JSON.stringify(clean));
+  res.json({ links: clean });
+});
+
 // Lịch sử telemetry cho biểu đồ: 24h (mặc định) hoặc 7 ngày, downsample ≤320 điểm.
 app.get("/api/server/history", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
   const range = req.query.range === "7d" ? "7d" : "24h";
