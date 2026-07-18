@@ -18,6 +18,7 @@ import { normalizeSearchText, matchesQuery, excerptAround } from "./src/utils/se
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
 import { streamFullBackup, fullBackupFilename, importFullBackup } from "./server/fullBackup.js";
 import { telegramBackupStatus, sendBackupToTelegram, runTelegramBackupTick } from "./server/telegramBackup.js";
+import { sendWeeklyDigest, runWeeklyDigestTick } from "./server/weeklyDigest.js";
 import { icsFeedToken, isValidIcsToken, buildIcsFeed } from "./server/icsFeed.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
 
@@ -680,11 +681,12 @@ app.get("/api/settings/telegram-backup", requireAuth, requireRole([UserRole.ADMI
 });
 
 app.post("/api/settings/telegram-backup", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
-  const { botToken, chatId, enabled } = req.body || {};
+  const { botToken, chatId, enabled, weeklyDigestEnabled } = req.body || {};
   // botToken/chatId chỉ ghi đè khi client gửi lên (giữ nguyên khi chỉ bật/tắt).
   if (botToken !== undefined) setAppSetting("telegramBotToken", String(botToken).trim() || null);
   if (chatId !== undefined) setAppSetting("telegramChatId", String(chatId).trim() || null);
   if (enabled !== undefined) setAppSetting("telegramBackupEnabled", enabled ? "1" : null);
+  if (weeklyDigestEnabled !== undefined) setAppSetting("telegramWeeklyDigestEnabled", weeklyDigestEnabled ? "1" : null);
   res.json(telegramBackupStatus());
 });
 
@@ -698,8 +700,18 @@ app.post("/api/settings/telegram-backup/test", requireAuth, requireRole([UserRol
   }
 });
 
-// Vòng kiểm tra gửi backup tự động (module tự lo dedupe theo ngày + khung giờ).
-setInterval(() => { void runTelegramBackupTick(); }, 30 * 60 * 1000);
+// Gửi thử bản tin tuần ngay (không chờ thứ Hai).
+app.post("/api/settings/telegram-digest/test", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
+  try {
+    const { aiUsed } = await sendWeeklyDigest();
+    res.json({ success: true, message: `Đã gửi bản tin tuần${aiUsed ? " (AI)" : ""} — kiểm tra chat Telegram nhé.` });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Gửi bản tin tuần thất bại." });
+  }
+});
+
+// Vòng kiểm tra gửi backup + bản tin tuần (mỗi 30 phút, module tự lo dedupe + khung giờ).
+setInterval(() => { void runTelegramBackupTick(); void runWeeklyDigestTick(); }, 30 * 60 * 1000);
 
 // --- AUTH API ENDPOINTS ---
 
