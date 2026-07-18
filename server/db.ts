@@ -1293,6 +1293,71 @@ export class FamilyDB {
     return entry;
   }
 
+  /** Mẫu quà sẵn — chỉ thêm nếu danh sách hiện tại TRỐNG (không ghi đè quà đã có). */
+  public static seedDefaultRewardItems(userId: string, username: string): RewardItem[] {
+    const db = this.readRaw();
+    if (db.rewardItems.length > 0) return db.rewardItems; // đã có quà, không thêm
+    const now = new Date().toISOString();
+    const defaults: Array<{ emoji: string; name: string; cost: number }> = [
+      { emoji: "🎮", name: "30 phút chơi game",                cost: 30 },
+      { emoji: "📱", name: "30 phút xem YouTube / điện thoại", cost: 30 },
+      { emoji: "📚", name: "Bố/mẹ đọc truyện 2 cuốn",         cost: 20 },
+      { emoji: "🍦", name: "Mua kem / bánh yêu thích",         cost: 50 },
+      { emoji: "🍕", name: "Chọn món ăn tối cả nhà",           cost: 60 },
+      { emoji: "🎬", name: "Xem phim cùng bố/mẹ",              cost: 40 },
+      { emoji: "🏊", name: "Đi bơi / hồ bơi",                  cost: 80 },
+      { emoji: "🎡", name: "Đi công viên vui chơi",             cost: 100 }
+    ];
+    db.rewardItems = defaults.map((d, i) => ({
+      id: `rwitem_default_${i}_${Date.now()}`,
+      name: d.name, emoji: d.emoji, cost: d.cost,
+      isActive: true, createdAt: now, updatedAt: now
+    }));
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Đổi thưởng", "Đã tạo 8 món quà mẫu mặc định.");
+    return db.rewardItems;
+  }
+
+  /**
+   * Đổi quà BẤT NGỜ: server chọn ngẫu nhiên 1 món trong danh sách đang bật,
+   * trừ điểm với giá mystery = ⌊trung bình × 0.7⌋ (giảm ~30% so với chọn cụ thể).
+   */
+  public static redeemMysteryItem(childId: string, byUserId: string, byUsername: string): {
+    entry: RewardPointEntry; item: RewardItem; mysteryCost: number
+  } {
+    const db = this.readRaw();
+    const active = db.rewardItems.filter(i => i.isActive);
+    if (active.length === 0) throw new Error("Cửa hàng chưa có món quà nào để chọn ngẫu nhiên.");
+
+    const child = db.users.find(u => u.id === childId);
+    if (!child) throw new Error("Không tìm thấy thành viên đổi quà");
+
+    const avgCost = active.reduce((s, i) => s + i.cost, 0) / active.length;
+    const mysteryCost = Math.max(1, Math.floor(avgCost * 0.7));
+
+    const balance = db.rewardLedger
+      .filter(e => e.userId === childId)
+      .reduce((s, e) => s + e.points, 0);
+    if (balance < mysteryCost) {
+      throw new Error(`Chưa đủ điểm: cần ${mysteryCost} (quà bất ngờ), hiện có ${balance}.`);
+    }
+
+    const item = active[Math.floor(Math.random() * active.length)];
+    const entry: RewardPointEntry = {
+      id: `reward_mystery_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      userId: childId,
+      points: -mysteryCost,
+      reason: `🎲 Quà bất ngờ: ${item.name}`,
+      createdById: byUserId,
+      createdAt: new Date().toISOString()
+    };
+    db.rewardLedger.unshift(entry);
+    this.addNotificationInternal(db, "all", "🎲 Quà bất ngờ!", `${child.fullName} vừa quay được "${item.emoji ? item.emoji + " " : ""}${item.name}" (−${mysteryCost} điểm, còn ${balance - mysteryCost}).`);
+    this.writeRaw(db);
+    this.logActivity(byUserId, byUsername, "Đổi thưởng", `${child.fullName} đổi quà bất ngờ "${item.name}" (−${mysteryCost} điểm).`);
+    return { entry, item, mysteryCost };
+  }
+
   // --- BUDGETS + RECURRING BILLS ---
   public static saveBudget(data: Partial<BudgetLimit>, userId: string, username: string): BudgetLimit {
     const db = this.readRaw();

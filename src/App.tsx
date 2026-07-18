@@ -1066,6 +1066,31 @@ export default function App() {
     return res.json();
   };
 
+  const handleSeedDefaultRewardItems = async () => {
+    const res = await fetch("/api/rewards/items/seed-defaults", {
+      method: "POST",
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleRedeemMysteryItem = async (childId: string) => {
+    const res = await fetch("/api/rewards/items/mystery", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify({ childId })
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json() as Promise<{ entry: RewardPointEntry; item: { name: string; emoji?: string }; mysteryCost: number }>;
+  };
+
   const handleSaveBudget = async (payload: Partial<BudgetLimit>) => {
     const res = await fetch("/api/finance/budgets", {
       method: "POST",
@@ -1863,6 +1888,8 @@ export default function App() {
                   onSaveRewardItem={handleSaveRewardItem}
                   onDeleteRewardItem={handleDeleteRewardItem}
                   onRedeemRewardItem={handleRedeemRewardItem}
+                  onSeedDefaultRewardItems={handleSeedDefaultRewardItems}
+                  onRedeemMysteryItem={handleRedeemMysteryItem}
                   onSaveTask={handleSaveTask}
                   onDeleteTask={handleDeleteTask}
                   onAddComment={handleAddCommentToTask}

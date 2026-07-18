@@ -59,6 +59,8 @@ interface TasksProps {
   rewardEntries: RewardPointEntry[];
   rewardTotals: Record<string, number>;
   rewardItems: RewardItem[];
+  onSeedDefaultRewardItems: () => Promise<any>;
+  onRedeemMysteryItem: (childId: string) => Promise<{ entry: any; item: { name: string; emoji?: string }; mysteryCost: number }>;
   onAddReward: (entry: Partial<RewardPointEntry>) => Promise<any>;
   onSaveRewardItem: (item: Partial<RewardItem>) => Promise<any>;
   onDeleteRewardItem: (id: string) => Promise<any>;
@@ -75,6 +77,8 @@ export function Tasks({
   rewardEntries,
   rewardTotals,
   rewardItems,
+  onSeedDefaultRewardItems,
+  onRedeemMysteryItem,
   onAddReward,
   onSaveRewardItem,
   onDeleteRewardItem,
@@ -117,15 +121,18 @@ export function Tasks({
   const [manualRewardReason, setManualRewardReason] = useState("");
   const [formError, setFormError] = useState("");
 
-  // Cửa hàng đổi thưởng: chọn bé nhận quà (người lớn), form thêm quà, trạng thái đổi
+  // Cửa hàng đổi thưởng: chọn bé nhận quà (người lớn), form thêm/edit quà, trạng thái đổi
   const [shopChildId, setShopChildId] = useState("");
   const [shopMsg, setShopMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [redeemBusyId, setRedeemBusyId] = useState<string | null>(null);
   const [showGiftForm, setShowGiftForm] = useState(false);
+  const [editingGift, setEditingGift] = useState<RewardItem | null>(null);
   const [giftName, setGiftName] = useState("");
   const [giftEmoji, setGiftEmoji] = useState("");
   const [giftCost, setGiftCost] = useState(0);
   const [giftSaving, setGiftSaving] = useState(false);
+  const [mysteryBusy, setMysteryBusy] = useState(false);
+  const [mysteryResult, setMysteryResult] = useState<{ name: string; emoji?: string; cost: number } | null>(null);
 
   // Quick action states
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -337,6 +344,12 @@ export function Tasks({
   const shopTargetId = isChildAccount ? currentUser.id : (shopChildId || childUsers[0]?.id || "");
   const shopTarget = users.find(u => u.id === shopTargetId);
   const activeGifts = useMemo(() => rewardItems.filter(i => i.isActive), [rewardItems]);
+  // Giá quà bất ngờ = trung bình × 0.7, tối thiểu 1
+  const mysteryCost = useMemo(() => {
+    if (activeGifts.length === 0) return 0;
+    const avg = activeGifts.reduce((s, i) => s + i.cost, 0) / activeGifts.length;
+    return Math.max(1, Math.floor(avg * 0.7));
+  }, [activeGifts]);
 
   const handleRedeemGift = async (item: RewardItem) => {
     if (!shopTargetId || redeemBusyId) return;
@@ -365,12 +378,66 @@ export function Tasks({
     setGiftSaving(true);
     setShopMsg(null);
     try {
-      await onSaveRewardItem({ name: giftName.trim(), emoji: giftEmoji.trim() || undefined, cost: giftCost });
-      setGiftName(""); setGiftEmoji(""); setGiftCost(0); setShowGiftForm(false);
+      await onSaveRewardItem({
+        ...(editingGift ? { id: editingGift.id } : {}),
+        name: giftName.trim(),
+        emoji: giftEmoji.trim() || undefined,
+        cost: giftCost
+      });
+      setGiftName(""); setGiftEmoji(""); setGiftCost(0);
+      setShowGiftForm(false); setEditingGift(null);
     } catch (err: any) {
-      setShopMsg({ kind: "err", text: err.message || "Không thêm được quà." });
+      setShopMsg({ kind: "err", text: err.message || "Không lưu được quà." });
     } finally {
       setGiftSaving(false);
+    }
+  };
+
+  const startEditGift = (item: RewardItem) => {
+    setEditingGift(item);
+    setGiftName(item.name);
+    setGiftEmoji(item.emoji || "");
+    setGiftCost(item.cost);
+    setShowGiftForm(true);
+    setShopMsg(null);
+  };
+
+  const cancelGiftForm = () => {
+    setShowGiftForm(false); setEditingGift(null);
+    setGiftName(""); setGiftEmoji(""); setGiftCost(0);
+  };
+
+  const handleMysteryRedeem = async () => {
+    if (!shopTargetId || mysteryBusy) return;
+    const balance = shopTargetId ? (rewardTotals[shopTargetId] || 0) : 0;
+    if (balance < mysteryCost) {
+      setShopMsg({ kind: "err", text: `Cần ${mysteryCost} điểm (quà bất ngờ), bé đang có ${balance}.` });
+      return;
+    }
+    const ok = await confirm({
+      title: "Đổi Quà Bất Ngờ 🎲",
+      message: `${shopTarget?.fullName || "Bé"} sẽ dùng ${mysteryCost} điểm để nhận 1 món quà bất ngờ (server chọn ngẫu nhiên). Không xem trước được nhé!`,
+      confirmLabel: "Đồng ý!",
+      cancelLabel: "Để sau"
+    });
+    if (!ok) return;
+    setMysteryBusy(true); setMysteryResult(null); setShopMsg(null);
+    try {
+      const res = await onRedeemMysteryItem(shopTargetId);
+      setMysteryResult({ name: res.item.name, emoji: res.item.emoji, cost: res.mysteryCost });
+      setShopMsg({ kind: "ok", text: `🎲 Bé nhận được: "${res.item.emoji ? res.item.emoji + " " : ""}${res.item.name}" (−${res.mysteryCost} điểm)!` });
+    } catch (err: any) {
+      setShopMsg({ kind: "err", text: err.message || "Không đổi được quà bất ngờ." });
+    } finally {
+      setMysteryBusy(false);
+    }
+  };
+
+  const handleSeedDefaults = async () => {
+    try {
+      await onSeedDefaultRewardItems();
+    } catch (err: any) {
+      setShopMsg({ kind: "err", text: err.message || "Không thêm được mẫu." });
     }
   };
 
@@ -729,7 +796,7 @@ export function Tasks({
                 {isAdultRole(currentUser.role) && (
                   <button
                     type="button"
-                    onClick={() => setShowGiftForm(v => !v)}
+                    onClick={() => { cancelGiftForm(); setShowGiftForm(v => !v); }}
                     className="flex items-center gap-1 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-pink-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> Thêm quà
@@ -738,15 +805,21 @@ export function Tasks({
               </div>
             </div>
 
-            {/* Form thêm quà (người lớn) */}
+            {/* Form thêm / sửa quà (người lớn) */}
             {showGiftForm && isAdultRole(currentUser.role) && (
-              <form onSubmit={handleAddGift} className="grid grid-cols-[64px_1fr_100px_auto] gap-2 text-xs">
-                <input value={giftEmoji} onChange={e => setGiftEmoji(e.target.value)} placeholder="🎁" maxLength={4} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500 text-center" />
-                <input value={giftName} onChange={e => setGiftName(e.target.value)} placeholder="Tên quà (vd: 30 phút iPad)" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500 min-w-0" />
-                <input type="number" min={1} value={giftCost || ""} onChange={e => setGiftCost(Number(e.target.value))} placeholder="Điểm" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500" />
-                <button type="submit" disabled={giftSaving || !giftName.trim() || giftCost <= 0} className="bg-pink-500 hover:bg-pink-400 text-slate-950 rounded-xl px-3 py-2 font-bold cursor-pointer disabled:opacity-60">
-                  {giftSaving ? "Đang lưu..." : "Lưu"}
-                </button>
+              <form onSubmit={handleAddGift} className="space-y-2">
+                <p className="text-[11px] font-bold text-slate-400">{editingGift ? `Sửa quà: ${editingGift.name}` : "Thêm món quà mới"}</p>
+                <div className="grid grid-cols-[64px_1fr_100px_auto_auto] gap-2 text-xs">
+                  <input value={giftEmoji} onChange={e => setGiftEmoji(e.target.value)} placeholder="🎁" maxLength={4} className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500 text-center" />
+                  <input value={giftName} onChange={e => setGiftName(e.target.value)} placeholder="Tên quà (vd: 30 phút iPad)" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500 min-w-0" />
+                  <input type="number" min={1} value={giftCost || ""} onChange={e => setGiftCost(Number(e.target.value))} placeholder="Điểm" className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-indigo-500" />
+                  <button type="submit" disabled={giftSaving || !giftName.trim() || giftCost <= 0} className="bg-pink-500 hover:bg-pink-400 text-slate-950 rounded-xl px-3 py-2 font-bold cursor-pointer disabled:opacity-60">
+                    {giftSaving ? "..." : editingGift ? "Lưu" : "Thêm"}
+                  </button>
+                  <button type="button" onClick={cancelGiftForm} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-500 hover:text-slate-300 cursor-pointer">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </form>
             )}
 
@@ -755,9 +828,17 @@ export function Tasks({
             )}
 
             {activeGifts.length === 0 ? (
-              <p className="text-[11px] text-slate-500 border border-dashed border-slate-800 rounded-xl px-3 py-4 text-center">
-                Chưa có món quà nào.{isAdultRole(currentUser.role) ? " Bấm \"Thêm quà\" để tạo phần thưởng cho bé (vd: 🎮 30 phút chơi game — 50 điểm)." : ""}
-              </p>
+              <div className="border border-dashed border-slate-800 rounded-xl px-4 py-5 text-center space-y-3">
+                <p className="text-[11px] text-slate-500">
+                  Chưa có món quà nào.{isAdultRole(currentUser.role) ? " Thêm từng món hoặc tạo bộ mẫu sẵn có:" : ""}
+                </p>
+                {isAdultRole(currentUser.role) && (
+                  <button type="button" onClick={handleSeedDefaults}
+                    className="mx-auto flex items-center gap-1.5 bg-pink-500/10 border border-pink-500/20 text-pink-400 text-[11px] font-bold px-4 py-2 rounded-xl hover:bg-pink-500/20 cursor-pointer transition-all">
+                    <Gift className="w-3.5 h-3.5" /> Tạo 8 món quà mẫu sẵn
+                  </button>
+                )}
+              </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5">
                 {activeGifts.map(item => {
@@ -768,9 +849,14 @@ export function Tasks({
                       <div className="flex items-start justify-between gap-1">
                         <span className="text-2xl leading-none">{item.emoji || "🎁"}</span>
                         {isAdultRole(currentUser.role) && (
-                          <button type="button" onClick={() => handleDeleteGift(item)} title="Xóa quà" aria-label={`Xóa quà ${item.name}`} className="p-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-500 hover:text-rose-400 cursor-pointer">
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          <div className="flex gap-1">
+                            <button type="button" onClick={() => startEditGift(item)} title="Sửa quà" aria-label={`Sửa quà ${item.name}`} className="p-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-500 hover:text-sky-400 cursor-pointer">
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                            <button type="button" onClick={() => handleDeleteGift(item)} title="Xóa quà" aria-label={`Xóa quà ${item.name}`} className="p-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-500 hover:text-rose-400 cursor-pointer">
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
                       <p className="text-[11px] font-bold text-slate-200 leading-snug flex-1">{item.name}</p>
@@ -786,6 +872,41 @@ export function Tasks({
                     </div>
                   );
                 })}
+
+                {/* Thẻ Quà Bất Ngờ — luôn hiển thị khi có ít nhất 2 món để chọn */}
+                {activeGifts.length >= 2 && (() => {
+                  const balance = shopTargetId ? (rewardTotals[shopTargetId] || 0) : 0;
+                  const affordable = balance >= mysteryCost;
+                  return (
+                    <div className="relative bg-gradient-to-br from-violet-950/40 to-pink-950/30 border border-violet-500/30 rounded-xl p-3 flex flex-col gap-2 overflow-hidden">
+                      {/* shimmer nhẹ để thẻ nổi bật */}
+                      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-400/40 to-transparent" />
+                      <div className="flex items-start justify-between gap-1">
+                        <span className="text-2xl leading-none">{mysteryResult ? (mysteryResult.emoji || "🎁") : "🎲"}</span>
+                        <span className="text-[9px] font-bold text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 py-0.5 rounded-md">BẤT NGỜ</span>
+                      </div>
+                      {mysteryResult ? (
+                        <p className="text-[11px] font-bold text-violet-300 leading-snug flex-1 animate-pulse-once">
+                          {mysteryResult.emoji ? mysteryResult.emoji + " " : ""}{mysteryResult.name}!
+                        </p>
+                      ) : (
+                        <p className="text-[11px] font-bold text-slate-200 leading-snug flex-1">
+                          Quà bất ngờ
+                          <span className="block text-[10px] font-normal text-slate-500 mt-0.5">Giảm ~30% — server chọn ngẫu nhiên</span>
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleMysteryRedeem}
+                        disabled={!shopTargetId || !affordable || mysteryBusy || redeemBusyId !== null}
+                        title={affordable ? `Đổi quà bất ngờ với ${mysteryCost} điểm (giảm ~30%)` : `Cần ${mysteryCost} điểm (đang có ${balance})`}
+                        className={`w-full rounded-lg px-2 py-1.5 text-[11px] font-bold cursor-pointer disabled:cursor-default transition-all ${affordable ? "bg-violet-500 hover:bg-violet-400 text-white" : "bg-slate-800 text-slate-500"} disabled:opacity-70`}
+                      >
+                        {mysteryBusy ? "Đang quay..." : `≈${mysteryCost} điểm`}
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
