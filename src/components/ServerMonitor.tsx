@@ -298,6 +298,13 @@ export function ServerMonitor({ authHeaders, currentUser }: ServerMonitorProps) 
   const [linkSaving, setLinkSaving] = useState(false);
   const linkFormRef = useRef<HTMLFormElement>(null);
 
+  // Quét Tailscale serve
+  interface TsService { url: string; backendUrl: string; emoji: string; name: string; desc: string }
+  const [scanState, setScanState] = useState<"idle" | "scanning" | "done" | "no-socket" | "error">("idle");
+  const [scanResults, setScanResults] = useState<TsService[]>([]);
+  const [scanHint, setScanHint] = useState("");
+  const [scanSelected, setScanSelected] = useState<Set<string>>(new Set());
+
   const fetchLinks = async () => {
     try {
       const res = await fetch("/api/server/homelab-links", { headers: authHeaders });
@@ -345,6 +352,39 @@ export function ServerMonitor({ authHeaders, currentUser }: ServerMonitorProps) 
 
   const handleLinkDelete = async (id: string) => {
     await saveLinks(links.filter(l => l.id !== id));
+  };
+
+  const handleScan = async () => {
+    setScanState("scanning"); setScanResults([]); setScanSelected(new Set());
+    try {
+      const res = await fetch("/api/server/tailscale-serve", { headers: authHeaders });
+      const d = await res.json();
+      if (!d.available) {
+        setScanState("no-socket");
+        setScanHint(d.hint || "Tailscale socket chưa được mount vào container.");
+      } else {
+        setScanResults(d.services || []);
+        // Tự chọn sẵn những URL chưa có trong links
+        const existing = new Set(links.map(l => l.url));
+        setScanSelected(new Set((d.services as TsService[]).filter(s => !existing.has(s.url)).map(s => s.url)));
+        setScanState("done");
+      }
+    } catch {
+      setScanState("error");
+    }
+  };
+
+  const importSelected = async () => {
+    const toAdd = scanResults
+      .filter(s => scanSelected.has(s.url))
+      .filter(s => !links.some(l => l.url === s.url))
+      .map(s => ({
+        id: `hl_ts_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        emoji: s.emoji, name: s.name, url: s.url, desc: s.desc || undefined
+      }));
+    if (toAdd.length === 0) { setScanState("idle"); return; }
+    await saveLinks([...links, ...toAdd]);
+    setScanState("idle"); setScanResults([]);
   };
 
   // Tải links một lần khi mở tab (chỉ admin thấy).
@@ -646,15 +686,77 @@ export function ServerMonitor({ authHeaders, currentUser }: ServerMonitorProps) 
       {isAdmin && (
         <Reveal delay={0.26} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">
           <ShimmerLine accent="violet" />
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
               <IconChip accent="violet"><Globe className="w-4 h-4" /></IconChip> Dịch vụ Homelab
             </h4>
-            <button type="button" onClick={() => openLinkForm()}
-              className="flex items-center gap-1 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-violet-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer transition-all">
-              <Plus className="w-3.5 h-3.5" /> Thêm
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={handleScan} disabled={scanState === "scanning"}
+                className="flex items-center gap-1 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-emerald-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer disabled:opacity-60 transition-all">
+                {scanState === "scanning"
+                  ? <><span className="w-3 h-3 border-2 border-emerald-400/30 border-t-emerald-400 rounded-full animate-spin" /> Đang quét...</>
+                  : <><Activity className="w-3.5 h-3.5" /> Quét Tailscale</>}
+              </button>
+              <button type="button" onClick={() => openLinkForm()}
+                className="flex items-center gap-1 bg-slate-950 border border-slate-800 hover:bg-slate-800 text-violet-400 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer transition-all">
+                <Plus className="w-3.5 h-3.5" /> Thêm
+              </button>
+            </div>
           </div>
+
+          {/* Kết quả quét Tailscale */}
+          {scanState === "no-socket" && (
+            <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 space-y-1.5">
+              <p className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> Chưa mount Tailscale socket</p>
+              <pre className="text-[10px] text-slate-400 whitespace-pre-wrap font-mono leading-relaxed">{scanHint}</pre>
+              <button type="button" onClick={() => setScanState("idle")} className="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer">Đóng</button>
+            </div>
+          )}
+          {scanState === "error" && (
+            <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-3">
+              <p className="text-[11px] text-rose-400">Không kết nối được tới Tailscale socket. Kiểm tra volume mount và thử lại.</p>
+              <button type="button" onClick={() => setScanState("idle")} className="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer mt-1">Đóng</button>
+            </div>
+          )}
+          {scanState === "done" && (
+            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold text-emerald-400">Tìm thấy {scanResults.length} dịch vụ qua Tailscale Serve</p>
+                <div className="flex gap-2">
+                  <button type="button" onClick={importSelected} disabled={scanSelected.size === 0}
+                    className="text-[11px] font-bold px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 rounded-lg cursor-pointer transition-all">
+                    Nhập {scanSelected.size > 0 ? `(${scanSelected.size})` : "đã chọn"}
+                  </button>
+                  <button type="button" onClick={() => setScanState("idle")} className="p-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-500 hover:text-slate-300 cursor-pointer">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {scanResults.map(svc => {
+                  const alreadyAdded = links.some(l => l.url === svc.url);
+                  const checked = scanSelected.has(svc.url);
+                  return (
+                    <label key={svc.url} className={`flex items-center gap-3 px-3 py-2 rounded-xl border cursor-pointer transition-all ${alreadyAdded ? "border-slate-800 opacity-50" : checked ? "border-emerald-500/30 bg-emerald-500/5" : "border-slate-800 hover:border-slate-700"}`}>
+                      <input type="checkbox" checked={checked} disabled={alreadyAdded}
+                        onChange={e => setScanSelected(prev => {
+                          const n = new Set(prev);
+                          e.target.checked ? n.add(svc.url) : n.delete(svc.url);
+                          return n;
+                        })}
+                        className="accent-emerald-500 shrink-0" />
+                      <span className="text-lg leading-none shrink-0">{svc.emoji}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="text-[11px] font-bold text-slate-200 block">{svc.name}</span>
+                        <span className="text-[10px] font-mono text-slate-500 truncate block">{svc.url}</span>
+                      </span>
+                      {alreadyAdded && <span className="text-[10px] text-slate-500 shrink-0">đã có</span>}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Form thêm / sửa link */}
           {linkForm.open && (
