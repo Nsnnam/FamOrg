@@ -245,7 +245,7 @@ export function Notes({
       return;
     }
 
-    const payload: Partial<Note> = {
+    const payload: Partial<Note> & { baseUpdatedAt?: string } = {
       title: formTitle.trim(),
       content: formContent,
       isPinned: formIsPinned,
@@ -255,6 +255,9 @@ export function Notes({
 
     if (editingNote) {
       payload.id = editingNote.id;
+      // Chống 2 người cùng sửa đè nhau: gửi kèm updatedAt của bản đang mở —
+      // server so với bản hiện tại, lệch thì trả 409 (hiện ở formError).
+      payload.baseUpdatedAt = editingNote.updatedAt;
     }
 
     try {

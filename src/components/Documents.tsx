@@ -55,6 +55,8 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
   const [isShared, setIsShared] = useState(false);
   const [files, setFiles] = useState<DocumentFile[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // updatedAt của bản giấy tờ lúc mở form sửa — server so để phát hiện sửa đè nhau (409)
+  const [editingBaseUpdatedAt, setEditingBaseUpdatedAt] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -107,7 +109,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
   const resetForm = () => {
     setType("cccd"); setTitle(""); setTitleManual(false); setOwnerId(""); setDocumentNumber("");
     setIssuer(""); setIssueDate(""); setExpiryDate(""); setNotes("");
-    setIsShared(false); setFiles([]); setEditingId(null); setError("");
+    setIsShared(false); setFiles([]); setEditingId(null); setEditingBaseUpdatedAt(""); setError("");
   };
 
   const startEdit = (doc: FamilyDocument) => {
@@ -124,6 +126,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     setIsShared(doc.isShared);
     setFiles(doc.files || []);
     setEditingId(doc.id);
+    setEditingBaseUpdatedAt(doc.updatedAt || ""); // chống 2 người cùng sửa đè nhau (409)
     setError("");
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -210,7 +213,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     const finalTitle = title.trim() || autoTitle(type, ownerId);
     setSaving(true);
     try {
-      await onSaveDocument({
+      const payload: Partial<FamilyDocument> & { baseUpdatedAt?: string } = {
         id: editingId || undefined,
         type,
         title: finalTitle,
@@ -222,7 +225,9 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
         notes: notes.trim() || undefined,
         isShared,
         files
-      });
+      };
+      if (editingId) payload.baseUpdatedAt = editingBaseUpdatedAt || undefined;
+      await onSaveDocument(payload);
       resetForm();
     } catch (err: any) {
       setError(err.message || "Không lưu được giấy tờ.");

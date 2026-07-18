@@ -85,6 +85,8 @@ export function Tasks({
   // State controls for creation modal & detail modal
   const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  // updatedAt của bản task lúc mở form sửa — gửi kèm để server phát hiện 2 người cùng sửa (409)
+  const [editingBaseUpdatedAt, setEditingBaseUpdatedAt] = useState("");
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [commentInput, setCommentInput] = useState("");
   const { confirm, ConfirmDialog } = useConfirm();
@@ -207,6 +209,7 @@ export function Tasks({
     setNewRecurrenceEndDate(task.recurrenceEndDate || "");
     setNewRotationMemberIds(task.rotationMemberIds || []);
     setEditingTaskId(task.id);
+    setEditingBaseUpdatedAt(task.updatedAt || "");
     setFormError("");
     setSelectedTask(null); // close detail modal if it was open
     setIsNewTaskOpen(true);
@@ -235,7 +238,7 @@ export function Tasks({
       return;
     }
 
-    const payload: Partial<Task> = {
+    const payload: Partial<Task> & { baseUpdatedAt?: string } = {
       title: newTitle.trim(),
       description: newDesc.trim(),
       priority: newPriority,
@@ -253,6 +256,7 @@ export function Tasks({
 
     if (editingTaskId) {
       payload.id = editingTaskId; // update existing task (keeps current status)
+      payload.baseUpdatedAt = editingBaseUpdatedAt || undefined; // chống sửa đè nhau (409)
     } else {
       payload.status = TaskStatus.TODO;
     }

@@ -246,6 +246,32 @@ const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => 
 
 app.use(authMiddleware as any);
 
+// --- CỜ BẢO TRÌ (chặn ghi trong lúc import backup toàn phần) ---
+// Import có các bước await dài (giải nén media); ghi song song trong lúc đó sẽ
+// bị snapshot restore nuốt mất nên chặn hẳn với 503 cho tới khi import xong.
+let maintenanceMode = false;
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  if (maintenanceMode && req.method !== "GET") {
+    res.status(503).json({ error: "Server đang khôi phục dữ liệu từ backup — vui lòng thử lại sau ít giây." });
+    return;
+  }
+  next();
+});
+
+// --- OPTIMISTIC LOCKING (chống 2 người cùng sửa một bản ghi đè nhau) ---
+// Form sửa gửi kèm baseUpdatedAt = updatedAt của bản đang mở trong form. Server
+// so với bản hiện tại: lệch nghĩa là có người khác đã lưu trong lúc form còn mở
+// → trả 409 để client hiện lỗi thay vì lặng lẽ ghi đè. Thao tác nhanh 1 field
+// (toggle trạng thái...) KHÔNG gửi baseUpdatedAt nên không bị chặn — server đã
+// merge field với bản mới nhất. Field chỉ dùng để so, luôn xóa khỏi payload
+// trước khi lưu để không dính vào bản ghi.
+const hasEditConflict = (existing: { updatedAt?: string } | undefined, body: any): boolean => {
+  const base = body?.baseUpdatedAt;
+  if (body && "baseUpdatedAt" in body) delete body.baseUpdatedAt;
+  return typeof base === "string" && base !== "" && !!existing?.updatedAt && existing.updatedAt !== base;
+};
+const CONFLICT_MSG = "Bản ghi này vừa được người khác lưu trong lúc bạn đang mở form. Đóng form để xem nội dung mới nhất rồi sửa tiếp nhé.";
+
 // Serve uploaded media (avatars/assets/receipts) as static files. Filenames are
 // random/unguessable; the app runs on a private LAN/Tailscale network. Mounted
 // before the SPA catch-all so image URLs resolve in both dev and production.
@@ -756,6 +782,15 @@ app.post("/api/tasks", requireAuth, (req: AuthRequest, res: Response) => {
     }
   }
 
+  // Chống 2 người cùng sửa đè nhau (chỉ khi form gửi kèm baseUpdatedAt)
+  if (req.body.id) {
+    const existing = FamilyDB.getTasks().find(t => t.id === req.body.id);
+    if (hasEditConflict(existing, req.body)) {
+      res.status(409).json({ error: CONFLICT_MSG, conflict: true });
+      return;
+    }
+  }
+
   try {
     const savedTask = FamilyDB.saveTask(req.body, session.userId, session.username);
     broadcastSyncEvent("TASKS_UPDATE", { taskId: savedTask.id });
@@ -862,6 +897,10 @@ app.post("/api/notes", requireAuth, (req: AuthRequest, res: Response) => {
       // Check author or edit permission
       if (existing.creatorId !== session.userId && !existing.allowedRolesToEdit.includes(session.role)) {
         res.status(403).json({ error: "Bạn không có quyền sửa ghi chú này!" });
+        return;
+      }
+      if (hasEditConflict(existing, noteData)) {
+        res.status(409).json({ error: CONFLICT_MSG, conflict: true });
         return;
       }
     }
@@ -1446,6 +1485,10 @@ app.post("/api/documents", requireAuth, requireRole([UserRole.ADMIN, UserRole.ME
     }
     if (!canManageDocument(existing, session)) {
       res.status(403).json({ error: "Bạn không có quyền sửa giấy tờ này." });
+      return;
+    }
+    if (hasEditConflict(existing, req.body)) {
+      res.status(409).json({ error: CONFLICT_MSG, conflict: true });
       return;
     }
   }
@@ -2229,6 +2272,9 @@ app.post(
   express.raw({ type: () => true, limit: "2gb" }),
   async (req: AuthRequest, res: Response) => {
     const session = req.userSession!;
+    // Chặn mọi ghi khác trong lúc import (các bước await dài) — ghi song song
+    // sẽ bị snapshot restore nuốt mất nên trả 503 cho tới khi xong.
+    maintenanceMode = true;
     try {
       const result = await importFullBackup(req.body as Buffer, session.userId, session.username);
       broadcastSyncEvent("RESTORE_COMPLETED");
@@ -2236,6 +2282,8 @@ app.post(
     } catch (err: any) {
       console.error("Lỗi import backup toàn phần:", err);
       res.status(400).json({ error: err.message || "Không khôi phục được từ tệp backup" });
+    } finally {
+      maintenanceMode = false;
     }
   }
 );
