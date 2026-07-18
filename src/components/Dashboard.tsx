@@ -467,11 +467,6 @@ export function Dashboard({
         </div>
       </motion.div>
 
-      {/* Quick nudge: send a notification (+ push) to a family member or everyone */}
-      <motion.div {...fadeUp(0.06)}>
-        <QuickNudge currentUser={currentUser} users={users} />
-      </motion.div>
-
       {/* Đếm ngược sự kiện lớn (lễ / sinh nhật / sự kiện Quan trọng) */}
       {countdowns.length > 0 && (
         <motion.div {...fadeUp(0.09)} className="grid grid-cols-2 lg:grid-cols-4 gap-3" id="dashboard-countdowns">
@@ -913,6 +908,10 @@ export function Dashboard({
               </div>
             )}
           </div>
+
+          {/* Nhắc người nhà: gửi thông báo (+ push) cho một thành viên hoặc cả nhà
+              — đặt cạnh cụm Sự kiện/Sinh nhật để tiện "thấy lịch → nhắc luôn" */}
+          <QuickNudge currentUser={currentUser} users={users} />
 
           {/* Quick Pinned Notes */}
           <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-pinned-notes">
