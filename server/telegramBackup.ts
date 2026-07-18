@@ -30,11 +30,12 @@ const localDateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export interface TelegramBackupStatus {
-  configured: boolean;      // đã có token + chat id
-  enabled: boolean;         // bật gửi tự động hằng đêm
-  maskedToken: string;      // "1234...ab" để hiển thị
+  configured: boolean;           // đã có token + chat id
+  enabled: boolean;              // bật gửi backup hằng đêm
+  weeklyDigestEnabled: boolean;  // bật bản tin tuần (sáng thứ Hai)
+  maskedToken: string;           // "1234...ab" để hiển thị
   chatId: string;
-  lastSent: string;         // "YYYY-MM-DD" hoặc ""
+  lastSent: string;              // "YYYY-MM-DD" hoặc ""
 }
 
 export function telegramBackupStatus(): TelegramBackupStatus {
@@ -43,6 +44,7 @@ export function telegramBackupStatus(): TelegramBackupStatus {
   return {
     configured: Boolean(token && s.telegramChatId),
     enabled: s.telegramBackupEnabled === "1",
+    weeklyDigestEnabled: s.telegramWeeklyDigestEnabled === "1",
     maskedToken: token ? `${token.slice(0, 6)}…${token.slice(-4)}` : "",
     chatId: s.telegramChatId || "",
     lastSent: s.telegramBackupLastSent || ""

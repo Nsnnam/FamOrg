@@ -196,13 +196,15 @@ export function Settings({
   const [icsCopied, setIcsCopied] = useState(false);
 
   // Backup tự động qua Telegram bot — admin only
-  interface TgBackupStatus { configured: boolean; enabled: boolean; maskedToken: string; chatId: string; lastSent: string }
+  interface TgBackupStatus { configured: boolean; enabled: boolean; weeklyDigestEnabled: boolean; maskedToken: string; chatId: string; lastSent: string }
   const [tgStatus, setTgStatus] = useState<TgBackupStatus | null>(null);
   const [tgToken, setTgToken] = useState("");
   const [tgChatId, setTgChatId] = useState("");
   const [tgBusy, setTgBusy] = useState<"" | "save" | "test">("");
   const [tgMsg, setTgMsg] = useState("");
   const [tgErr, setTgErr] = useState("");
+  const [tgDigestBusy, setTgDigestBusy] = useState(false);
+  const [tgDigestMsg, setTgDigestMsg] = useState("");
 
   // Escape-to-close + scroll lock + focus trap for the edit-user & reset-password modals
   const editTargetRef = useRef<HTMLDivElement | null>(null);
@@ -260,7 +262,7 @@ export function Settings({
   }, []);
 
   // Lưu cấu hình Telegram (token/chat id chỉ gửi khi người dùng có nhập) hoặc bật/tắt
-  const saveTgConfig = async (patch: { botToken?: string; chatId?: string; enabled?: boolean }) => {
+  const saveTgConfig = async (patch: { botToken?: string; chatId?: string; enabled?: boolean; weeklyDigestEnabled?: boolean }) => {
     setTgBusy("save"); setTgMsg(""); setTgErr("");
     try {
       const res = await fetch("/api/settings/telegram-backup", {
@@ -292,6 +294,20 @@ export function Settings({
       setTgErr(err.message || "Gửi thử thất bại.");
     } finally {
       setTgBusy("");
+    }
+  };
+
+  const sendTgDigestTest = async () => {
+    setTgDigestBusy(true); setTgDigestMsg(""); setTgMsg(""); setTgErr("");
+    try {
+      const res = await fetch("/api/settings/telegram-digest/test", { method: "POST", headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Gửi thử thất bại.");
+      setTgDigestMsg(data.message || "Đã gửi bản tin tuần qua Telegram.");
+    } catch (err: any) {
+      setTgDigestMsg("Lỗi: " + (err.message || "Gửi thử thất bại."));
+    } finally {
+      setTgDigestBusy(false);
     }
   };
 
@@ -1683,15 +1699,58 @@ export function Settings({
           </div>
 
           {tgStatus?.configured && (
-            <button
-              type="button"
-              onClick={sendTgTest}
-              disabled={tgBusy !== ""}
-              className="bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
-            >
-              <Send className={`w-4 h-4 ${tgBusy === "test" ? "animate-pulse" : ""}`} />
-              {tgBusy === "test" ? "Đang nén & gửi..." : "Gửi backup ngay để thử"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={sendTgTest}
+                disabled={tgBusy !== ""}
+                className="bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+              >
+                <Send className={`w-4 h-4 ${tgBusy === "test" ? "animate-pulse" : ""}`} />
+                {tgBusy === "test" ? "Đang nén & gửi..." : "Gửi backup ngay để thử"}
+              </button>
+            </div>
+          )}
+
+          {/* Bản tin tuần gia đình */}
+          {tgStatus?.configured && (
+            <div className="border-t border-slate-800 pt-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    📋 Bản tin tuần gia đình
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    Sáng thứ Hai 7h–10h gửi tóm tắt: chi tiêu tuần, task trễ, lịch & sinh nhật sắp tới, giấy tờ hết hạn.
+                    {tgStatus.weeklyDigestEnabled ? " AI viết bản tin thân thiện nếu đã cấu hình Gemini." : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => saveTgConfig({ weeklyDigestEnabled: !tgStatus.weeklyDigestEnabled })}
+                  disabled={tgBusy !== ""}
+                  title={tgStatus.weeklyDigestEnabled ? "Đang BẬT bản tin tuần — bấm để tắt" : "Đang TẮT — bấm để bật"}
+                  className={`shrink-0 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border cursor-pointer transition-all ${tgStatus.weeklyDigestEnabled ? "bg-violet-500/10 text-violet-400 border-violet-500/20" : "bg-slate-900 text-slate-500 border-slate-800"}`}
+                >
+                  {tgStatus.weeklyDigestEnabled ? "ĐANG BẬT" : "ĐANG TẮT"}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={sendTgDigestTest}
+                disabled={tgDigestBusy}
+                className="bg-slate-800 hover:bg-slate-700 text-violet-400 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+              >
+                <Send className={`w-4 h-4 ${tgDigestBusy ? "animate-pulse" : ""}`} />
+                {tgDigestBusy ? "Đang tạo & gửi bản tin..." : "Gửi bản tin tuần ngay để thử"}
+              </button>
+              {tgDigestMsg && (
+                <p className={`text-[11px] flex items-center gap-1.5 ${tgDigestMsg.startsWith("Lỗi") ? "text-rose-400" : "text-emerald-400"}`}>
+                  {tgDigestMsg.startsWith("Lỗi") ? <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> : <CheckCircle className="w-3.5 h-3.5 shrink-0" />}
+                  {tgDigestMsg}
+                </p>
+              )}
+            </div>
           )}
 
           {tgErr && <p className="text-[11px] text-rose-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {tgErr}</p>}
