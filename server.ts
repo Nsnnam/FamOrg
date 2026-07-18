@@ -17,6 +17,8 @@ import { buildPlanFromLibrary, dedupeAndAnnotateGroceries } from "./src/utils/me
 import { normalizeSearchText, matchesQuery, excerptAround } from "./src/utils/searchText.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
 import { streamFullBackup, fullBackupFilename, importFullBackup } from "./server/fullBackup.js";
+import { telegramBackupStatus, sendBackupToTelegram, runTelegramBackupTick } from "./server/telegramBackup.js";
+import { icsFeedToken, isValidIcsToken, buildIcsFeed } from "./server/icsFeed.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
 
 // Accepted permission roles for write validation
@@ -670,6 +672,35 @@ app.post("/api/settings/ai", requireAuth, requireRole([UserRole.ADMIN]), async (
   res.json({ ...aiStatus(), message: "Đã lưu Gemini API key. Tính năng AI đã sẵn sàng." });
 });
 
+// --- TELEGRAM BACKUP SETTINGS (admin only) ---
+// Backup toàn phần tự gửi qua bot Telegram hằng đêm (2h–4h sáng) — bản sao offsite.
+
+app.get("/api/settings/telegram-backup", requireAuth, requireRole([UserRole.ADMIN]), (_req: AuthRequest, res: Response) => {
+  res.json(telegramBackupStatus());
+});
+
+app.post("/api/settings/telegram-backup", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
+  const { botToken, chatId, enabled } = req.body || {};
+  // botToken/chatId chỉ ghi đè khi client gửi lên (giữ nguyên khi chỉ bật/tắt).
+  if (botToken !== undefined) setAppSetting("telegramBotToken", String(botToken).trim() || null);
+  if (chatId !== undefined) setAppSetting("telegramChatId", String(chatId).trim() || null);
+  if (enabled !== undefined) setAppSetting("telegramBackupEnabled", enabled ? "1" : null);
+  res.json(telegramBackupStatus());
+});
+
+// Gửi thử ngay 1 bản backup (kiểm tra token/chat id đúng chưa).
+app.post("/api/settings/telegram-backup/test", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
+  try {
+    const result = await sendBackupToTelegram();
+    res.json({ success: true, message: `Đã gửi backup ${result.sizeMb}MB qua Telegram — kiểm tra chat của bạn nhé.`, ...telegramBackupStatus() });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Gửi backup qua Telegram thất bại." });
+  }
+});
+
+// Vòng kiểm tra gửi backup tự động (module tự lo dedupe theo ngày + khung giờ).
+setInterval(() => { void runTelegramBackupTick(); }, 30 * 60 * 1000);
+
 // --- AUTH API ENDPOINTS ---
 
 app.post("/api/auth/login", (req: Request, res: Response) => {
@@ -879,6 +910,25 @@ app.delete("/api/plans/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.
   }
 });
 
+// --- ICS SUBSCRIBE FEED (Apple/Google Calendar tự đồng bộ lịch gia đình) ---
+
+// Cho thành viên lấy URL đăng ký (kèm token) để dán vào app lịch.
+app.get("/api/calendar/feed-info", requireAuth, (_req: AuthRequest, res: Response) => {
+  res.json({ path: "/api/calendar.ics", token: icsFeedToken() });
+});
+
+// Feed công khai qua token (calendar app không gửi được header Authorization).
+app.get("/api/calendar.ics", (req: Request, res: Response) => {
+  if (!isValidIcsToken(req.query.token)) {
+    res.status(401).send("Invalid token");
+    return;
+  }
+  res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+  res.setHeader("Content-Disposition", 'inline; filename="family-calendar.ics"');
+  res.setHeader("Cache-Control", "no-cache");
+  res.send(buildIcsFeed());
+});
+
 // --- NOTES API ENDPOINTS ---
 
 app.get("/api/notes", requireAuth, (req: AuthRequest, res: Response) => {
@@ -1066,13 +1116,50 @@ app.get("/api/rewards", requireAuth, (req: AuthRequest, res: Response) => {
   entries.forEach(entry => {
     totals[entry.userId] = (totals[entry.userId] || 0) + entry.points;
   });
-  res.json({ entries, totals });
+  res.json({ entries, totals, items: FamilyDB.getRewardItems() });
 });
 
 app.post("/api/rewards", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   try {
     const entry = FamilyDB.addRewardEntry(req.body, session.userId, session.username);
+    broadcastSyncEvent("REWARDS_UPDATE", { rewardId: entry.id });
+    res.json({ entry });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Cửa hàng đổi thưởng: người lớn quản lý danh sách quà
+app.post("/api/rewards/items", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const item = FamilyDB.saveRewardItem(req.body, session.userId, session.username);
+    broadcastSyncEvent("REWARDS_UPDATE", { itemId: item.id });
+    res.json({ item });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/rewards/items/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    FamilyDB.deleteRewardItem(req.params.id, session.userId, session.username);
+    broadcastSyncEvent("REWARDS_UPDATE", { deletedItemId: req.params.id });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Đổi quà: trẻ tự đổi cho mình; người lớn có thể đổi hộ (gửi childId)
+app.post("/api/rewards/items/:id/redeem", requireAuth, (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const isAdult = session.role === UserRole.ADMIN || session.role === UserRole.MEMBER;
+  const childId = isAdult && req.body?.childId ? String(req.body.childId) : session.userId;
+  try {
+    const entry = FamilyDB.redeemRewardItem(req.params.id, childId, session.userId, session.username);
     broadcastSyncEvent("REWARDS_UPDATE", { rewardId: entry.id });
     res.json({ entry });
   } catch (err: any) {

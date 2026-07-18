@@ -16,6 +16,7 @@ import {
   Note,
   FinancialTransaction,
   RewardPointEntry,
+  RewardItem,
   BudgetLimit,
   RecurringBill,
   FamilyAsset,
@@ -179,6 +180,7 @@ const initialDBState = (): FamilyOrganizerDB => {
     notes: [],
     transactions: [],
     rewardLedger: [],
+    rewardItems: [],
     budgets: [],
     recurringBills: [],
     savingsGoals: [],
@@ -209,6 +211,7 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.notes = db.notes || [];
   db.transactions = db.transactions || [];
   db.rewardLedger = db.rewardLedger || [];
+  db.rewardItems = db.rewardItems || [];
   db.budgets = db.budgets || [];
   db.recurringBills = db.recurringBills || [];
   db.savingsGoals = db.savingsGoals || [];
@@ -1204,6 +1207,89 @@ export class FamilyDB {
     db.rewardLedger.unshift(entry);
     this.writeRaw(db);
     this.logActivity(userId, username, "Điểm thưởng", `Đã cập nhật ${points} điểm cho ${target.fullName}.`);
+    return entry;
+  }
+
+  // --- CỬA HÀNG ĐỔI THƯỞNG (quà đổi bằng điểm rewardLedger) ---
+
+  public static getRewardItems(): RewardItem[] {
+    return this.readRaw().rewardItems;
+  }
+
+  public static saveRewardItem(data: Partial<RewardItem>, userId: string, username: string): RewardItem {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    const name = String(data.name || "").trim();
+    if (!name) throw new Error("Tên món quà không được bỏ trống");
+    const cost = Math.round(Number(data.cost) || 0);
+    if (cost <= 0) throw new Error("Số điểm đổi quà phải lớn hơn 0");
+    const emoji = String(data.emoji || "").trim().slice(0, 8) || undefined;
+
+    if (data.id) {
+      const idx = db.rewardItems.findIndex(i => i.id === data.id);
+      if (idx === -1) throw new Error("Không tìm thấy món quà");
+      db.rewardItems[idx] = {
+        ...db.rewardItems[idx],
+        name, cost, emoji,
+        isActive: data.isActive !== undefined ? !!data.isActive : db.rewardItems[idx].isActive,
+        updatedAt: now
+      };
+      this.writeRaw(db);
+      return db.rewardItems[idx];
+    }
+
+    const item: RewardItem = {
+      id: `rwitem_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name, cost, emoji,
+      isActive: data.isActive !== undefined ? !!data.isActive : true,
+      createdAt: now,
+      updatedAt: now
+    };
+    db.rewardItems.unshift(item);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Đổi thưởng", `Đã thêm quà "${name}" (${cost} điểm).`);
+    return item;
+  }
+
+  public static deleteRewardItem(id: string, userId: string, username: string): void {
+    const db = this.readRaw();
+    const item = db.rewardItems.find(i => i.id === id);
+    if (!item) return;
+    db.rewardItems = db.rewardItems.filter(i => i.id !== id);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Đổi thưởng", `Đã xóa quà "${item.name}".`);
+  }
+
+  /**
+   * Trẻ đổi quà: kiểm tra đủ điểm rồi ghi bút toán ÂM vào rewardLedger (cùng sổ
+   * với điểm thưởng task — lịch sử cộng/trừ nằm một chỗ). Báo cả nhà biết cho vui.
+   */
+  public static redeemRewardItem(itemId: string, childId: string, byUserId: string, byUsername: string): RewardPointEntry {
+    const db = this.readRaw();
+    const item = db.rewardItems.find(i => i.id === itemId);
+    if (!item || !item.isActive) throw new Error("Món quà không tồn tại hoặc đã tắt");
+    const child = db.users.find(u => u.id === childId);
+    if (!child) throw new Error("Không tìm thấy thành viên đổi quà");
+
+    const balance = db.rewardLedger
+      .filter(e => e.userId === childId)
+      .reduce((s, e) => s + e.points, 0);
+    if (balance < item.cost) {
+      throw new Error(`Chưa đủ điểm: cần ${item.cost}, hiện có ${balance}.`);
+    }
+
+    const entry: RewardPointEntry = {
+      id: `reward_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      userId: childId,
+      points: -item.cost,
+      reason: `🎁 Đổi quà: ${item.name}`,
+      createdById: byUserId,
+      createdAt: new Date().toISOString()
+    };
+    db.rewardLedger.unshift(entry);
+    this.addNotificationInternal(db, "all", "🎁 Đổi thưởng", `${child.fullName} vừa đổi "${item.emoji ? item.emoji + " " : ""}${item.name}" (−${item.cost} điểm, còn ${balance - item.cost}).`);
+    this.writeRaw(db);
+    this.logActivity(byUserId, byUsername, "Đổi thưởng", `${child.fullName} đổi quà "${item.name}" (−${item.cost} điểm).`);
     return entry;
   }
 
@@ -2227,13 +2313,25 @@ export class FamilyDB {
       }
     });
 
+    // Nhắc hóa đơn định kỳ: trước 3 ngày → đúng ngày → quá hạn (quên bấm "đã trả").
+    // Dedupe theo nextDueDate nên mỗi kỳ chỉ nhắc 1 lần cho mỗi mốc.
+    const nowDate = new Date();
+    const nowMidnight = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate()).getTime();
     db.recurringBills.forEach(b => {
       if (!b.isActive) return;
-      const due = parse(`${b.nextDueDate} 09:00`);
-      if (due === null) return;
-      const diffMin = (due - now) / 60000;
-      if (diffMin > 0 && diffMin <= 3 * 24 * 60) {
-        ensure(`notif_billdue_${b.id}_${b.nextDueDate}`, "all", "Hoa don sap den han", `"${b.title}" den han ngay ${b.nextDueDate}, so tien ${b.amount.toLocaleString()} VND.`, "finance");
+      const p = String(b.nextDueDate || "").split("-");
+      if (p.length < 3) return;
+      const by = Number(p[0]), bm = Number(p[1]), bd = Number(p[2]);
+      if (!by || !bm || !bd) return;
+      const dueMidnight = new Date(by, bm - 1, bd).getTime();
+      const diffDays = Math.round((dueMidnight - nowMidnight) / 86400000);
+      const amt = b.amount.toLocaleString("vi-VN");
+      if (diffDays > 0 && diffDays <= 3) {
+        ensure(`notif_billdue_${b.id}_${b.nextDueDate}`, "all", "🧾 Hóa đơn sắp đến hạn", `"${b.title}" đến hạn ngày ${b.nextDueDate} (còn ${diffDays} ngày) — ${amt} đ.`, "finance");
+      } else if (diffDays === 0) {
+        ensure(`notif_billdue0_${b.id}_${b.nextDueDate}`, "all", "🧾 Hóa đơn đến hạn hôm nay", `"${b.title}" đến hạn thanh toán hôm nay — ${amt} đ.`, "finance");
+      } else if (diffDays < 0) {
+        ensure(`notif_billover_${b.id}_${b.nextDueDate}`, "all", "🔴 Hóa đơn đã quá hạn", `"${b.title}" quá hạn từ ${b.nextDueDate} — ${amt} đ. Đã trả rồi thì bấm "Đã trả" để dời sang kỳ sau nhé.`, "finance");
       }
     });
 
