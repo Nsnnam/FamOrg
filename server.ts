@@ -7,7 +7,9 @@ import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import os from "os";
+import fs from "fs";
 import fsp from "fs/promises";
+import http from "http";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret, getAppSettings, setAppSetting } from "./server/db.js";
@@ -559,6 +561,94 @@ app.put("/api/server/homelab-links", requireAuth, requireRole([UserRole.ADMIN]),
   })).filter(l => l.name && l.url);
   setAppSetting("homelabLinks", JSON.stringify(clean));
   res.json({ links: clean });
+});
+
+// Gợi ý tên/emoji dựa trên port backend (để auto-fill khi scan Tailscale).
+const PORT_HINTS: Record<number, { emoji: string; name: string; desc: string }> = {
+  2283: { emoji: "📸", name: "Immich",           desc: "Album ảnh gia đình" },
+  9000: { emoji: "🐳", name: "Portainer",         desc: "Quản lý Docker" },
+  9443: { emoji: "🐳", name: "Portainer",         desc: "Quản lý Docker" },
+  8080: { emoji: "📁", name: "File Browser",      desc: "Duyệt file trên server" },
+  8123: { emoji: "🏠", name: "Home Assistant",    desc: "Smart home" },
+  3001: { emoji: "👨‍👩‍👧", name: "Family Organizer", desc: "Ứng dụng gia đình (app này)" },
+  8096: { emoji: "🎬", name: "Jellyfin",          desc: "Media server" },
+  8920: { emoji: "🎬", name: "Jellyfin HTTPS",    desc: "Media server" },
+  32400: { emoji: "🎬", name: "Plex",             desc: "Media server" },
+  7878:  { emoji: "🎬", name: "Radarr",           desc: "Quản lý phim" },
+  8989:  { emoji: "📺", name: "Sonarr",           desc: "Quản lý series" },
+  6767:  { emoji: "📥", name: "Bazarr",           desc: "Phụ đề tự động" },
+  8112:  { emoji: "⬇️", name: "Deluge",           desc: "Torrent client" },
+  9091:  { emoji: "⬇️", name: "Transmission",     desc: "Torrent client" },
+  8388:  { emoji: "📊", name: "Grafana",          desc: "Dashboard giám sát" },
+  3000:  { emoji: "📊", name: "Grafana",          desc: "Dashboard giám sát" },
+};
+
+/**
+ * Query Tailscale local socket để lấy danh sách dịch vụ đang được serve.
+ * Cần mount: /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock:ro
+ */
+async function scanTailscaleServe(): Promise<{ url: string; backendUrl: string; emoji: string; name: string; desc: string }[]> {
+  const socketPath = "/var/run/tailscale/tailscaled.sock";
+  if (!fs.existsSync(socketPath)) throw new Error("no-socket");
+
+  const raw: string = await new Promise((resolve, reject) => {
+    const req = http.request({
+      socketPath,
+      path: "/localapi/v0/serve/config",
+      method: "GET",
+    }, (res) => {
+      if (res.statusCode === 404) { resolve("{}"); return; }
+      if (res.statusCode !== 200) { reject(new Error(`Tailscale API HTTP ${res.statusCode}`)); return; }
+      let buf = "";
+      res.on("data", (c: Buffer) => (buf += c));
+      res.on("end", () => resolve(buf));
+    });
+    req.on("error", reject);
+    req.setTimeout(4000, () => req.destroy(new Error("timeout")));
+    req.end();
+  });
+
+  const cfg: any = JSON.parse(raw);
+  const web: Record<string, any> = cfg?.Web ?? cfg?.web ?? {};
+  const results: { url: string; backendUrl: string; emoji: string; name: string; desc: string }[] = [];
+
+  for (const [hostPort, webCfg] of Object.entries(web)) {
+    // hostPort = "dietpi.latxa-goby.ts.net:443" hoặc "dietpi.latxa-goby.ts.net:8080"
+    const colonIdx = hostPort.lastIndexOf(":");
+    const host = hostPort.slice(0, colonIdx);
+    const port = Number(hostPort.slice(colonIdx + 1));
+    const serveUrl = port === 443 ? `https://${host}` : `https://${host}:${port}`;
+
+    // Lấy backend proxy URL từ handler đầu tiên
+    const handlers: Record<string, any> = (webCfg as any)?.Handlers ?? {};
+    const firstHandler = Object.values(handlers)[0] as any;
+    const backendUrl: string = firstHandler?.Proxy ?? "";
+
+    // Đoán port backend để gợi ý tên app
+    const backendPort = Number(new URL(backendUrl.replace(/^\w+\+\w+:\/\//, "https://")).port || (backendUrl.startsWith("https") ? 443 : 80));
+    const hint = PORT_HINTS[backendPort] ?? PORT_HINTS[port] ?? { emoji: "🔗", name: host, desc: "" };
+
+    results.push({ url: serveUrl, backendUrl, ...hint });
+  }
+
+  return results.sort((a, b) => a.url.localeCompare(b.url));
+}
+
+// Quét Tailscale serve để auto-discover dịch vụ homelab (admin only).
+app.get("/api/server/tailscale-serve", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
+  try {
+    const services = await scanTailscaleServe();
+    res.json({ available: true, services });
+  } catch (err: any) {
+    if (err.message === "no-socket") {
+      res.json({
+        available: false,
+        hint: "Mount socket vào container: thêm vào docker-compose.yml:\n  volumes:\n    - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock:ro\nRồi restart container."
+      });
+    } else {
+      res.status(500).json({ available: false, error: err.message || "Lỗi khi đọc Tailscale socket" });
+    }
+  }
 });
 
 // Lịch sử telemetry cho biểu đồ: 24h (mặc định) hoặc 7 ngày, downsample ≤320 điểm.
