@@ -26,9 +26,6 @@ services:
       # Persistent storage on Raspberry Pi 5.
       # DB file + uploaded images (avatars/assets/receipts) + daily backups.
       - ./data:/app/data
-      # Tailscale local socket — cho phép server đọc danh sách dịch vụ đang serve
-      # (tính năng "Quét Tailscale" trong tab Quản lý Server). Read-only, an toàn.
-      - /var/run/tailscale/tailscaled.sock:/var/run/tailscale/tailscaled.sock:ro
     environment:
       - NODE_ENV=production
       - PORT=3000
