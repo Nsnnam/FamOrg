@@ -1,101 +1,143 @@
 # 🏡 Family Organizer
 
-Hệ thống quản lý gia đình thời gian thực — lịch trình, nhiệm vụ, tài chính, ghi chú, thuốc men, mua sắm và trợ lý AI — được thiết kế để chạy ổn định 24/7 trên **Raspberry Pi 5** hoặc bất kỳ máy chủ Linux nào.
-
-> Bài giới thiệu đầy đủ, ảnh bìa sản phẩm, hướng dẫn sử dụng và cấu hình phần cứng nằm tại [`docs/gioi-thieu-va-huong-dan.md`](docs/gioi-thieu-va-huong-dan.md).
+Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịch trình, nhiệm vụ, sức khỏe, giấy tờ, mua sắm, thưởng điểm cho trẻ và trợ lý AI — thiết kế để chạy ổn định 24/7 trên **Raspberry Pi 5** hoặc bất kỳ Linux server nào.
 
 ---
 
 ## ✨ Tính Năng
 
-### 📊 Bảng Điều Khiển (Dashboard)
+### 📊 Tổng Quan (Dashboard)
 
-- Tóm tắt ngày: nhiệm vụ chờ, số dư quỹ gia đình, ghi chú ghim, sự kiện sắp tới (trong vòng 20 ngày).
-- Hiển thị lịch sinh nhật thành viên, nhắc nhở uống thuốc và danh sách mua sắm.
+- Tóm tắt ngày: nhiệm vụ chờ xử lý, số dư quỹ gia đình, ghi chú ghim, sự kiện sắp tới
+- Widget thời tiết theo 63 tỉnh/thành (nguồn Open-Meteo, không cần API key)
+- Giá thị trường trực tiếp: BTC, ETH, Vàng SJC, tỷ giá USD/VND với sparkline 7 ngày
+- Nhắc sinh nhật thành viên (ẩn nếu không có ai sắp sinh nhật), nhắc uống thuốc, danh sách mua sắm
+- Nút **Nhắc người nhà**: gửi thông báo đẩy cho một thành viên hoặc cả nhà
 
 ### 📋 Nhiệm Vụ (Tasks)
 
-- Tạo và phân công nhiệm vụ cho từng thành viên với mức ưu tiên (Khẩn cấp / Bình thường / Thấp).
-- Hiển thị người tạo, cho phép chỉnh sửa và phân công lại.
-- Bình luận thảo luận trực tiếp trong từng nhiệm vụ.
+- Tạo và phân công nhiệm vụ với 3 mức ưu tiên: Khẩn cấp / Bình thường / Thấp
+- Bình luận thảo luận trực tiếp trong từng nhiệm vụ
+- Trẻ em hoàn thành task → cộng điểm thưởng tự động
 
-### 📅 Lịch Trình (Schedules)
+### 📅 Lập Lịch (Plans)
 
-- Tạo sự kiện đơn ngày và nhiều ngày; hiển thị đúng khoảng thời gian trên lịch dạng lưới.
-- Nhấn vào sự kiện để xem chi tiết.
-- **Xuất lịch sang điện thoại**: nút "Thêm vào lịch" tạo file `.ics` tương thích iOS/Android.
+- Sự kiện đơn ngày và nhiều ngày, hiển thị dạng lưới theo thời gian
+- Xuất file `.ics` tương thích iOS / Android / Google Calendar
+- Private calendar feed (`/api/calendar.ics?token=...`) — đồng bộ 2 chiều với ứng dụng lịch bên ngoài
+- Deep-link từ thông báo đẩy mở thẳng vào sự kiện cụ thể
 
 ### 📝 Ghi Chú (Notes)
 
-- Soạn thảo Markdown (đầu mục, danh sách, việc cần làm, code inline).
-- Ghim ghi chú quan trọng lên đầu; phân quyền Công khai / Cá nhân.
+- Soạn thảo Markdown đầy đủ (GFM): đầu mục, danh sách, checkbox, code inline, in đậm/nghiêng
+- Toggle Soạn / Xem trước ngay trong cùng màn hình
+- Ghim ghi chú quan trọng, phân quyền Công khai / Cá nhân
+- Trợ lý AI viết nháp ghi chú từ ý tưởng ngắn (cần Gemini key)
 
-### 💰 Tài Chính (Finance)
+### 💰 Chi Tiêu (Finance)
 
-- Theo dõi thu nhập và chi tiêu theo danh mục.
-- Đính kèm ảnh hóa đơn lưu trực tiếp vào đĩa (không dùng base64).
-- Biểu đồ tròn phân bổ dòng tiền tự động.
+- Ghi thu nhập và chi tiêu theo danh mục (ăn uống, học tập, điện nước, y tế, đi lại, v.v.)
+- Đính kèm ảnh hóa đơn (lưu file, không base64); tự chuyển ảnh HEIC của iPhone sang JPEG
+- Biểu đồ tròn phân bổ dòng tiền, lọc theo tháng
+- Xuất báo cáo PDF
+- **Tài Sản** (Assets): Crypto (BTC/ETH giá live), Vàng (định giá tự động theo trọng lượng × giá 9999 × hệ số tuổi vàng), Bất động sản, Xe cộ, Cổ phiếu — kèm tính lời/lỗ so với giá mua
+- **Ngân Sách** (Budgets): Hạn mức chi tiêu theo tháng, tùy chọn "Carry Forward" sang tháng sau
+- **Hóa Đơn Tái Diễn** (Recurring Bills): Nhắc thanh toán định kỳ (điện, internet, bảo hiểm, v.v.)
+- **Mục Tiêu Tiết Kiệm** (Savings Goals): Theo dõi tiến độ, thêm/ghi nhận đóng góp
+- **Quản Lý Nợ** (Debt Tracker): Ghi khoản nợ, lịch trả, số tiền còn lại
 
-### 🏠 Tài Sản Gia Đình (Assets)
+### 🛒 Đi Chợ (Shopping)
 
-- Quản lý đa dạng: **Crypto, Vàng** (miếng/nhẫn/trang sức), **Sổ đất/BĐS, Xe cộ, Cổ phiếu** và tài sản khác.
-- **Giá thị trường trực tiếp**: widget BTC, ETH, Vàng SJC, tỷ giá USD/VND cập nhật tự động.
-- **Định giá tự động**: crypto theo giá coin live; vàng theo trọng lượng × giá 9999 × **hệ số tuổi vàng** (9999/24K → 10K), kèm bảng quy ước tham khảo.
-- **Lời/lỗ**: nhập giá mua ban đầu để tự tính % và số tiền lời/lỗ so với giá trị hiện tại.
-- Đính kèm ảnh tài sản, phân theo chủ sở hữu, tổng hợp giá trị theo từng loại (tách riêng VND/USD).
+- Danh sách mua sắm chung, đồng bộ thời gian thực cho cả nhà
+- Đánh dấu đã mua từng món; xóa hàng loạt khi về chợ xong
+- AI gợi ý thực đơn tuần (mẫu offline + Gemini) → tự tạo danh sách nguyên liệu gộp
+- Thêm/xóa bằng **giọng nói** qua trợ lý AI (lệnh tự nhiên tiếng Việt)
 
-### 🛒 Mua Sắm & Trợ Lý AI
+### 💊 Sức Khỏe Gia Đình (Health)
 
-- Danh sách mua sắm chung cho cả gia đình.
-- Trợ lý giọng nói hỗ trợ thêm/xóa món đồ bằng lệnh tự nhiên.
+- **Tăng Trưởng**: Ghi chiều cao / cân nặng theo thời gian, biểu đồ phát triển
+- **Tiêm Chủng**: Lịch sử các mũi đã tiêm, ghi nhắc mũi sắp tới
+- **Lịch Thuốc**: Đặt múc giờ uống nhiều lần/ngày, nhắc trên dashboard và thông báo đẩy, ghi nhận đã uống / bỏ lỡ
 
-### 💊 Nhắc Nhở Thuốc Men
+### 📄 Giấy Tờ (Documents)
 
-- Đặt lịch uống thuốc với bộ chọn giờ 24h; nhắc nhở hiển thị trên dashboard.
+- Kho lưu giấy tờ quan trọng (CMND, hộ chiếu, bảo hiểm, sổ đỏ, v.v.)
+- Theo dõi ngày hết hạn, cảnh báo trước 30 ngày
+- Phân theo chủ sở hữu, đính kèm ảnh scan
 
-### 🔒 Phân Quyền (RBAC)
+### 🎁 Thưởng Điểm (Rewards)
 
-| Vai trò | Quyền hạn |
-| :--- | :--- |
-| **Admin (Gia Trưởng)** | Toàn quyền: quản lý thành viên, chỉnh sửa vai trò, backup/restore, xem log hệ thống, cập nhật ứng dụng |
-| **Member (Thành viên)** | Tạo/sửa/xóa dữ liệu của mình; truy cập tài chính; không quản lý được tài khoản khác |
-| **Guest (Khách/Trẻ em)** | Chỉ đọc lịch trình, ghi chú công khai; cập nhật tiến trình nhiệm vụ của bản thân; không truy cập tài chính |
+- Trẻ em tích điểm khi hoàn thành nhiệm vụ được giao
+- Cửa hàng đổi thưởng: người lớn tạo danh sách quà có giá điểm cụ thể
+- **Mystery Item**: rút thưởng bí ẩn ngẫu nhiên (gacha)
+- Admin quản lý mẫu quà, duyệt yêu cầu đổi thưởng
 
-### 🌀 Đồng Bộ Thời Gian Thực
+### 🖥️ Quản Lý Server (Server Monitor — chỉ Admin)
 
-- Server-Sent Events (SSE) — không cần tải lại trang khi có thay đổi từ thành viên khác.
+- Theo dõi CPU, RAM, nhiệt độ, ổ đĩa theo thời gian thực
+- Lịch sử 7 ngày dạng sparkline
+- Shortcut link tới các dịch vụ homelab (Immich, Portainer, v.v.)
+- Kiểm tra phiên bản + nút **Cập nhật ngay** (gọi Watchtower HTTP API)
 
-### 🛡️ Sao Lưu & Phục Hồi
+### 🤖 Trợ Lý AI (Gemini)
 
-- Tự động backup mỗi 24 giờ vào thư mục `./data/backups/`.
-- Admin tạo backup thủ công và khôi phục từ bất kỳ điểm nào trong Settings.
+- Tích hợp **Google Gemini API** — Admin nhập key trong Settings (lưu trong `app_settings.json`, không vào backup)
+- Viết nháp ghi chú, gợi ý thực đơn, xử lý lệnh mua sắm bằng giọng nói
+- **Bản tin tuần** (Weekly Digest): sáng thứ Hai 7h–10h gửi Telegram — tóm tắt chi tiêu, task trễ/sắp hạn, lịch sự kiện, sinh nhật, giấy tờ sắp hết hạn; AI viết thân thiện nếu có Gemini key
 
-### 📱 PWA (Progressive Web App)
+### 📲 Telegram Integration
 
-- Cài đặt như app native trên iOS và Android.
-- Hỗ trợ đọc offline.
+- **Backup offsite**: gửi file ZIP (DB + uploads) qua Telegram bot mỗi đêm — lưu trữ ngoài server miễn phí
+- **Bản tin tuần**: sáng thứ Hai 7h–10h gửi tóm tắt gia đình (bật/tắt riêng)
+- Nút **Test** kiểm tra kết nối bot ngay trong Settings
+
+### 🔔 Thông Báo & Đồng Bộ
+
+- **Server-Sent Events (SSE)**: đồng bộ thời gian thực — không cần tải lại trang khi có thay đổi từ thành viên khác
+- **Web Push (VAPID)**: thông báo đẩy native trên iOS/Android kể cả khi đóng app, kèm badge số và deep-link
+- Thông báo nội bộ trong app (popup + badge)
+
+### 🔍 Tìm Kiếm Toàn Cục
+
+- Phím tắt `⌘K` / `Ctrl+K` — tìm đồng thời tasks, lịch, ghi chú, tài chính, giấy tờ
+
+### 🌙 Giao Diện
+
+- Light / Dark mode với hiệu ứng ripple transition (View Transitions API)
+- PWA-first: safe-area, bottom nav, touch-friendly — tối ưu cho iPhone
+- Tôn trọng `prefers-reduced-motion` của hệ thống
 
 ---
 
-## 🚀 Triển Khai Trên Raspberry Pi (Production)
+## 🔒 Phân Quyền (RBAC)
 
-Đây là môi trường **chính thức**. Ứng dụng chạy từ image được CI build và publish lên GitHub Container Registry (GHCR) mỗi khi có commit mới vào `main`.
+| Vai trò | Quyền hạn |
+| :--- | :--- |
+| **Admin (Gia trưởng)** | Toàn quyền: quản lý thành viên, đổi vai trò, backup/restore, log hệ thống, cập nhật app, cấu hình AI & Telegram |
+| **Member (Thành viên)** | Tạo/sửa/xóa dữ liệu của mình; truy cập tài chính; không quản lý tài khoản người khác |
+| **Child (Trẻ em)** | Xem lịch và ghi chú công khai; cập nhật task của mình; kiếm và đổi điểm thưởng; không truy cập tài chính |
+| **Guest (Khách)** | Chỉ xem lịch và ghi chú công khai |
 
-### Yêu cầu
+---
 
-- Raspberry Pi 5 (hoặc bất kỳ máy Linux nào)
-- Docker Engine **19.03+** (khuyến nghị **29+**) và Docker Compose v2
-- Git
+## 🚀 Triển Khai Production (Raspberry Pi)
 
-### Cài đặt lần đầu
+Ứng dụng chạy từ image CI build và publish lên **GitHub Container Registry (GHCR)** mỗi khi có commit vào `main`. Watchtower tự động cập nhật khi có image mới.
 
-**Bước 1 — Cài Docker (nếu chưa có):**
+### Yêu cầu hệ thống
+
+- Raspberry Pi 5 (hoặc bất kỳ Linux server nào)
+- Docker Engine **29+** và Docker Compose v2
+
+### Cài lần đầu
+
+**Bước 1 — Cài Docker:**
 
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
 ```
 
-**Bước 2 — Clone repo và tạo file `.env`:**
+**Bước 2 — Clone repo và tạo `.env`:**
 
 ```bash
 git clone https://github.com/happysmartlight/Family-Organizer.git
@@ -104,131 +146,92 @@ cp .env.example .env
 nano .env
 ```
 
-Điền vào `.env`:
-
-```env
-# Khóa API Gemini — bắt buộc nếu dùng tính năng AI assistant
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Địa chỉ truy cập ứng dụng từ bên ngoài (dùng cho liên kết tự tham chiếu)
-APP_URL=https://your-domain-or-tailscale-url
-
-# Token xác thực cho Watchtower HTTP API — tự đặt chuỗi ngẫu nhiên bất kỳ
-# Dùng lệnh: openssl rand -hex 24
-WATCHTOWER_HTTP_API_TOKEN=your_secret_token_here
-```
-
 **Bước 3 — Khởi chạy:**
 
 ```bash
 docker compose up -d
 ```
 
-Lần đầu chạy sẽ tự động pull image từ GHCR. Ứng dụng khả dụng tại:
+Lần đầu tự pull image từ GHCR. Ứng dụng khả dụng tại:
 
-- `http://localhost:3001` (từ chính máy Pi)
-- `http://<ip-pi>:3001` (từ mạng LAN)
+- `http://localhost:3001` — từ chính máy server
+- `http://<ip-lan-cua-pi>:3001` — từ mạng nội bộ
 
-Dữ liệu được lưu bền vững tại `./data/` trên máy Pi.
+Dữ liệu lưu bền vững tại `./data/` trên máy host.
 
----
+### Cập nhật
 
-### Cập nhật ứng dụng
+**Qua giao diện (khuyến nghị):** Settings → Phiên bản & Cập nhật → **Cập nhật ngay**
 
-Khi có phiên bản mới, bạn có **hai cách cập nhật**:
-
-**Cách 1 — Tự động qua giao diện (khuyến nghị):**
-
-Vào **Settings → Phiên bản & Cập nhật** → Kiểm tra cập nhật → Nhấn **"Cập nhật ngay"**. Watchtower sẽ pull image mới và restart container tự động trong vài phút.
-
-**Cách 2 — Thủ công trên Pi:**
+**Thủ công:**
 
 ```bash
-cd ~/Family-Organizer
-git pull
-docker compose pull
-docker compose up -d
+cd ~/Family-Organizer && git pull && docker compose pull && docker compose up -d
 ```
-
-> Nếu có thay đổi trong `docker-compose.yml`, cần `git pull` trước để lấy file mới nhất, rồi mới chạy `docker compose up -d`.
 
 ---
 
-## 💻 Thiết Lập Môi Trường Dev (Local)
+## 💻 Môi Trường Dev (Local)
 
-Dành cho phát triển và thử nghiệm tính năng mới — **không phải để chạy production**.
+### Yêu cầu phần mềm
 
-### Yêu cầu
+- Node.js 22+
 
-- Node.js 20+
-
-### Chạy
+### Chạy dev server
 
 ```bash
 npm install
 cp .env.example .env
-# Điền GEMINI_API_KEY vào .env nếu cần test AI
 npm run dev
 ```
 
 Ứng dụng khởi động tại `http://localhost:3000`.
 
-### Build production local (tùy chọn)
+> Để test AI trong dev: nhập Gemini key trực tiếp trong **Settings → Thiết lập AI** (hoặc đặt `GEMINI_API_KEY` trong `.env` làm fallback).
+
+### Build production
 
 ```bash
-npm run build
-npm start
+npm run build && npm start
 ```
 
-### Kiểm thử (Tests)
-
-Logic định giá tài sản (tuổi vàng, lời/lỗ, giá live) có unit test bằng **Vitest**:
+### Tests
 
 ```bash
-npm test          # chạy một lần
-npm run test:watch # theo dõi liên tục khi sửa code
+npm test            # chạy một lần
+npm run test:watch  # theo dõi khi sửa code
 ```
 
 ---
 
 ## 🔑 Tài Khoản Mặc Định
 
-Khi khởi động lần đầu (hoặc sau khi xóa `data/family.db`), hệ thống tự tạo một tài khoản Admin mặc định:
+Khi khởi động lần đầu hoặc sau khi xóa `data/family.db`, hệ thống tự tạo:
 
-| Vai trò | Tên đăng nhập | Mật khẩu | Quyền |
-| :--- | :--- | :--- | :--- |
-| **Admin** | `admin` | `admin123` | Toàn quyền |
+| Vai trò | Username | Mật khẩu |
+| :--- | :--- | :--- |
+| Admin | `admin` | `admin123` |
 
-> Đổi mật khẩu tài khoản này ngay sau khi deploy production, sau đó vào **Settings → Thành viên & Phân quyền** để tạo tài khoản thật cho từng thành viên.
+> **Đổi mật khẩu ngay** sau khi deploy. Vào **Settings → Thành viên & Phân quyền** để thêm tài khoản cho từng thành viên.
 
 ---
 
-## 🛠️ Hướng Dẫn Admin
+## 🔧 Biến Môi Trường
 
-### Quản lý thành viên
+Các biến đặt trong file `.env` ở thư mục gốc (được `docker-compose.yml` đọc tự động).
 
-1. Đăng nhập với tài khoản Admin.
-2. Vào **Settings → Thành viên & Phân quyền**.
-3. Tạo tài khoản mới hoặc nhấn biểu tượng chỉnh sửa để sửa thông tin, đổi vai trò, đổi mật khẩu cho thành viên.
+| Biến | Bắt buộc | Mô tả |
+| :--- | :---: | :--- |
+| `WATCHTOWER_HTTP_API_TOKEN` | Có* | Token xác thực Watchtower — cần cho nút "Cập nhật ngay". Tạo bằng `openssl rand -hex 24` |
+| `GEMINI_API_KEY` | Không | Fallback Gemini key khi chưa cấu hình qua Settings UI |
+| `VAPID_PUBLIC_KEY` | Không | VAPID public key — bật thông báo đẩy PWA |
+| `VAPID_PRIVATE_KEY` | Không | VAPID private key |
+| `VAPID_SUBJECT` | Không | Email liên hệ cho VAPID (dạng `mailto:you@example.com`) |
+| `APP_URL` | Không | URL ngoài của app — dùng cho deep-link trong thông báo đẩy |
+| `GITHUB_REPO` | Không | Repo GitHub để kiểm tra commit mới nhất (mặc định: `happysmartlight/Family-Organizer`) |
 
-### Backup & Restore
-
-- **Tự động**: Hệ thống backup database mỗi 24 giờ vào `./data/backups/`.
-- **Thủ công**: Settings → Lưu trữ & Sao lưu → **Tạo backup**.
-- **Khôi phục**: Chọn điểm backup → **Khôi phục**. Trang tự reload sau 1.5 giây.
-
-### Reset toàn bộ dữ liệu (Hard Reset)
-
-```bash
-# Trên Pi
-docker compose down
-rm data/family.db
-docker compose up -d
-```
-
-Hệ thống tự khởi tạo lại database với dữ liệu seed mặc định.
-
-> Nếu database bị hỏng (mất điện đột ngột), hệ thống tự sao chép file hỏng thành bản backup trước khi tự phục hồi.
+> **Gemini key và cấu hình Telegram** được quản lý qua **Settings → Thiết lập AI / Telegram** trong giao diện — lưu vào `app_settings.json`, không vào backup. Biến môi trường `GEMINI_API_KEY` chỉ là fallback nếu chưa nhập qua UI.
+> **VAPID keys** tạo bằng: `npx web-push generate-vapid-keys`
 
 ---
 
@@ -236,22 +239,51 @@ Hệ thống tự khởi tạo lại database với dữ liệu seed mặc đị
 
 ```text
 ./data/
-├── family.db       # Database chính (SQLite)
-├── backups/        # Backup tự động và thủ công
-└── uploads/        # Ảnh hóa đơn, avatar, tài sản, giấy tờ (lưu file, không base64)
+├── family.db          # Database chính (SQLite)
+├── app_settings.json  # API keys & cấu hình Telegram (không vào backup)
+├── backups/           # Backup tự động 24h và thủ công
+└── uploads/           # Ảnh hóa đơn, avatar, tài sản, giấy tờ (file, không base64)
 ```
 
 ---
 
-## 🔧 Biến Môi Trường
+## 🛠️ Hướng Dẫn Admin
 
-| Biến | Bắt buộc | Mô tả |
-| :--- | :--- | :--- |
-| `GEMINI_API_KEY` | Không | Khóa Gemini API cho tính năng AI assistant |
-| `APP_URL` | Không | URL ngoài của ứng dụng (dùng cho liên kết tự tham chiếu) |
-| `WATCHTOWER_HTTP_API_TOKEN` | Có (nếu dùng self-update) | Token xác thực Watchtower HTTP API |
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | Không | Bật thông báo đẩy cho PWA |
+### Quản lý thành viên
+
+Settings → Thành viên & Phân quyền → Tạo mới hoặc chỉnh sửa vai trò / mật khẩu.
+
+### Backup & Restore
+
+- **Tự động**: mỗi 24h vào `./data/backups/`
+- **Thủ công**: Settings → Lưu trữ & Sao lưu → Tạo backup
+- **Khôi phục**: Chọn điểm backup → Khôi phục → Server tự reload
+- **Telegram offsite**: bật trong Settings → Telegram để gửi ZIP backup ra ngoài mỗi đêm
+
+### Reset toàn bộ
+
+```bash
+docker compose down
+rm data/family.db
+docker compose up -d
+```
 
 ---
 
-*Chúc gia đình bạn sử dụng vui vẻ! 🏡*
+## 🏗️ Tech Stack
+
+| Layer | Thư viện / Công cụ |
+| :--- | :--- |
+| **Frontend** | React 19, TypeScript 5.8, Vite 6, Tailwind CSS 4 |
+| **Animation** | Motion 12 (Framer Motion successor) |
+| **Markdown** | react-markdown 10 + remark-gfm |
+| **Backend** | Express 4, Better-SQLite3 11, Node.js 22 |
+| **AI** | Google GenAI SDK 2 (Gemini 2.5 Flash) |
+| **Notifications** | Web Push / VAPID, SSE |
+| **Export** | pdfmake 0.3 (báo cáo tài chính), archiver 8 (ZIP backup) |
+| **Container** | Docker multi-stage (Alpine), Watchtower, GHCR |
+| **Testing** | Vitest 4 |
+
+---
+
+Chúc gia đình bạn sử dụng vui vẻ! 🏡
