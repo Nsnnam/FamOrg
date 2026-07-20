@@ -877,19 +877,14 @@ export function Dashboard({
             )}
           </div>
 
-          {/* Upcoming Birthdays */}
-          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-birthdays">
-            <ShimmerLine via="via-pink-500/50" />
-            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <IconChip accent="pink"><Cake className="w-4 h-4" /></IconChip>
-              Sinh nhật sắp tới
-            </h3>
-
-            {upcomingBirthdays.length === 0 ? (
-              <div className="bg-slate-950/40 border border-dashed border-slate-800 p-6 rounded-xl text-center">
-                <p className="text-sm text-slate-500">Chưa có sinh nhật nào trong 30 ngày tới. Thêm ngày sinh ở mục <span className="text-indigo-400 font-semibold">Thiết lập → Hồ sơ của tôi</span> để được nhắc nhé!</p>
-              </div>
-            ) : (
+          {/* Upcoming Birthdays — ẩn nếu không có ai */}
+          {upcomingBirthdays.length > 0 && (
+            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-birthdays">
+              <ShimmerLine via="via-pink-500/50" />
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <IconChip accent="pink"><Cake className="w-4 h-4" /></IconChip>
+                Sinh nhật sắp tới
+              </h3>
               <div className="space-y-2.5">
                 {upcomingBirthdays.map(b => (
                   <div key={b.user.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all duration-300 hover:translate-x-1 ${b.daysUntil === 0 ? "bg-gradient-to-r from-pink-500/10 to-fuchsia-500/5 border-pink-500/20" : "bg-slate-950/60 border-slate-800/60 hover:bg-slate-800/30"}`}>
@@ -906,8 +901,8 @@ export function Dashboard({
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Nhắc người nhà: gửi thông báo (+ push) cho một thành viên hoặc cả nhà
               — đặt cạnh cụm Sự kiện/Sinh nhật để tiện "thấy lịch → nhắc luôn" */}
