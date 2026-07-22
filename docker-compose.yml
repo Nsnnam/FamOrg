@@ -12,9 +12,12 @@ services:
         BUILD_TIME: ${BUILD_TIME:-}
     container_name: family_organizer_app
     restart: unless-stopped
-    # No host ports — nginx terminates LAN HTTP + public HTTPS
-    expose:
-      - "3000"
+    # Ports live on this service (nginx shares network_mode with it — same as thuchi)
+    ports:
+      # Local HTTP (LAN) → app :3000
+      - "${LOCAL_PORT:-3576}:3000"
+      # Public HTTPS → nginx :443 in shared net
+      - "${PUBLIC_PORT:-8561}:443"
     volumes:
       - ./data:/app/data
     dns:
@@ -40,18 +43,14 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Same pattern as /volume5/docker/thuchi: HTTP LAN + HTTPS public
+  # Shares network with app: listens 443, proxies to 127.0.0.1:3000
   nginx:
     image: nginx:1.27-alpine
     container_name: famorg_nginx
     restart: unless-stopped
+    network_mode: "service:family-organizer"
     depends_on:
       - family-organizer
-    ports:
-      # Local HTTP (LAN)
-      - "${LOCAL_PORT:-3576}:80"
-      # Public HTTPS
-      - "${PUBLIC_PORT:-8561}:443"
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certs:/certs:ro
