@@ -1,50 +1,42 @@
 services:
   family-organizer:
-    # Pull the published image from GHCR so Watchtower can auto-update it.
-    # CI (.github/workflows/docker-publish.yml) builds & pushes this on every push to main.
-    # `build:` is kept so you can still build locally with `docker compose up -d --build`.
-    image: ghcr.io/happysmartlight/family-organizer:latest
+    # Image từ GHCR của fork này (CI push khi có commit main).
+    # Lần đầu trên NAS: build local bằng `docker compose up -d --build`
+    # (an toàn hơn nếu chưa bật Packages/GHCR cho repo).
+    image: ghcr.io/nsnnam/famorg:latest
     build:
       context: .
       dockerfile: Dockerfile
       args:
         # Git metadata baked into the image so the "version" UI shows the real commit.
-        # Compose passes these from the host environment at build time.
-        # CI sets them explicitly; local builds read them from the shell below.
         GIT_SHA: ${GIT_SHA:-}
         APP_VERSION: ${APP_VERSION:-}
         BUILD_TIME: ${BUILD_TIME:-}
     container_name: family_organizer_app
     restart: unless-stopped
     ports:
-      # Bind only to loopback + LAN IP (NOT 0.0.0.0) so the Tailscale interface
-      # stays free for `tailscale serve` to expose HTTPS on the same port 3001.
-      # This matches the rest of the homelab (immich/homepage/etc).
-      - "127.0.0.1:3001:3000"
-      - "192.168.1.2:3001:3000"
+      # Local (LAN / NAS nội bộ): host 3576 → container 3000
+      - "${LOCAL_PORT:-3576}:3000"
+      # Public (mở ra ngoài / reverse proxy / router map): host 8561 → container 3000
+      - "${PUBLIC_PORT:-8561}:3000"
     volumes:
-      # Persistent storage on Raspberry Pi 5.
-      # DB file + uploaded images (avatars/assets/receipts) + daily backups.
+      # Dữ liệu bền vững trên NAS: DB + uploads + backup
       - ./data:/app/data
     environment:
       - NODE_ENV=production
       - PORT=3000
       - TZ=Asia/Ho_Chi_Minh
-      # Compose auto-reads ./.env for ${VAR} substitution; ":-" => empty if missing
-      # (gitignored, never baked into the image). Used by the AI assistant.
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - APP_URL=${APP_URL:-}
-      # Web Push (VAPID) — thông báo đẩy PWA (banner + badge). Đặt 3 biến này
-      # trong ./.env trên Pi; để trống thì tính năng tự tắt, app vẫn chạy.
+      # Web Push (VAPID) — để trống thì tính năng tự tắt
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}
-      # Self-update: the app's "Cập nhật ngay" button calls Watchtower's HTTP API.
+      # Self-update: nút "Cập nhật ngay" gọi Watchtower HTTP API
       - WATCHTOWER_URL=http://watchtower:8080
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
-      - GITHUB_REPO=${GITHUB_REPO:-happysmartlight/Family-Organizer}
+      - GITHUB_REPO=${GITHUB_REPO:-Nsnnam/FamOrg}
     labels:
-      # Let Watchtower manage (auto-update) this container.
       - "com.centurylinklabs.watchtower.enable=true"
     logging:
       driver: "json-file"
@@ -57,18 +49,16 @@ services:
     container_name: watchtower
     restart: unless-stopped
     volumes:
-      # Needs the Docker socket to pull images and recreate containers.
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - WATCHTOWER_CLEANUP=true            # remove old images after update
-      - WATCHTOWER_LABEL_ENABLE=true       # only watch containers labelled above
-      - WATCHTOWER_POLL_INTERVAL=86400     # also auto-check once a day
-      - WATCHTOWER_HTTP_API_UPDATE=true    # enable the on-demand /v1/update endpoint
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_POLL_INTERVAL=86400
+      - WATCHTOWER_HTTP_API_UPDATE=true
       - WATCHTOWER_HTTP_API_PERIODIC_POLLS=true
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
-      # Docker 29+ raised the minimum API version to 1.40; force Watchtower's old SDK to match.
+      # Docker 29+ raised minimum API version; force older Watchtower SDK to match
       - DOCKER_API_VERSION=1.40
-    # No host port needed: the app reaches Watchtower in-network via http://watchtower:8080.
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
     logging:

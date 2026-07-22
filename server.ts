@@ -79,7 +79,7 @@ const APP_VERSION = process.env.APP_VERSION || "dev";
 const GIT_SHA = process.env.GIT_SHA || "";
 const BUILD_TIME = process.env.BUILD_TIME || "";
 // GitHub repo used to check whether a newer commit exists on the default branch.
-const GITHUB_REPO = process.env.GITHUB_REPO || "happysmartlight/Family-Organizer";
+const GITHUB_REPO = process.env.GITHUB_REPO || "Nsnnam/FamOrg";
 const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 // Optional Watchtower HTTP API for one-click in-app updates.
 const WATCHTOWER_URL = process.env.WATCHTOWER_URL || "";

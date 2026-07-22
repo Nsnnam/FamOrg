@@ -120,42 +120,42 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 
 ---
 
-## 🚀 Triển Khai Production (Raspberry Pi)
+## 🚀 Triển Khai Production (NAS / Docker)
 
-Ứng dụng chạy từ image CI build và publish lên **GitHub Container Registry (GHCR)** mỗi khi có commit vào `main`. Watchtower tự động cập nhật khi có image mới.
+Ứng dụng chạy Docker Compose; CI build image multi-arch (`amd64` + `arm64`) lên **GHCR**. Watchtower có thể tự cập nhật khi có image mới.
+
+**Hướng dẫn chi tiết cho NAS:** [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
+
+### Port (đã cấu hình sẵn)
+
+| Vai trò | Port host | Mục đích |
+| :--- | :--- | :--- |
+| **Local** | **3576** | Truy cập trong LAN / NAS |
+| **Public** | **8561** | Mở ra ngoài (router / firewall) |
 
 ### Yêu cầu hệ thống
 
-- Raspberry Pi 5 (hoặc bất kỳ Linux server nào)
-- Docker Engine **29+** và Docker Compose v2
+- NAS hoặc Linux server có Docker + Docker Compose v2
+- ~512 MB RAM trống
 
 ### Cài lần đầu
 
-**Bước 1 — Cài Docker:**
-
 ```bash
-curl -fsSL https://get.docker.com | sudo sh
-```
-
-**Bước 2 — Clone repo và tạo `.env`:**
-
-```bash
-git clone https://github.com/happysmartlight/Family-Organizer.git
-cd Family-Organizer
+git clone https://github.com/Nsnnam/FamOrg.git
+cd FamOrg
 cp .env.example .env
+# Sửa APP_URL (IP NAS) và WATCHTOWER_HTTP_API_TOKEN trong .env
 nano .env
+
+# Lần đầu: build trên máy (an toàn nhất)
+docker compose up -d --build
 ```
 
-**Bước 3 — Khởi chạy:**
+Ứng dụng khả dụng tại:
 
-```bash
-docker compose up -d
-```
-
-Lần đầu tự pull image từ GHCR. Ứng dụng khả dụng tại:
-
-- `http://localhost:3001` — từ chính máy server
-- `http://<ip-lan-cua-pi>:3001` — từ mạng nội bộ
+- `http://localhost:3576` — trên chính NAS
+- `http://<ip-nas>:3576` — mạng nội bộ (local)
+- `http://<ip-public>:8561` — từ Internet (nếu đã mở port public)
 
 Dữ liệu lưu bền vững tại `./data/` trên máy host.
 
@@ -166,7 +166,9 @@ Dữ liệu lưu bền vững tại `./data/` trên máy host.
 **Thủ công:**
 
 ```bash
-cd ~/Family-Organizer && git pull && docker compose pull && docker compose up -d
+cd /path/to/FamOrg && git pull && docker compose up -d --build
+# hoặc nếu dùng image GHCR:
+# docker compose pull && docker compose up -d
 ```
 
 ---
@@ -222,13 +224,15 @@ Các biến đặt trong file `.env` ở thư mục gốc (được `docker-comp
 
 | Biến | Bắt buộc | Mô tả |
 | :--- | :---: | :--- |
+| `LOCAL_PORT` | Không | Port LAN trên NAS (mặc định **3576**) |
+| `PUBLIC_PORT` | Không | Port public trên NAS (mặc định **8561**) |
 | `WATCHTOWER_HTTP_API_TOKEN` | Có* | Token xác thực Watchtower — cần cho nút "Cập nhật ngay". Tạo bằng `openssl rand -hex 24` |
 | `GEMINI_API_KEY` | Không | Fallback Gemini key khi chưa cấu hình qua Settings UI |
 | `VAPID_PUBLIC_KEY` | Không | VAPID public key — bật thông báo đẩy PWA |
 | `VAPID_PRIVATE_KEY` | Không | VAPID private key |
 | `VAPID_SUBJECT` | Không | Email liên hệ cho VAPID (dạng `mailto:you@example.com`) |
 | `APP_URL` | Không | URL ngoài của app — dùng cho deep-link trong thông báo đẩy |
-| `GITHUB_REPO` | Không | Repo GitHub để kiểm tra commit mới nhất (mặc định: `happysmartlight/Family-Organizer`) |
+| `GITHUB_REPO` | Không | Repo GitHub để kiểm tra commit mới nhất (mặc định: `Nsnnam/FamOrg`) |
 
 > **Gemini key và cấu hình Telegram** được quản lý qua **Settings → Thiết lập AI / Telegram** trong giao diện — lưu vào `app_settings.json`, không vào backup. Biến môi trường `GEMINI_API_KEY` chỉ là fallback nếu chưa nhập qua UI.
 > **VAPID keys** tạo bằng: `npx web-push generate-vapid-keys`

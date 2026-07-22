@@ -134,7 +134,7 @@ Trong đó:
 - `WATCHTOWER_HTTP_API_TOKEN`: cần nếu muốn bấm cập nhật app trong giao diện.
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`: tùy chọn, dùng cho web push notification. Để trống thì app vẫn chạy, chỉ không có push notification.
 
-Kiểm tra `docker-compose.yml` trước khi chạy. File hiện tại bind port vào `127.0.0.1:3001` và một IP LAN mẫu `192.168.1.2:3001`; hãy đổi `192.168.1.2` thành IP thật của máy chủ, hoặc điều chỉnh theo mô hình mạng của bạn.
+Kiểm tra `docker-compose.yml` / `.env` trước khi chạy. Mặc định: **local port 3576**, **public port 8561** (cả hai map vào container port 3000). Chi tiết NAS: [NAS-DEPLOY.md](NAS-DEPLOY.md).
 
 Khởi chạy:
 
@@ -144,10 +144,11 @@ docker compose up -d
 
 Truy cập:
 
-- Trên chính máy server: `http://localhost:3001`
-- Trong mạng LAN: `http://<ip-may-chu>:3001`
+- Trên chính máy server / NAS: `http://localhost:3576`
+- Trong mạng LAN (local): `http://<ip-may-chu>:3576`
+- Public (nếu mở firewall/router): `http://<ip-public>:8561`
 
-Nếu dùng Tailscale, có thể dùng Tailscale Serve để chia sẻ service trong tailnet, ví dụ trỏ tới `localhost:3001`. Nếu public ra Internet, nên dùng HTTPS và kiểm soát quyền truy cập cẩn thận.
+Nếu public ra Internet, nên dùng HTTPS (reverse proxy) và kiểm soát quyền truy cập cẩn thận.
 
 ## Cập nhật app
 
