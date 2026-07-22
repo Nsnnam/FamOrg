@@ -1,30 +1,30 @@
 name: Build and publish Docker image
 
 # Builds the app image and pushes it to GitHub Container Registry (GHCR) on every
-# push to main. Watchtower on the Raspberry Pi then auto-pulls the new image.
+# push to main. Watchtower on the NAS can then auto-pull the new image.
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-# Chỉ giữ 1 run mới nhất — push mới tự hủy run đang chạy dở của cùng nhánh.
 concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-push:
-    # Runner ARM64 native (miễn phí cho repo public): build thẳng cho Pi 5,
-    # không cần giả lập QEMU — nhanh hơn và tránh lỗi "Illegal instruction"
-    # khi npm/V8 (Node 22) chạy dưới QEMU.
-    runs-on: ubuntu-24.04-arm
+    # Multi-arch: amd64 (hầu hết NAS x86 / TrueNAS / QNAP) + arm64 (Pi, NAS ARM)
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,12 +45,12 @@ jobs:
             type=raw,value=latest
             type=sha
 
-      - name: Build and push (Raspberry Pi 5 = arm64)
+      - name: Build and push (linux/amd64 + linux/arm64)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          platforms: linux/arm64
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
