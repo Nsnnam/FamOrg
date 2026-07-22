@@ -1,8 +1,6 @@
 services:
   family-organizer:
-    # Prefer prebuilt image (upstream public GHCR) so NAS does not need local apk/npm build.
-    # Override with IMAGE=ghcr.io/nsnnam/famorg:latest when your fork CI publishes.
-    # Optional: docker compose up -d --build to rebuild from source.
+    # Prebuilt image (avoid local Alpine build on NAS). Override via IMAGE=...
     image: ${IMAGE:-ghcr.io/happysmartlight/family-organizer:latest}
     build:
       context: .
@@ -14,11 +12,9 @@ services:
         BUILD_TIME: ${BUILD_TIME:-}
     container_name: family_organizer_app
     restart: unless-stopped
-    ports:
-      # Local (LAN): host 3576 → container 3000
-      - "${LOCAL_PORT:-3576}:3000"
-      # Public: host 8561 → container 3000
-      - "${PUBLIC_PORT:-8561}:3000"
+    # No host ports — nginx terminates LAN HTTP + public HTTPS
+    expose:
+      - "3000"
     volumes:
       - ./data:/app/data
     dns:
@@ -43,6 +39,27 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # Same pattern as /volume5/docker/thuchi: HTTP LAN + HTTPS public
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: famorg_nginx
+    restart: unless-stopped
+    depends_on:
+      - family-organizer
+    ports:
+      # Local HTTP (LAN)
+      - "${LOCAL_PORT:-3576}:80"
+      # Public HTTPS
+      - "${PUBLIC_PORT:-8561}:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/certs:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   watchtower:
     image: containrrr/watchtower

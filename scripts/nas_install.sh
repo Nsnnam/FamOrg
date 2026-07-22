@@ -1,14 +1,14 @@
 #!/bin/bash
 # Run on Synology as root (sudo bash nas_install.sh)
-# Pull prebuilt image first (avoids Alpine DNS/build failures on NAS).
 set -euo pipefail
 export PATH=/usr/local/bin:/usr/bin:/bin:/sbin
 
 APP_DIR="/volume5/docker/FamOrg"
 PUBLIC_URL="https://namns.i234.me:8561"
 REPO_TARBALL="https://github.com/Nsnnam/FamOrg/archive/refs/heads/main.tar.gz"
-# Prebuilt public image (amd64 OK for DS920+)
 IMAGE_DEFAULT="ghcr.io/happysmartlight/family-organizer:latest"
+THUCHI_CERTS="/volume5/docker/thuchi/certs"
+SYNO_CERT="/usr/syno/etc/certificate/_archive/f0oXGS"
 
 echo "==> Preparing ${APP_DIR}"
 mkdir -p /volume5/docker
@@ -37,6 +37,10 @@ fi
 if [ -f "${APP_DIR}/.env" ]; then
   cp "${APP_DIR}/.env" "${APP_DIR}.new/.env" || true
 fi
+if [ -d "${APP_DIR}/certs" ]; then
+  mkdir -p "${APP_DIR}.new/certs"
+  cp -a "${APP_DIR}/certs/." "${APP_DIR}.new/certs/" || true
+fi
 
 rm -rf "${APP_DIR}.old"
 if [ -d "${APP_DIR}" ]; then
@@ -61,21 +65,29 @@ sed -i "s|^LOCAL_PORT=.*|LOCAL_PORT=3576|" .env
 sed -i "s|^PUBLIC_PORT=.*|PUBLIC_PORT=8561|" .env
 sed -i "s|^APP_URL=.*|APP_URL=${PUBLIC_URL}|" .env
 sed -i "s|^GITHUB_REPO=.*|GITHUB_REPO=Nsnnam/FamOrg|" .env
-# Ensure IMAGE line uses prebuilt (overwrite if empty/old)
-if grep -q '^IMAGE=' .env; then
-  sed -i "s|^IMAGE=.*|IMAGE=${IMAGE_DEFAULT}|" .env
-else
-  echo "IMAGE=${IMAGE_DEFAULT}" >> .env
-fi
+sed -i "s|^IMAGE=.*|IMAGE=${IMAGE_DEFAULT}|" .env
 
-# Patch docker-compose if downloaded copy still points only at nsnnam without IMAGE var
-# (main already has IMAGE=; force write compose snippet not needed if repo updated)
-
-mkdir -p data
+mkdir -p data certs
 chmod 777 data || true
+
+# TLS certs: prefer thuchi certs (same domain), else Synology DDNS archive
+if [ ! -f certs/fullchain.pem ] || [ ! -f certs/privkey.pem ]; then
+  if [ -f "${THUCHI_CERTS}/fullchain.pem" ] && [ -f "${THUCHI_CERTS}/privkey.pem" ]; then
+    echo "==> Copying certs from thuchi"
+    cp -a "${THUCHI_CERTS}/fullchain.pem" "${THUCHI_CERTS}/privkey.pem" certs/
+  elif [ -f "${SYNO_CERT}/fullchain.pem" ] && [ -f "${SYNO_CERT}/privkey.pem" ]; then
+    echo "==> Copying certs from Synology DDNS archive"
+    cp -a "${SYNO_CERT}/fullchain.pem" "${SYNO_CERT}/privkey.pem" certs/
+  else
+    echo "ERROR: no TLS certs found (need certs/fullchain.pem + privkey.pem)" >&2
+    exit 1
+  fi
+  chmod 644 certs/fullchain.pem certs/privkey.pem || true
+fi
 
 echo "==> .env"
 cat .env
+ls -la certs deploy 2>/dev/null || true
 
 if docker compose version >/dev/null 2>&1; then
   COMPOSE="docker compose"
@@ -83,24 +95,24 @@ else
   COMPOSE="docker-compose"
 fi
 
-echo "==> Pull prebuilt images (no local build)"
+echo "==> Pull images"
 $COMPOSE pull || true
 docker pull "${IMAGE_DEFAULT}" || true
+docker pull nginx:1.27-alpine || true
 docker pull containrrr/watchtower || true
 
-# Tag so compose image name matches if needed
-# Compose uses IMAGE from .env
-
-echo "==> Start stack (pull only, no --build)"
+echo "==> Start stack"
 $COMPOSE down || true
 $COMPOSE up -d --pull always
 $COMPOSE ps
-$COMPOSE logs --tail=60 family-organizer || true
+$COMPOSE logs --tail=40 family-organizer || true
+$COMPOSE logs --tail=20 nginx || true
 
 echo "==> Health check"
 sleep 5
-curl -sS -o /dev/null -w "3576 -> %{http_code}\n" http://127.0.0.1:3576/ || true
-curl -sS -o /dev/null -w "8561 -> %{http_code}\n" http://127.0.0.1:8561/ || true
+curl -sS -o /dev/null -w "LAN  http://127.0.0.1:3576 -> %{http_code}\n" http://127.0.0.1:3576/ || true
+# -k for self-check before public DNS
+curl -skS -o /dev/null -w "TLS  https://127.0.0.1:8561 -> %{http_code}\n" https://127.0.0.1:8561/ || true
 
 echo "==> Done"
 echo "LAN:    http://192.168.1.89:3576"
