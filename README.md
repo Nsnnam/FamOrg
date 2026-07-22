@@ -126,36 +126,39 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 
 **Hướng dẫn chi tiết cho NAS:** [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
 
-### Port (đã cấu hình sẵn)
+### Port & URL (đã cấu hình sẵn)
 
-| Vai trò | Port host | Mục đích |
+| Vai trò | Giá trị | Mục đích |
 | :--- | :--- | :--- |
-| **Local** | **3576** | Truy cập trong LAN / NAS |
-| **Public** | **8561** | Mở ra ngoài (router / firewall) |
+| **Local (LAN)** | `192.168.1.89:3576` | Truy cập trong nhà |
+| **Public host port** | `8561` | Port Docker trên NAS (tuỳ chọn) |
+| **Public HTTPS** | **https://namns.i234.me** | Domain + Reverse Proxy Synology |
+
+`APP_URL` mặc định dùng **HTTPS**. Container vẫn HTTP nội bộ; HTTPS do Synology Reverse Proxy + Let's Encrypt.
 
 ### Yêu cầu hệ thống
 
-- NAS hoặc Linux server có Docker + Docker Compose v2
+- Synology NAS (Container Manager / Docker) hoặc Linux + Docker Compose v2
 - ~512 MB RAM trống
 
-### Cài lần đầu
+### Cài lần đầu (Synology)
 
 ```bash
+cd /volume1/docker
 git clone https://github.com/Nsnnam/FamOrg.git
 cd FamOrg
 cp .env.example .env
-# Sửa APP_URL (IP NAS) và WATCHTOWER_HTTP_API_TOKEN trong .env
-nano .env
-
-# Lần đầu: build trên máy (an toàn nhất)
+# APP_URL=https://namns.i234.me đã sẵn trong .env.example
 docker compose up -d --build
 ```
 
+Sau đó cấu hình **Reverse Proxy** DSM: `https://namns.i234.me` → `localhost:3576`  
+Chi tiết: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
+
 Ứng dụng khả dụng tại:
 
-- `http://localhost:3576` — trên chính NAS
-- `http://<ip-nas>:3576` — mạng nội bộ (local)
-- `http://<ip-public>:8561` — từ Internet (nếu đã mở port public)
+- **https://namns.i234.me** — public (sau khi setup reverse proxy + cert)
+- `http://192.168.1.89:3576` — LAN (HTTP nội bộ tới container)
 
 Dữ liệu lưu bền vững tại `./data/` trên máy host.
 

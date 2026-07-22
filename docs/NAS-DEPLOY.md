@@ -1,128 +1,143 @@
-# Triển khai FamOrg trên NAS
+# Triển khai FamOrg trên Synology NAS
 
-Hướng dẫn chạy [FamOrg](https://github.com/Nsnnam/FamOrg) (Family Organizer) trên NAS bằng Docker.
+Cấu hình mặc định cho setup này:
 
-## Port đã cấu hình
+| Mục | Giá trị |
+|-----|---------|
+| IP LAN | `192.168.1.89` |
+| Local port | **3576** |
+| Public port (host Docker) | **8561** |
+| Domain public (HTTPS) | **https://namns.i234.me** |
+| Container port | `3000` |
 
-| Vai trò | Port host (NAS) | Port trong container | Mục đích |
-|--------|-----------------|----------------------|----------|
-| **Local** | **3576** | 3000 | Truy cập LAN / trong nhà |
-| **Public** | **8561** | 3000 | Mở ra Internet / router forward |
+App trong Docker vẫn listen HTTP nội bộ; **HTTPS** do **Reverse Proxy + certificate** của Synology đảm nhiệm.
 
-- LAN: `http://<IP-NAS>:3576`
-- Public (nếu mở firewall/router): `http://<IP-công-cộng>:8561`
+## 1. Chuẩn bị trên DSM
 
-Cả hai port đều trỏ vào cùng một app.
+1. **Container Manager** (Docker) đã cài.
+2. Bật **SSH** tạm (tuỳ chọn, dễ deploy):  
+   Control Panel → Terminal & SNMP → Enable SSH service.
+3. Shared Folder cho Docker, ví dụ: `/volume1/docker`.
 
-## Yêu cầu
+## 2. Clone & chạy container
 
-- NAS hỗ trợ Docker / Container Manager (Synology, QNAP, TrueNAS SCALE, Unraid, …)
-- Docker Compose v2
-- ~512 MB RAM trống, vài GB ổ đĩa cho `data/`
-
-## Cài lần đầu (SSH trên NAS)
+### Cách A — SSH (nhanh)
 
 ```bash
-# 1. Clone repo
-cd /volume1/docker   # hoặc thư mục Docker bạn dùng
+cd /volume1/docker
 git clone https://github.com/Nsnnam/FamOrg.git
 cd FamOrg
-
-# 2. Tạo .env
 cp .env.example .env
-nano .env   # sửa APP_URL, WATCHTOWER_HTTP_API_TOKEN
+# APP_URL đã là https://namns.i234.me — chỉ cần đổi WATCHTOWER token nếu muốn
+docker compose up -d --build
 ```
 
-Trong `.env` tối thiểu:
+### Cách B — Container Manager (giao diện)
+
+1. File Station: tạo `/docker/FamOrg`, upload source (hoặc clone qua SSH một lần).
+2. Đảm bảo có file `.env` (copy từ `.env.example`).
+3. Container Manager → **Project** → Create → path = thư mục `FamOrg`.
+4. Build / Start.
+
+### Kiểm tra LAN
+
+```text
+http://192.168.1.89:3576
+```
+
+Tài khoản app mặc định: `admin` / `admin123` → **đổi ngay**.
+
+## 3. Reverse Proxy HTTPS (bắt buộc cho domain)
+
+Để `https://namns.i234.me` trỏ vào FamOrg:
+
+1. **Control Panel → Login Portal → Advanced → Reverse Proxy → Create**
+
+| Field | Value |
+|-------|--------|
+| Description | FamOrg |
+| Source protocol | **HTTPS** |
+| Source hostname | `namns.i234.me` |
+| Source port | `443` |
+| Destination protocol | **HTTP** |
+| Destination hostname | `localhost` (hoặc `192.168.1.89`) |
+| Destination port | **3576** |
+
+2. **Certificate (Let's Encrypt)**  
+   Control Panel → Security → Certificate  
+   - Add → Get from Let's Encrypt  
+   - Domain: `namns.i234.me`  
+   - Gán cert cho reverse proxy / domain này.
+
+3. **DDNS**  
+   Control Panel → External Access → DDNS: `namns.i234.me` trỏ về IP WAN hiện tại.
+
+4. **Router**  
+   Forward WAN **443** → NAS `192.168.1.89:443` (DSM/reverse proxy).  
+   Không bắt buộc mở 8561 ra Internet nếu đã dùng reverse proxy 443.
+
+5. **Firewall DSM**  
+   Cho phép 443 (HTTPS), 3576 chỉ LAN nếu muốn.
+
+Sau khi xong, mở:
+
+```text
+https://namns.i234.me
+```
+
+## 4. File `.env` khuyến nghị
 
 ```env
 LOCAL_PORT=3576
 PUBLIC_PORT=8561
-APP_URL=http://192.168.x.x:3576
-WATCHTOWER_HTTP_API_TOKEN=<chuỗi-bí-mật-ngẫu-nhiên>
+APP_URL=https://namns.i234.me
+WATCHTOWER_HTTP_API_TOKEN=<random-secret>
 GITHUB_REPO=Nsnnam/FamOrg
 ```
 
-Tạo token nhanh:
+`APP_URL` **phải HTTPS** để deep-link / Web Push hoạt động đúng trên domain public.
+
+Áp dụng lại:
 
 ```bash
-openssl rand -hex 24
-```
-
-```bash
-# 3. Build + chạy (khuyến nghị lần đầu)
-docker compose up -d --build
-
-# Hoặc chỉ pull image GHCR (sau khi CI đã build thành công trên GitHub):
-# docker compose pull && docker compose up -d
-```
-
-## Kiểm tra
-
-```bash
-docker compose ps
-docker compose logs -f family-organizer
-```
-
-Mở trình duyệt:
-
-- `http://<IP-NAS>:3576`
-- Tài khoản mặc định: `admin` / `admin123` — **đổi mật khẩu ngay**
-
-## Mở port public 8561
-
-1. **Firewall NAS**: cho phép TCP 8561 (và 3576 nếu cần LAN từ VLAN khác).
-2. **Router**: Port Forward `8561` → `<IP-NAS>:8561` (hoặc → `3576` nếu chỉ map một port).
-3. Cập nhật `APP_URL` trong `.env` nếu dùng domain/HTTPS, rồi:
-
-```bash
+cd /volume1/docker/FamOrg
 docker compose up -d
 ```
 
-Khuyến nghị: reverse proxy (Nginx Proxy Manager, Caddy, Traefik, Synology Application Portal) + HTTPS thay vì HTTP trần ra Internet.
-
-## Cập nhật
+## 5. Cập nhật
 
 ```bash
-cd /path/to/FamOrg
+cd /volume1/docker/FamOrg
 git pull
-docker compose pull   # nếu dùng image GHCR
-# hoặc
 docker compose up -d --build
 ```
 
-Hoặc trong app: **Settings → Phiên bản & Cập nhật → Cập nhật ngay** (cần Watchtower + token đúng).
+Hoặc trong app: Settings → Phiên bản & Cập nhật → Cập nhật ngay.
 
-## Dữ liệu & backup
+## 6. Dữ liệu
 
+```text
+/volume1/docker/FamOrg/data/
+├── family.db
+├── app_settings.json
+├── backups/
+└── uploads/
 ```
-./data/
-├── family.db          # SQLite chính
-├── app_settings.json  # Gemini / Telegram (không vào backup ZIP)
-├── backups/           # backup tự động
-└── uploads/           # ảnh hóa đơn, giấy tờ, avatar
-```
 
-Backup thư mục `data/` định kỳ (Hyper Backup, rsync, Snapshot NAS).
+Backup thư mục `data/` bằng Hyper Backup / Snapshot.
 
-## Synology Container Manager (không SSH)
-
-1. Git clone repo vào Shared Folder (File Station hoặc SSH một lần).
-2. Container Manager → **Project** → Create → chọn thư mục `FamOrg` (có `docker-compose.yml`).
-3. Đảm bảo đã có file `.env` trong thư mục đó.
-4. Build / Start project.
-5. Control Panel → External Access / Firewall: mở 3576 (local) và 8561 (public) nếu cần.
-
-## Tắt Watchtower (tuỳ chọn)
-
-Nếu không muốn auto-update, comment service `watchtower` trong `docker-compose.yml` và bỏ các biến `WATCHTOWER_*` của service app.
-
-## Xử lý sự cố
+## 7. Xử lý sự cố
 
 | Triệu chứng | Cách xử lý |
 |-------------|------------|
-| Port đã dùng | Đổi `LOCAL_PORT` / `PUBLIC_PORT` trong `.env` |
-| Build fail trên NAS ARM | Dùng image GHCR multi-arch hoặc build trên máy cùng arch |
-| Không vào được từ ngoài | Kiểm tra firewall NAS + port forward router → 8561 |
-| Mất data sau recreate | Không xóa volume `./data`; chỉ `docker compose down` (không `-v`) |
-| Permission `data/` | `mkdir -p data && chmod 777 data` (hoặc chown user chạy container) |
+| LAN OK, HTTPS lỗi | Kiểm tra Reverse Proxy + certificate + DDNS |
+| 502 Bad Gateway | Container chưa chạy / sai destination port (phải 3576) |
+| Port conflict | Đổi `LOCAL_PORT` / `PUBLIC_PORT` trong `.env` |
+| Build chậm trên NAS | Bình thường lần đầu; lần sau cache Docker |
+| SSH timeout | Bật SSH trên DSM hoặc dùng Container Manager UI |
+
+## Lưu ý bảo mật
+
+- Không commit mật khẩu DSM/SSH vào GitHub.
+- Đổi mật khẩu app `admin` ngay sau lần đăng nhập đầu.
+- Ưu tiên chỉ public **443** (HTTPS), hạn chế mở 8561/3576 ra Internet.
