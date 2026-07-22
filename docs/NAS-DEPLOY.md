@@ -5,139 +5,144 @@ Cấu hình mặc định cho setup này:
 | Mục | Giá trị |
 |-----|---------|
 | IP LAN | `192.168.1.89` |
+| SSH | port **2232** |
+| Docker path | **`/volume5/docker/FamOrg`** |
 | Local port | **3576** |
 | Public port (host Docker) | **8561** |
-| Domain public (HTTPS) | **https://namns.i234.me** |
+| Domain public (HTTPS) | **https://namns.i234.me:8561** |
 | Container port | `3000` |
 
-App trong Docker vẫn listen HTTP nội bộ; **HTTPS** do **Reverse Proxy + certificate** của Synology đảm nhiệm.
+App trong Docker listen HTTP nội bộ trên container `3000`, map host **8561** (public) và **3576** (LAN).  
+Nếu muốn HTTPS đúng nghĩa trên `:8561`, cần cert reverse proxy hoặc TLS terminator trỏ vào port đó; mặc định container vẫn HTTP trên 8561 trừ khi bạn bọc SSL.
 
 ## 1. Chuẩn bị trên DSM
 
-1. **Container Manager** (Docker) đã cài.
-2. Bật **SSH** tạm (tuỳ chọn, dễ deploy):  
-   Control Panel → Terminal & SNMP → Enable SSH service.
-3. Shared Folder cho Docker, ví dụ: `/volume1/docker`.
+1. **Container Manager** (Docker) đã cài — volume làm việc: **volume5**.
+2. SSH: Control Panel → Terminal & SNMP → Enable SSH, port **2232**.
+3. Shared folder Docker trên volume5, ví dụ: `/volume5/docker`.
 
 ## 2. Clone & chạy container
 
 ### Cách A — SSH (nhanh)
 
 ```bash
-cd /volume1/docker
+ssh -p 2232 USER@192.168.1.89
+
+cd /volume5/docker
 git clone https://github.com/Nsnnam/FamOrg.git
 cd FamOrg
 cp .env.example .env
-# APP_URL đã là https://namns.i234.me — chỉ cần đổi WATCHTOWER token nếu muốn
+# APP_URL=https://namns.i234.me:8561
 docker compose up -d --build
+```
+
+Hoặc:
+
+```bash
+APP_DIR=/volume5/docker/FamOrg bash scripts/synology-deploy.sh
 ```
 
 ### Cách B — Container Manager (giao diện)
 
-1. File Station: tạo `/docker/FamOrg`, upload source (hoặc clone qua SSH một lần).
-2. Đảm bảo có file `.env` (copy từ `.env.example`).
-3. Container Manager → **Project** → Create → path = thư mục `FamOrg`.
+1. File Station: tạo `/volume5/docker/FamOrg` (upload hoặc clone).
+2. Có file `.env` (copy từ `.env.example`).
+3. Container Manager → **Project** → path = `FamOrg` trên volume5.
 4. Build / Start.
 
-### Kiểm tra LAN
+### Kiểm tra
 
 ```text
-http://192.168.1.89:3576
+LAN:    http://192.168.1.89:3576
+Public: https://namns.i234.me:8561   (cần DDNS + port-forward 8561 + cert nếu dùng HTTPS)
 ```
 
 Tài khoản app mặc định: `admin` / `admin123` → **đổi ngay**.
 
-## 3. Reverse Proxy HTTPS (bắt buộc cho domain)
+## 3. Public HTTPS trên port 8561
 
-Để `https://namns.i234.me` trỏ vào FamOrg:
+Mục tiêu: **https://namns.i234.me:8561/**
 
-1. **Control Panel → Login Portal → Advanced → Reverse Proxy → Create**
+### Router / firewall
+
+- Forward WAN **8561** → NAS `192.168.1.89:8561`
+- Firewall DSM: cho phép TCP **8561**
+
+### Certificate (khuyến nghị)
+
+**Cách 1 — Reverse Proxy DSM (source port 8561)**
+
+Control Panel → Login Portal → Advanced → Reverse Proxy → Create:
 
 | Field | Value |
 |-------|--------|
 | Description | FamOrg |
 | Source protocol | **HTTPS** |
 | Source hostname | `namns.i234.me` |
-| Source port | `443` |
+| Source port | **8561** |
 | Destination protocol | **HTTP** |
-| Destination hostname | `localhost` (hoặc `192.168.1.89`) |
-| Destination port | **3576** |
+| Destination hostname | `localhost` |
+| Destination port | **3576** (hoặc 8561 nếu map thẳng container) |
 
-2. **Certificate (Let's Encrypt)**  
-   Control Panel → Security → Certificate  
-   - Add → Get from Let's Encrypt  
-   - Domain: `namns.i234.me`  
-   - Gán cert cho reverse proxy / domain này.
+Gán certificate Let's Encrypt cho hostname `namns.i234.me`.
 
-3. **DDNS**  
-   Control Panel → External Access → DDNS: `namns.i234.me` trỏ về IP WAN hiện tại.
+> Lưu ý: nếu Reverse Proxy listen 8561, **không** để Docker cũng bind 8561 (trùng port). Khi đó chỉ map Docker local `3576`, public do proxy.
 
-4. **Router**  
-   Forward WAN **443** → NAS `192.168.1.89:443` (DSM/reverse proxy).  
-   Không bắt buộc mở 8561 ra Internet nếu đã dùng reverse proxy 443.
+**Cách 2 — Docker public 8561 + HTTP (đơn giản)**
 
-5. **Firewall DSM**  
-   Cho phép 443 (HTTPS), 3576 chỉ LAN nếu muốn.
+- Giữ `ports: "8561:3000"` trong compose.
+- Truy cập `http://namns.i234.me:8561` (browser có thể cảnh báo nếu gõ https mà app chưa TLS).
+- `APP_URL` vẫn đặt `https://...` chỉ khi bạn thực sự terminate TLS trước app.
 
-Sau khi xong, mở:
+### DDNS
 
-```text
-https://namns.i234.me
-```
+Control Panel → External Access → DDNS: `namns.i234.me` trỏ IP WAN.
 
 ## 4. File `.env` khuyến nghị
 
 ```env
 LOCAL_PORT=3576
 PUBLIC_PORT=8561
-APP_URL=https://namns.i234.me
+APP_URL=https://namns.i234.me:8561
 WATCHTOWER_HTTP_API_TOKEN=<random-secret>
 GITHUB_REPO=Nsnnam/FamOrg
 ```
 
-`APP_URL` **phải HTTPS** để deep-link / Web Push hoạt động đúng trên domain public.
-
-Áp dụng lại:
+Áp dụng:
 
 ```bash
-cd /volume1/docker/FamOrg
+cd /volume5/docker/FamOrg
 docker compose up -d
 ```
 
 ## 5. Cập nhật
 
 ```bash
-cd /volume1/docker/FamOrg
+cd /volume5/docker/FamOrg
 git pull
 docker compose up -d --build
 ```
 
-Hoặc trong app: Settings → Phiên bản & Cập nhật → Cập nhật ngay.
-
 ## 6. Dữ liệu
 
 ```text
-/volume1/docker/FamOrg/data/
+/volume5/docker/FamOrg/data/
 ├── family.db
 ├── app_settings.json
 ├── backups/
 └── uploads/
 ```
 
-Backup thư mục `data/` bằng Hyper Backup / Snapshot.
-
 ## 7. Xử lý sự cố
 
 | Triệu chứng | Cách xử lý |
 |-------------|------------|
-| LAN OK, HTTPS lỗi | Kiểm tra Reverse Proxy + certificate + DDNS |
-| 502 Bad Gateway | Container chưa chạy / sai destination port (phải 3576) |
-| Port conflict | Đổi `LOCAL_PORT` / `PUBLIC_PORT` trong `.env` |
-| Build chậm trên NAS | Bình thường lần đầu; lần sau cache Docker |
-| SSH timeout | Bật SSH trên DSM hoặc dùng Container Manager UI |
+| SSH timeout | Port SSH **2232**, firewall cho phép |
+| HTTPS lỗi trên :8561 | Cert + reverse proxy source 8561, hoặc trùng port Docker/proxy |
+| 502 Bad Gateway | Container chưa chạy / sai destination port |
+| Port conflict | Đổi `LOCAL_PORT` / `PUBLIC_PORT` hoặc bỏ bind 8561 nếu proxy giữ 8561 |
 
 ## Lưu ý bảo mật
 
 - Không commit mật khẩu DSM/SSH vào GitHub.
 - Đổi mật khẩu app `admin` ngay sau lần đăng nhập đầu.
-- Ưu tiên chỉ public **443** (HTTPS), hạn chế mở 8561/3576 ra Internet.
+- Port 8561 public nên có HTTPS thật + hạn chế brute-force.

@@ -145,7 +145,8 @@ docker compose up -d
 Truy cập:
 
 - LAN: `http://192.168.1.89:3576`
-- Public HTTPS (mặc định): **https://namns.i234.me** (Reverse Proxy Synology)
+- Public HTTPS (mặc định): **https://namns.i234.me:8561**
+- Docker path: `/volume5/docker/FamOrg` · SSH port `2232`
 
 Public ra Internet nên dùng HTTPS reverse proxy + certificate; xem [NAS-DEPLOY.md](NAS-DEPLOY.md).
 

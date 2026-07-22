@@ -131,10 +131,12 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 | Vai trò | Giá trị | Mục đích |
 | :--- | :--- | :--- |
 | **Local (LAN)** | `192.168.1.89:3576` | Truy cập trong nhà |
-| **Public host port** | `8561` | Port Docker trên NAS (tuỳ chọn) |
-| **Public HTTPS** | **https://namns.i234.me** | Domain + Reverse Proxy Synology |
+| **Public host port** | `8561` | Port public trên NAS |
+| **Public HTTPS** | **https://namns.i234.me:8561** | Domain + port 8561 |
+| **Docker data** | `/volume5/docker/FamOrg` | Volume5 trên Synology |
+| **SSH** | port `2232` | Terminal DSM |
 
-`APP_URL` mặc định dùng **HTTPS**. Container vẫn HTTP nội bộ; HTTPS do Synology Reverse Proxy + Let's Encrypt.
+`APP_URL` mặc định: **https://namns.i234.me:8561**. Container HTTP nội bộ; TLS qua reverse proxy hoặc port-forward + cert.
 
 ### Yêu cầu hệ thống
 
@@ -144,21 +146,21 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 ### Cài lần đầu (Synology)
 
 ```bash
-cd /volume1/docker
+ssh -p 2232 USER@192.168.1.89
+cd /volume5/docker
 git clone https://github.com/Nsnnam/FamOrg.git
 cd FamOrg
 cp .env.example .env
-# APP_URL=https://namns.i234.me đã sẵn trong .env.example
+# APP_URL=https://namns.i234.me:8561
 docker compose up -d --build
 ```
 
-Sau đó cấu hình **Reverse Proxy** DSM: `https://namns.i234.me` → `localhost:3576`  
-Chi tiết: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
+Chi tiết reverse proxy / firewall: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
 
 Ứng dụng khả dụng tại:
 
-- **https://namns.i234.me** — public (sau khi setup reverse proxy + cert)
-- `http://192.168.1.89:3576` — LAN (HTTP nội bộ tới container)
+- **https://namns.i234.me:8561** — public
+- `http://192.168.1.89:3576` — LAN
 
 Dữ liệu lưu bền vững tại `./data/` trên máy host.
 
