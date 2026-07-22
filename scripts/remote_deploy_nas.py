@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Deploy FamOrg to Synology: pipe install script over SSH (no SFTP)."""
+"""Deploy FamOrg to Synology: pipe install script over SSH (no SFTP).
+
+Credentials via env (never hardcode):
+  FAMORG_SSH_HOST   default namns.i234.me
+  FAMORG_SSH_PORT   default 2232
+  FAMORG_SSH_USER   required
+  FAMORG_SSH_PASS   required
+"""
 from __future__ import annotations
 
 import base64
@@ -10,10 +17,10 @@ import time
 
 import paramiko
 
-HOST = "42.113.230.232"
-PORT = 2232
-USER = "lvfh_bot"
-PASSWORD = "(m5q}Q|~"
+HOST = os.environ.get("FAMORG_SSH_HOST", "namns.i234.me")
+PORT = int(os.environ.get("FAMORG_SSH_PORT", "2232"))
+USER = os.environ.get("FAMORG_SSH_USER", "")
+PASSWORD = os.environ.get("FAMORG_SSH_PASS", "")
 
 REMOTE_SCRIPT = "/tmp/famorg_nas_install.sh"
 LOCAL_SCRIPT = os.path.join(os.path.dirname(__file__), "nas_install.sh")
@@ -26,25 +33,37 @@ def stream_cmd(client: paramiko.SSHClient, cmd: str, timeout: int = 1800) -> int
     while True:
         if channel.recv_ready():
             chunk = channel.recv(8192).decode("utf-8", errors="replace")
-            sys.stdout.write(chunk.replace(PASSWORD, "***"))
+            if PASSWORD:
+                chunk = chunk.replace(PASSWORD, "***")
+            sys.stdout.write(chunk)
             sys.stdout.flush()
         if channel.recv_stderr_ready():
             chunk = channel.recv_stderr(8192).decode("utf-8", errors="replace")
-            sys.stderr.write(chunk.replace(PASSWORD, "***"))
+            if PASSWORD:
+                chunk = chunk.replace(PASSWORD, "***")
+            sys.stderr.write(chunk)
             sys.stderr.flush()
         if channel.exit_status_ready() and not channel.recv_ready() and not channel.recv_stderr_ready():
             break
         time.sleep(0.1)
     code = channel.recv_exit_status()
     while channel.recv_ready():
-        sys.stdout.write(
-            channel.recv(8192).decode("utf-8", errors="replace").replace(PASSWORD, "***")
-        )
+        chunk = channel.recv(8192).decode("utf-8", errors="replace")
+        if PASSWORD:
+            chunk = chunk.replace(PASSWORD, "***")
+        sys.stdout.write(chunk)
     print(f"\n[exit {code}]")
     return code
 
 
 def main() -> int:
+    if not USER or not PASSWORD:
+        print(
+            "Set FAMORG_SSH_USER and FAMORG_SSH_PASS (optional FAMORG_SSH_HOST/PORT).",
+            file=sys.stderr,
+        )
+        return 2
+
     with open(LOCAL_SCRIPT, "rb") as f:
         b64 = base64.b64encode(f.read()).decode("ascii")
 
@@ -64,7 +83,6 @@ def main() -> int:
     print("Connected.")
 
     try:
-        # Write script via base64
         write_cmd = (
             "export PATH=/usr/local/bin:/usr/bin:/bin:/sbin; "
             f"echo {b64} | base64 -d > {REMOTE_SCRIPT} && chmod 755 {REMOTE_SCRIPT} && wc -c {REMOTE_SCRIPT}"
@@ -74,13 +92,12 @@ def main() -> int:
         if code != 0:
             return code
 
-        # sudo with password piped (special chars safe via shlex.quote)
         pw = shlex.quote(PASSWORD)
         run_cmd = (
             "export PATH=/usr/local/bin:/usr/bin:/bin:/sbin; "
             f"echo {pw} | sudo -S -p '' bash {REMOTE_SCRIPT}"
         )
-        print("Running install (pull images, start compose)...")
+        print("Running install...")
         return stream_cmd(client, run_cmd, timeout=1800)
     finally:
         client.close()
