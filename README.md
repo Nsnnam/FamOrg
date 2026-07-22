@@ -126,36 +126,39 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 
 **Hướng dẫn chi tiết cho NAS:** [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
 
-### Port (đã cấu hình sẵn)
+### Port & URL (đã cấu hình sẵn)
 
-| Vai trò | Port host | Mục đích |
+| Vai trò | Giá trị | Mục đích |
 | :--- | :--- | :--- |
-| **Local** | **3000** | Truy cập trong LAN / NAS |
-| **Public** | **8443** | Mở ra ngoài (router / firewall) |
+| **Local (LAN)** | `192.0.2.10:3000` | Truy cập trong nhà |
+| **Public host port** | `8443` | Port Docker trên NAS (tuỳ chọn) |
+| **Public HTTPS** | **https://your-domain.example** | Domain + Reverse Proxy Synology |
+
+`APP_URL` mặc định dùng **HTTPS**. Container vẫn HTTP nội bộ; HTTPS do Synology Reverse Proxy + Let's Encrypt.
 
 ### Yêu cầu hệ thống
 
-- NAS hoặc Linux server có Docker + Docker Compose v2
+- Synology NAS (Container Manager / Docker) hoặc Linux + Docker Compose v2
 - ~512 MB RAM trống
 
-### Cài lần đầu
+### Cài lần đầu (Synology)
 
 ```bash
+cd /volume1/docker
 git clone https://github.com/your-github-user/FamOrg.git
 cd FamOrg
 cp .env.example .env
-# Sửa APP_URL (IP NAS) và WATCHTOWER_HTTP_API_TOKEN trong .env
-nano .env
-
-# Lần đầu: build trên máy (an toàn nhất)
+# APP_URL=https://your-domain.example đã sẵn trong .env.example
 docker compose up -d --build
 ```
 
+Sau đó cấu hình **Reverse Proxy** DSM: `https://your-domain.example` → `localhost:3000`  
+Chi tiết: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
+
 Ứng dụng khả dụng tại:
 
-- `http://localhost:3000` — trên chính NAS
-- `http://<ip-nas>:3000` — mạng nội bộ (local)
-- `http://<ip-public>:8443` — từ Internet (nếu đã mở port public)
+- **https://your-domain.example** — public (sau khi setup reverse proxy + cert)
+- `http://192.0.2.10:3000` — LAN (HTTP nội bộ tới container)
 
 Dữ liệu lưu bền vững tại `./data/` trên máy host.
 

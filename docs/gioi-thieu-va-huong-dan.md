@@ -144,11 +144,10 @@ docker compose up -d
 
 Truy cập:
 
-- Trên chính máy server / NAS: `http://localhost:3000`
-- Trong mạng LAN (local): `http://<ip-may-chu>:3000`
-- Public (nếu mở firewall/router): `http://<ip-public>:8443`
+- LAN: `http://192.0.2.10:3000`
+- Public HTTPS (mặc định): **https://your-domain.example** (Reverse Proxy Synology)
 
-Nếu public ra Internet, nên dùng HTTPS (reverse proxy) và kiểm soát quyền truy cập cẩn thận.
+Public ra Internet nên dùng HTTPS reverse proxy + certificate; xem [NAS-DEPLOY.md](NAS-DEPLOY.md).
 
 ## Cập nhật app
 
