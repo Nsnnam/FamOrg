@@ -131,10 +131,12 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 | Vai trò | Giá trị | Mục đích |
 | :--- | :--- | :--- |
 | **Local (LAN)** | `192.0.2.10:3000` | Truy cập trong nhà |
-| **Public host port** | `8443` | Port Docker trên NAS (tuỳ chọn) |
-| **Public HTTPS** | **https://your-domain.example** | Domain + Reverse Proxy Synology |
+| **Public host port** | `8443` | Port public trên NAS |
+| **Public HTTPS** | **https://your-domain.example:8443** | Domain + port 8443 |
+| **Docker data** | `/path/to/your/famorg` | Volume5 trên Synology |
+| **SSH** | port `22` | Terminal DSM |
 
-`APP_URL` mặc định dùng **HTTPS**. Container vẫn HTTP nội bộ; HTTPS do Synology Reverse Proxy + Let's Encrypt.
+`APP_URL` mặc định: **https://your-domain.example:8443**. Container HTTP nội bộ; TLS qua reverse proxy hoặc port-forward + cert.
 
 ### Yêu cầu hệ thống
 
@@ -144,21 +146,21 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 ### Cài lần đầu (Synology)
 
 ```bash
-cd /volume1/docker
+ssh -p 22 USER@192.0.2.10
+cd /path/to/your/docker
 git clone https://github.com/your-github-user/FamOrg.git
 cd FamOrg
 cp .env.example .env
-# APP_URL=https://your-domain.example đã sẵn trong .env.example
+# APP_URL=https://your-domain.example:8443
 docker compose up -d --build
 ```
 
-Sau đó cấu hình **Reverse Proxy** DSM: `https://your-domain.example` → `localhost:3000`  
-Chi tiết: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
+Chi tiết reverse proxy / firewall: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
 
 Ứng dụng khả dụng tại:
 
-- **https://your-domain.example** — public (sau khi setup reverse proxy + cert)
-- `http://192.0.2.10:3000` — LAN (HTTP nội bộ tới container)
+- **https://your-domain.example:8443** — public
+- `http://192.0.2.10:3000` — LAN
 
 Dữ liệu lưu bền vững tại `./data/` trên máy host.
 

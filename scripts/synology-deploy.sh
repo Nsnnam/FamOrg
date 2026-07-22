@@ -3,11 +3,13 @@
 # Usage: bash scripts/synology-deploy.sh
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/volume1/docker/FamOrg}"
+APP_DIR="${APP_DIR:-/path/to/your/famorg}"
 REPO_URL="${REPO_URL:-https://github.com/your-github-user/FamOrg.git}"
+PUBLIC_URL="${PUBLIC_URL:-https://your-domain.example:8443}"
 
 echo "==> FamOrg Synology deploy"
 echo "    APP_DIR=$APP_DIR"
+echo "    PUBLIC_URL=$PUBLIC_URL"
 
 if [ ! -d "$APP_DIR/.git" ]; then
   mkdir -p "$(dirname "$APP_DIR")"
@@ -26,9 +28,9 @@ fi
 
 # Ensure HTTPS public URL (idempotent)
 if grep -q '^APP_URL=' .env; then
-  sed -i 's|^APP_URL=.*|APP_URL=https://your-domain.example|' .env
+  sed -i "s|^APP_URL=.*|APP_URL=${PUBLIC_URL}|" .env
 else
-  echo 'APP_URL=https://your-domain.example' >> .env
+  echo "APP_URL=${PUBLIC_URL}" >> .env
 fi
 
 # Ensure ports
@@ -36,16 +38,27 @@ grep -q '^LOCAL_PORT=' .env || echo 'LOCAL_PORT=3000' >> .env
 grep -q '^PUBLIC_PORT=' .env || echo 'PUBLIC_PORT=8443' >> .env
 sed -i 's|^LOCAL_PORT=.*|LOCAL_PORT=3000|' .env
 sed -i 's|^PUBLIC_PORT=.*|PUBLIC_PORT=8443|' .env
+grep -q '^GITHUB_REPO=' .env || echo 'GITHUB_REPO=your-github-user/FamOrg' >> .env
 
 mkdir -p data
 chmod 777 data 2>/dev/null || true
 
-echo "==> docker compose up -d --build"
-docker compose up -d --build
+# Prefer docker compose plugin; fall back to docker-compose
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+  COMPOSE="docker-compose"
+else
+  echo "ERROR: docker compose not found" >&2
+  exit 1
+fi
+
+echo "==> $COMPOSE up -d --build"
+$COMPOSE up -d --build
 
 echo ""
 echo "==> Done."
 echo "    LAN:    http://192.0.2.10:3000"
-echo "    Public: https://your-domain.example  (cần Reverse Proxy DSM → localhost:3000)"
+echo "    Public: ${PUBLIC_URL}"
 echo "    Login:  admin / admin123  (đổi ngay sau lần đầu)"
-docker compose ps
+$COMPOSE ps
