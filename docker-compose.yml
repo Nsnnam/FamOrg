@@ -1,38 +1,38 @@
 services:
   family-organizer:
-    # Image từ GHCR của fork này (CI push khi có commit main).
-    # Lần đầu trên NAS: build local bằng `docker compose up -d --build`
-    # (an toàn hơn nếu chưa bật Packages/GHCR cho repo).
-    image: ghcr.io/nsnnam/famorg:latest
+    # Prefer prebuilt image (upstream public GHCR) so NAS does not need local apk/npm build.
+    # Override with IMAGE=ghcr.io/nsnnam/famorg:latest when your fork CI publishes.
+    # Optional: docker compose up -d --build to rebuild from source.
+    image: ${IMAGE:-ghcr.io/happysmartlight/family-organizer:latest}
     build:
       context: .
       dockerfile: Dockerfile
+      network: host
       args:
-        # Git metadata baked into the image so the "version" UI shows the real commit.
         GIT_SHA: ${GIT_SHA:-}
         APP_VERSION: ${APP_VERSION:-}
         BUILD_TIME: ${BUILD_TIME:-}
     container_name: family_organizer_app
     restart: unless-stopped
     ports:
-      # Local (LAN / NAS nội bộ): host 3576 → container 3000
+      # Local (LAN): host 3576 → container 3000
       - "${LOCAL_PORT:-3576}:3000"
-      # Public (mở ra ngoài / reverse proxy / router map): host 8561 → container 3000
+      # Public: host 8561 → container 3000
       - "${PUBLIC_PORT:-8561}:3000"
     volumes:
-      # Dữ liệu bền vững trên NAS: DB + uploads + backup
       - ./data:/app/data
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - NODE_ENV=production
       - PORT=3000
       - TZ=Asia/Ho_Chi_Minh
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - APP_URL=${APP_URL:-}
-      # Web Push (VAPID) — để trống thì tính năng tự tắt
+      - APP_URL=${APP_URL:-https://namns.i234.me:8561}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - VAPID_SUBJECT=${VAPID_SUBJECT:-}
-      # Self-update: nút "Cập nhật ngay" gọi Watchtower HTTP API
       - WATCHTOWER_URL=http://watchtower:8080
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
       - GITHUB_REPO=${GITHUB_REPO:-Nsnnam/FamOrg}
@@ -57,7 +57,6 @@ services:
       - WATCHTOWER_HTTP_API_UPDATE=true
       - WATCHTOWER_HTTP_API_PERIODIC_POLLS=true
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
-      # Docker 29+ raised minimum API version; force older Watchtower SDK to match
       - DOCKER_API_VERSION=1.40
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
