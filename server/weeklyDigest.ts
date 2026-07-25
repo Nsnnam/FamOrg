@@ -287,11 +287,9 @@ function buildFallbackText(d: DigestData): string {
 
 // ─── NÂNG CAO VỚI GEMINI (tùy chọn) ─────────────────────────────────────────
 
-async function enhanceWithAI(data: DigestData, apiKey: string): Promise<string | null> {
+async function enhanceWithAI(data: DigestData, _apiKey: string): Promise<string | null> {
   try {
-    const { GoogleGenAI } = await import("@google/genai");
-    const ai = new GoogleGenAI({ apiKey });
-
+    const { aiGenerateText } = await import("./ai.js");
     const prompt = `Bạn là trợ lý gia đình thân thiện. Dưới đây là dữ liệu tóm tắt tuần của gia đình.
 Hãy viết một bản tin ngắn gọn, vui vẻ, dễ đọc bằng tiếng Việt để gửi qua Telegram vào sáng thứ Hai.
 Yêu cầu:
@@ -316,16 +314,10 @@ ${JSON.stringify({
   "Giấy tờ hết hạn": data.expiringDocs.map(d => `${d.title} (${d.owner}) — ${d.dateLabel}`)
 }, null, 2)}`;
 
-    const res = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: { responseMimeType: "text/plain" }
-    } as any);
-
-    const text = (res as any).text?.() || "";
+    const text = await aiGenerateText({ prompt, maxTokens: 1200 });
     return text.trim() || null;
   } catch (err: any) {
-    console.error("[weeklyDigest] Gemini thất bại, dùng fallback:", err?.message || err);
+    console.error("[weeklyDigest] AI thất bại, dùng fallback:", err?.message || err);
     return null;
   }
 }
@@ -358,13 +350,19 @@ export async function sendWeeklyDigest(now = new Date()): Promise<{ aiUsed: bool
   if (!token || !chatId) throw new Error("Chưa cấu hình Telegram bot token / chat ID.");
 
   const data = buildDigestData(now);
-  const geminiKey = (s.geminiApiKey || "").trim() || (process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim();
+  let hasAi = false;
+  try {
+    const { getAiConfig } = await import("./ai.js");
+    hasAi = Boolean(getAiConfig().apiKey);
+  } catch {
+    hasAi = Boolean((s.geminiApiKey || "").trim() || (process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim());
+  }
 
   let text: string;
   let aiUsed = false;
 
-  if (geminiKey) {
-    const aiText = await enhanceWithAI(data, geminiKey);
+  if (hasAi) {
+    const aiText = await enhanceWithAI(data, "");
     if (aiText) {
       text = aiText;
       aiUsed = true;

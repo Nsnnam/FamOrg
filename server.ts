@@ -21,6 +21,9 @@ import { telegramBackupStatus, sendBackupToTelegram, runTelegramBackupTick } fro
 import { sendWeeklyDigest, runWeeklyDigestTick } from "./server/weeklyDigest.js";
 import { icsFeedToken, isValidIcsToken, buildIcsFeed } from "./server/icsFeed.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
+import {
+  getAiConfig, aiStatusPublic, saveAiConfig, testAiConfig, aiGenerateText, aiErrorMessage, AI_PROVIDERS
+} from "./server/ai.js";
 
 // Accepted permission roles for write validation
 const VALID_ROLES = new Set<string>([UserRole.ADMIN, UserRole.MEMBER, UserRole.CHILD, UserRole.GUEST]);
@@ -121,73 +124,16 @@ async function fetchOutbound(url: string, init: RequestInit = {}, timeoutMs = OU
   }
 }
 
-// --- GEMINI API KEY ---
-// Admin can set a key from the UI (stored in app_settings.json); falls back to env.
+// --- AI (multi-provider: Gemini / Groq / OpenRouter / OpenAI-compatible) ---
 function getGeminiKey(): string {
-  const fromDb = (getAppSettings().geminiApiKey || "").trim();
-  return fromDb || (process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim();
-}
-function geminiKeySource(): "app" | "env" | "none" {
-  if ((getAppSettings().geminiApiKey || "").trim()) return "app";
-  if ((process.env.GEMINI_API_KEY || process.env.API_KEY || "").trim()) return "env";
-  return "none";
-}
-function maskKey(key: string): string {
-  if (!key) return "";
-  if (key.length <= 8) return "••••";
-  return `${key.slice(0, 4)}••••${key.slice(-4)}`;
-}
-function aiStatus() {
-  const key = getGeminiKey();
-  return { configured: Boolean(key), source: geminiKeySource(), masked: maskKey(key) };
-}
-// Lightweight validation: make a tiny call so a bad key fails fast at save time.
-// Hard timeout so a broken outbound path never hangs the Settings save button.
-async function testGeminiKey(key: string, timeoutMs = 15_000): Promise<void> {
-  const { GoogleGenAI } = await import("@google/genai");
-  const ai = new GoogleGenAI({ apiKey: key });
-  const work = ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: "ping",
-    config: { responseMimeType: "text/plain" }
-  } as any);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      work,
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Timeout khi gọi Gemini (container có thể không ra Internet)")), timeoutMs);
-      })
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
-// Gemini thường trả 503 "model overloaded" / 429 khi quá tải — lỗi tạm thời.
-function isGeminiOverloaded(err: any): boolean {
-  const msg = String(err?.message || err || "");
-  return /\b(503|429)\b|overloaded|unavailable|rate.?limit|quota|try again/i.test(msg);
+  // Backward-compatible alias used by older call sites
+  return getAiConfig().apiKey;
 }
 function geminiErrorMessage(err: any): string {
-  if (isGeminiOverloaded(err)) {
-    return "Gemini đang quá tải (503). Đã thử lại nhưng chưa được — bạn chờ một lát rồi bấm lại nhé.";
-  }
-  return err?.message || "AI đang gặp lỗi, vui lòng thử lại.";
+  return aiErrorMessage(err);
 }
-// Gọi Gemini có tự thử lại khi bị quá tải (503/429) với backoff nhẹ.
-async function geminiGenerate(ai: any, params: any, retries = 2): Promise<any> {
-  let lastErr: any;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await ai.models.generateContent(params);
-    } catch (err) {
-      lastErr = err;
-      if (!isGeminiOverloaded(err) || attempt === retries) throw err;
-      await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // 1s, 2s
-    }
-  }
-  throw lastErr;
+function aiStatus() {
+  return aiStatusPublic();
 }
 
 // Body parser - supports rich receipt images in finances
@@ -409,7 +355,7 @@ app.get("/api/version", requireAuth, (_req: AuthRequest, res: Response) => {
     shortCommit: GIT_SHA ? GIT_SHA.slice(0, 7) : "",
     buildTime: BUILD_TIME,
     canAutoUpdate: Boolean(WATCHTOWER_URL && WATCHTOWER_TOKEN),
-    aiEnabled: Boolean(getGeminiKey())
+    aiEnabled: Boolean(getAiConfig().apiKey)
   });
 });
 
@@ -787,43 +733,65 @@ app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (
   }
 });
 
-// --- AI SETTINGS (Gemini API key, admin only) ---
+// --- AI SETTINGS (multi-provider, admin only) ---
+// Body: { provider, apiKey, model, baseUrl, skipValidate?, clear? }
 
 app.get("/api/settings/ai", requireAuth, requireRole([UserRole.ADMIN]), (_req: AuthRequest, res: Response) => {
   res.json(aiStatus());
 });
 
-// Save (and validate) a Gemini key, or clear it by sending an empty value.
-// Body: { apiKey, skipValidate?: boolean } — skipValidate lưu key khi mạng container lỗi.
 app.post("/api/settings/ai", requireAuth, requireRole([UserRole.ADMIN]), async (req: AuthRequest, res: Response) => {
-  const apiKey = String(req.body?.apiKey ?? "").trim();
   const skipValidate = Boolean(req.body?.skipValidate);
+  const clear = Boolean(req.body?.clear) || req.body?.apiKey === "";
 
-  if (!apiKey) {
-    setAppSetting("geminiApiKey", null);
-    res.json({ ...aiStatus(), message: "Đã xóa key trong app. Sẽ dùng key từ biến môi trường (nếu có)." });
+  if (clear && !req.body?.provider && !req.body?.model) {
+    saveAiConfig({ clear: true });
+    res.json({ ...aiStatus(), message: "Đã xóa API key trong app. Sẽ dùng key từ biến môi trường (nếu có)." });
     return;
   }
 
-  if (!skipValidate) {
+  const provider = String(req.body?.provider || getAiConfig().provider || "gemini").trim();
+  const apiKey = req.body?.apiKey !== undefined ? String(req.body.apiKey ?? "").trim() : undefined;
+  const model = req.body?.model !== undefined ? String(req.body.model ?? "").trim() : undefined;
+  const baseUrl = req.body?.baseUrl !== undefined ? String(req.body.baseUrl ?? "").trim() : undefined;
+
+  // Save provider/model first so test uses correct endpoints
+  saveAiConfig({
+    provider,
+    ...(apiKey !== undefined ? { apiKey: apiKey || null } : {}),
+    ...(model !== undefined ? { model } : {}),
+    ...(baseUrl !== undefined ? { baseUrl: baseUrl || null } : {})
+  });
+
+  if (!skipValidate && (apiKey || getAiConfig().apiKey)) {
     try {
-      await testGeminiKey(apiKey);
+      const result = await testAiConfig({
+        provider: provider as any,
+        apiKey: apiKey || getAiConfig().apiKey,
+        model: model || getAiConfig().model,
+        baseUrl: baseUrl !== undefined ? baseUrl : getAiConfig().baseUrl
+      });
+      res.json({
+        ...aiStatus(),
+        message: `Đã lưu & kiểm tra OK (${result.provider} · ${result.model}).`
+      });
+      return;
     } catch (err: any) {
       res.status(400).json({
-        error: "Key không dùng được (gọi thử Gemini thất bại): " + outboundErrorMessage(err, "Gemini"),
+        error: "Key/model không dùng được: " + (aiErrorMessage(err) || outboundErrorMessage(err, "AI")),
         networkHint: true,
-        canSkipValidate: true
+        canSkipValidate: true,
+        providers: AI_PROVIDERS.map(p => ({ id: p.id, label: p.label, models: p.models, keyUrl: p.keyUrl, freeNote: p.freeNote }))
       });
       return;
     }
   }
 
-  setAppSetting("geminiApiKey", apiKey);
   res.json({
     ...aiStatus(),
     message: skipValidate
-      ? "Đã lưu Gemini API key (chưa kiểm tra mạng). Thử trợ lý AI sau khi container ra được Internet."
-      : "Đã lưu Gemini API key. Tính năng AI đã sẵn sàng."
+      ? "Đã lưu cấu hình AI (bỏ qua kiểm tra). Thử tính năng AI khi mạng ổn."
+      : "Đã cập nhật cấu hình AI."
   });
 });
 
@@ -2162,20 +2130,17 @@ function normalizeAssistantActions(actions: any[]): any[] {
 }
 
 app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Response) => {
-  const apiKey = getGeminiKey();
   const message = String(req.body?.message || "").trim();
   if (!message) {
     res.status(400).json({ error: "Vui lòng nhập câu hỏi cho trợ lý" });
     return;
   }
-  if (!apiKey) {
-    res.status(400).json({ error: "Chưa cấu hình Gemini API key. Vào Thiết lập để nhập key." });
+  if (!getAiConfig().apiKey) {
+    res.status(400).json({ error: "Chưa cấu hình API key AI. Vào Thiết lập → Trí tuệ AI để chọn provider (Gemini/Groq/OpenRouter…)." });
     return;
   }
 
   try {
-    const [{ GoogleGenAI }] = await Promise.all([import("@google/genai")]);
-    const ai = new GoogleGenAI({ apiKey });
     const tasks = FamilyDB.getTasks().slice(-30).map(t => ({
       id: t.id,
       title: t.title,
@@ -2206,7 +2171,7 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
       .slice(0, 80)
       .map(item => ({ name: item.name, quantity: item.quantity, note: item.note }));
     const prompt = [
-      "Bạn là trợ lý gia đình trong app Family Organizer. Trả lời ngắn gọn bằng tiếng Việt, ưu tiên việc có thể làm ngay.",
+      "Bạn là trợ lý gia đình trong app FamOrg. Trả lời ngắn gọn bằng tiếng Việt, ưu tiên việc có thể làm ngay.",
       "Bạn PHẢI trả về duy nhất một JSON object hợp lệ, không bọc markdown, không thêm chữ ngoài JSON.",
       "Schema: {\"reply\":\"câu trả lời cho người dùng\",\"actions\":[{\"type\":\"create_shopping_items\",\"title\":\"tiêu đề hành động\",\"items\":[{\"name\":\"tên món cần mua\",\"quantity\":\"số lượng nếu biết\",\"note\":\"ghi chú nếu cần\"}]}]}",
       "Chỉ tạo action create_shopping_items khi người dùng yêu cầu thêm/tạo/lập danh sách đi chợ, mua sắm, hoặc hỏi menu và nhờ thêm nguyên liệu vào danh sách đi chợ. Nếu chỉ hỏi gợi ý hoặc hỏi thông tin, actions phải là [].",
@@ -2219,12 +2184,7 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
       `Danh sach di cho hien tai: ${JSON.stringify(shoppingItems)}`,
       `Cau hoi: ${message}`
     ].join("\n\n");
-    const response = await geminiGenerate(ai, {
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    } as any);
-    const rawText = response.text || "";
+    const rawText = await aiGenerateText({ prompt, json: true, maxTokens: 4096 });
     const parsed = parseAssistantJson(rawText);
     if (!parsed) {
       res.json({ answer: rawText || "Mình chưa có câu trả lời phù hợp.", actions: [] });
@@ -2236,7 +2196,7 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
     });
   } catch (err: any) {
     console.error("Assistant error:", err);
-    res.status(500).json({ error: err.message || "Trợ lý AI đang gặp lỗi" });
+    res.status(500).json({ error: geminiErrorMessage(err) || "Trợ lý AI đang gặp lỗi" });
   }
 });
 
@@ -2281,9 +2241,8 @@ app.post("/api/shopping/meal-plan/random", requireAuth, (req: AuthRequest, res: 
 });
 
 app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: Response) => {
-  const apiKey = getGeminiKey();
-  if (!apiKey) {
-    res.status(400).json({ error: "Chưa cấu hình Gemini API key. Vào Thiết lập để nhập key." });
+  if (!getAiConfig().apiKey) {
+    res.status(400).json({ error: "Chưa cấu hình API key AI. Vào Thiết lập → Trí tuệ AI." });
     return;
   }
   const adults = Math.min(10, Math.max(0, Math.floor(Number(req.body?.adults) || 0)));
@@ -2296,8 +2255,6 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
   }
 
   try {
-    const [{ GoogleGenAI }] = await Promise.all([import("@google/genai")]);
-    const ai = new GoogleGenAI({ apiKey });
     const prompt = [
       "Bạn là chuyên gia dinh dưỡng kiêm đầu bếp gia đình Việt Nam.",
       `Lập thực đơn cân bằng dinh dưỡng cho gia đình ${adults} người lớn và ${children} trẻ em, trong ${days} ngày, mỗi ngày 3 bữa (Sáng/Trưa/Tối).`,
@@ -2310,21 +2267,10 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
       "Trường cat bắt buộc thuộc: Đạm, Rau củ, Tinh bột, Trái cây, Gia vị. Không quá 40 nguyên liệu và 30 món."
     ].join("\n\n");
 
-    // Tắt "thinking" + cấp nhiều output token: thực đơn JSON khá lớn, nếu để
-    // gemini-2.5-flash suy nghĩ sẽ ngốn hết token và treo/không ra JSON.
-    const response = await geminiGenerate(ai, {
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 0 }
-      }
-    } as any);
-
-    const parsed = parseAssistantJson(response.text || "");
+    const rawText = await aiGenerateText({ prompt, json: true, maxTokens: 8192, timeoutMs: 90_000 });
+    const parsed = parseAssistantJson(rawText);
     if (!parsed || !Array.isArray(parsed.days) || !Array.isArray(parsed.groceries)) {
-      console.error("Meal-plan AI parse fail. finishReason:", (response as any)?.candidates?.[0]?.finishReason, "len:", (response.text || "").length);
+      console.error("Meal-plan AI parse fail. len:", (rawText || "").length);
       res.status(502).json({ error: "AI trả về dữ liệu không hợp lệ (có thể do quá dài). Hãy giảm số ngày rồi thử lại." });
       return;
     }
@@ -2392,7 +2338,7 @@ app.post("/api/shopping/meal-plan", requireAuth, async (req: AuthRequest, res: R
     res.json({ days: cleanDays, groceries: annotatedGroceries, source: "ai", learned });
   } catch (err: any) {
     console.error("Meal-plan error:", err);
-    res.status(isGeminiOverloaded(err) ? 503 : 500).json({ error: geminiErrorMessage(err) });
+    res.status(500).json({ error: geminiErrorMessage(err) });
   }
 });
 
@@ -2402,9 +2348,8 @@ app.post("/api/notes/ai-draft", requireAuth, async (req: AuthRequest, res: Respo
     res.status(403).json({ error: "Tài khoản khách không thể tạo ghi chú." });
     return;
   }
-  const apiKey = getGeminiKey();
-  if (!apiKey) {
-    res.status(400).json({ error: "Chưa cấu hình Gemini API key. Vào Thiết lập để nhập key." });
+  if (!getAiConfig().apiKey) {
+    res.status(400).json({ error: "Chưa cấu hình API key AI. Vào Thiết lập → Trí tuệ AI." });
     return;
   }
   const promptText = String(req.body?.prompt || "").trim().slice(0, 2000);
@@ -2415,8 +2360,6 @@ app.post("/api/notes/ai-draft", requireAuth, async (req: AuthRequest, res: Respo
   }
 
   try {
-    const { GoogleGenAI } = await import("@google/genai");
-    const ai = new GoogleGenAI({ apiKey });
     const prompt = [
       "Bạn là trợ lý viết ghi chú cho một app gia đình. Viết bằng tiếng Việt, rõ ràng, hữu ích, đúng trọng tâm.",
       "Trả về DUY NHẤT một JSON hợp lệ, không bọc markdown, không thêm chữ ngoài JSON.",
@@ -2425,16 +2368,10 @@ app.post("/api/notes/ai-draft", requireAuth, async (req: AuthRequest, res: Respo
       `Yêu cầu của người dùng: ${promptText}`
     ].join("\n\n");
 
-    const response = await geminiGenerate(ai, {
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: { responseMimeType: "application/json" }
-    } as any);
-
-    const parsed = parseAssistantJson(response.text || "");
+    const rawText = await aiGenerateText({ prompt, json: true, maxTokens: 4096 });
+    const parsed = parseAssistantJson(rawText);
     const title = cleanAssistantText(parsed?.title, 200) || existingTitle || "Ghi chú mới";
-    // Keep newlines/markdown intact — do NOT run through cleanAssistantText (it collapses whitespace).
-    const content = String(parsed?.content || "").trim().slice(0, 20000) || (response.text || "").trim();
+    const content = String(parsed?.content || "").trim().slice(0, 20000) || rawText.trim();
     if (!content) {
       res.status(502).json({ error: "AI chưa tạo được nội dung. Hãy thử mô tả chi tiết hơn." });
       return;
@@ -2442,7 +2379,7 @@ app.post("/api/notes/ai-draft", requireAuth, async (req: AuthRequest, res: Respo
     res.json({ title, content });
   } catch (err: any) {
     console.error("Notes AI draft error:", err);
-    res.status(isGeminiOverloaded(err) ? 503 : 500).json({ error: geminiErrorMessage(err) });
+    res.status(500).json({ error: geminiErrorMessage(err) });
   }
 });
 

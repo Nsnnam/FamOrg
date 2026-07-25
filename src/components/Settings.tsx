@@ -208,8 +208,11 @@ export function Settings({
   const [updateDone, setUpdateDone] = useState(false);
 
   // AI (Gemini) key config — admin only
-  const [aiKeyStatus, setAiKeyStatus] = useState<{ configured: boolean; source: string; masked: string } | null>(null);
+  const [aiKeyStatus, setAiKeyStatus] = useState<any>(null);
   const [aiKeyInput, setAiKeyInput] = useState("");
+  const [aiProvider, setAiProvider] = useState("gemini");
+  const [aiModel, setAiModel] = useState("gemini-3.5-flash");
+  const [aiBaseUrl, setAiBaseUrl] = useState("");
   const [aiKeyBusy, setAiKeyBusy] = useState(false);
   const [aiKeyMsg, setAiKeyMsg] = useState("");
   const [aiKeyErr, setAiKeyErr] = useState("");
@@ -390,7 +393,13 @@ export function Settings({
     if (currentUser.role !== UserRole.ADMIN) return;
     fetch("/api/settings/ai", { headers: authHeaders() })
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) setAiKeyStatus(d); })
+      .then(d => {
+        if (!d) return;
+        setAiKeyStatus(d);
+        if (d.provider) setAiProvider(d.provider);
+        if (d.model) setAiModel(d.model);
+        if (d.baseUrl) setAiBaseUrl(d.baseUrl);
+      })
       .catch(() => {});
     fetch("/api/settings/telegram-backup", { headers: authHeaders() })
       .then(r => (r.ok ? r.json() : null))
@@ -481,23 +490,45 @@ export function Settings({
       const res = await fetch("/api/settings/ai", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: clear ? "" : aiKeyInput.trim(), skipValidate })
+        body: JSON.stringify({
+          clear,
+          skipValidate,
+          provider: aiProvider,
+          apiKey: clear ? "" : (aiKeyInput.trim() || undefined),
+          model: aiModel,
+          baseUrl: aiProvider === "openai" ? aiBaseUrl : undefined
+        })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setAiCanSkip(Boolean(data.canSkipValidate));
+        if (data.providers) setAiKeyStatus((s: any) => ({ ...(s || {}), providers: data.providers }));
         throw new Error(data.error || "Lưu key thất bại.");
       }
-      setAiKeyStatus({ configured: data.configured, source: data.source, masked: data.masked });
+      setAiKeyStatus(data);
+      if (data.provider) setAiProvider(data.provider);
+      if (data.model) setAiModel(data.model);
       setAiKeyMsg(data.message || "Đã cập nhật.");
       setAiKeyInput("");
       setAiCanSkip(false);
     } catch (err: any) {
-      setAiKeyErr(friendlyNetErr(err, "lưu Gemini key"));
+      setAiKeyErr(friendlyNetErr(err, "lưu AI key"));
       if (err instanceof TypeError) setAiCanSkip(true);
     } finally {
       setAiKeyBusy(false);
     }
+  };
+
+  const moveWidgetOrder = (id: string, dir: -1 | 1) => {
+    setDashDraft(d => {
+      const order = [...(d.widgetOrder || [])];
+      const i = order.indexOf(id as any);
+      if (i < 0) return d;
+      const j = i + dir;
+      if (j < 0 || j >= order.length) return d;
+      [order[i], order[j]] = [order[j], order[i]];
+      return { ...d, widgetOrder: order };
+    });
   };
 
   const checkConnectivity = async () => {
@@ -1891,16 +1922,39 @@ export function Settings({
       {currentUser.role === UserRole.ADMIN && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
           <h3 className="text-sm font-bold text-slate-200">📊 Tùy biến Tổng quan (Dashboard)</h3>
-          <p className="text-[11px] text-slate-500">Bật/tắt khối hiển thị, chọn loại tỷ giá, nguồn tin RSS Việt Nam.</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-            {(Object.keys(WIDGET_LABELS) as DashboardWidgetId[]).map(id => (
-              <label key={id} className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-900/60 rounded-lg px-2 py-1.5 border border-slate-800">
+          <p className="text-[11px] text-slate-500">Bật/tắt khối, kéo thứ tự (▲▼), chọn tỷ giá, tin RSS, số cột tin tức.</p>
+
+          <p className="text-[11px] font-semibold text-slate-400">Thứ tự khối (kéo ▲▼)</p>
+          <ul className="space-y-1 max-h-56 overflow-y-auto">
+            {(dashDraft.widgetOrder || []).map((id, idx) => (
+              <li key={id}
+                draggable
+                onDragStart={e => { e.dataTransfer.setData("text/plain", String(idx)); e.dataTransfer.effectAllowed = "move"; }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault();
+                  const from = Number(e.dataTransfer.getData("text/plain"));
+                  const to = idx;
+                  if (Number.isNaN(from) || from === to) return;
+                  setDashDraft(d => {
+                    const order = [...(d.widgetOrder || [])];
+                    const [item] = order.splice(from, 1);
+                    order.splice(to, 0, item);
+                    return { ...d, widgetOrder: order };
+                  });
+                }}
+                className="flex items-center gap-2 text-[11px] bg-slate-900/70 border border-slate-800 rounded-lg px-2 py-1.5 cursor-grab active:cursor-grabbing"
+              >
+                <span className="text-slate-500 font-mono w-4">{idx + 1}</span>
                 <input type="checkbox" checked={dashDraft.widgets?.[id] !== false}
                   onChange={e => setDashDraft(d => ({ ...d, widgets: { ...d.widgets, [id]: e.target.checked } }))} />
-                {WIDGET_LABELS[id]}
-              </label>
+                <span className="text-slate-200 flex-1">{WIDGET_LABELS[id] || id}</span>
+                <button type="button" className="px-1.5 text-slate-400 hover:text-sky-300" onClick={() => moveWidgetOrder(id, -1)} title="Lên">▲</button>
+                <button type="button" className="px-1.5 text-slate-400 hover:text-sky-300" onClick={() => moveWidgetOrder(id, 1)} title="Xuống">▼</button>
+              </li>
             ))}
-          </div>
+          </ul>
+
           <p className="text-[11px] font-semibold text-slate-400 pt-1">Thẻ thị trường / tỷ giá</p>
           <div className="flex flex-wrap gap-1.5">
             {(Object.keys(MARKET_LABELS) as MarketCardId[]).map(id => (
@@ -1924,6 +1978,33 @@ export function Settings({
                 {f.label}
               </label>
             ))}
+          </div>
+          <div className="flex flex-wrap gap-3 items-center text-[11px]">
+            <label className="text-slate-400 flex items-center gap-1.5">
+              Số tin
+              <input type="number" min={3} max={30} value={dashDraft.newsLimit || 12}
+                onChange={e => setDashDraft(d => ({ ...d, newsLimit: Number(e.target.value) || 12 }))}
+                className="w-16 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200" />
+            </label>
+            <label className="text-slate-400 flex items-center gap-1.5">
+              Cột tin tức
+              <select
+                value={String(dashDraft.newsColumns ?? "auto")}
+                onChange={e => {
+                  const v = e.target.value;
+                  setDashDraft(d => ({
+                    ...d,
+                    newsColumns: v === "auto" ? "auto" : (Number(v) as 1 | 2 | 3)
+                  }));
+                }}
+                className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200"
+              >
+                <option value="auto">Tự động (1→2→3 theo màn)</option>
+                <option value="1">1 cột</option>
+                <option value="2">2 cột</option>
+                <option value="3">3 cột</option>
+              </select>
+            </label>
           </div>
           <button type="button" onClick={saveDashboardPrefs} disabled={dashBusy}
             className="bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl">
@@ -1983,59 +2064,115 @@ export function Settings({
         </div>
       )}
 
-      {/* AI (Gemini) API key — admin configurable, no .env editing needed */}
+      {/* AI multi-provider */}
       {currentUser.role === UserRole.ADMIN && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
           <div className="space-y-0.5">
             <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-violet-400" /> Trí tuệ AI (Gemini API Key)
+              <Sparkles className="w-4 h-4 text-violet-400" /> Trí tuệ AI (nhiều provider)
             </h3>
             <p className="text-[11px] text-slate-500">
               {aiKeyStatus?.configured
-                ? `Đang dùng key ${aiKeyStatus.masked} (${aiKeyStatus.source === "app" ? "nhập trong app" : "biến môi trường"}). Bật trợ lý AI, gợi ý thực đơn & viết ghi chú.`
-                : "Chưa có key. Nhập Gemini API key để bật trợ lý AI, gợi ý thực đơn & viết ghi chú bằng AI."}
+                ? `Đang dùng ${aiKeyStatus.providerLabel || aiProvider} · model ${aiKeyStatus.model || aiModel} · key ${aiKeyStatus.masked} (${aiKeyStatus.source === "app" ? "trong app" : "env"}).`
+                : "Chọn provider miễn phí (Gemini / Groq / OpenRouter) hoặc OpenAI-compatible, rồi dán API key."}
             </p>
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="text-[11px] text-slate-400 space-y-1">
+              Nhà cung cấp
+              <select
+                value={aiProvider}
+                onChange={e => {
+                  const p = e.target.value;
+                  setAiProvider(p);
+                  const meta = (aiKeyStatus?.providers || []).find((x: any) => x.id === p);
+                  if (meta?.defaultModel) setAiModel(meta.defaultModel);
+                }}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+              >
+                {(aiKeyStatus?.providers || [
+                  { id: "gemini", label: "Google Gemini" },
+                  { id: "groq", label: "Groq" },
+                  { id: "openrouter", label: "OpenRouter" },
+                  { id: "openai", label: "OpenAI-compatible" }
+                ]).map((p: any) => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-[11px] text-slate-400 space-y-1">
+              Model
+              <select
+                value={aiModel}
+                onChange={e => setAiModel(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+              >
+                {(() => {
+                  const meta = (aiKeyStatus?.providers || []).find((x: any) => x.id === aiProvider);
+                  const models = meta?.models || [{ id: aiModel, label: aiModel }];
+                  return models.map((m: any) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ));
+                })()}
+              </select>
+            </label>
+          </div>
+          {aiProvider === "openai" && (
+            <label className="text-[11px] text-slate-400 space-y-1 block">
+              Base URL (OpenAI-compatible)
+              <input
+                value={aiBaseUrl}
+                onChange={e => setAiBaseUrl(e.target.value)}
+                placeholder="https://api.openai.com/v1 hoặc http://host:11434/v1"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
+              />
+            </label>
+          )}
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="password"
               autoComplete="off"
               value={aiKeyInput}
               onChange={(e) => setAiKeyInput(e.target.value)}
-              placeholder="Dán Gemini API key (AIza…)"
+              placeholder={aiKeyStatus?.configured ? "Key mới (để trống = giữ key cũ)" : "Dán API key…"}
               className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-violet-500"
             />
             <button
               type="button"
               onClick={() => saveAiKey(false, false)}
-              disabled={aiKeyBusy || !aiKeyInput.trim()}
+              disabled={aiKeyBusy || (!aiKeyInput.trim() && !aiKeyStatus?.configured)}
               className="bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-all"
             >
               {aiKeyBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               Lưu & kiểm tra
             </button>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer noopener" className="text-[11px] text-sky-400 hover:underline">
-              Lấy key miễn phí ở Google AI Studio →
-            </a>
-            {aiCanSkip && aiKeyInput.trim() && (
-              <button
-                type="button"
-                onClick={() => saveAiKey(false, true)}
-                disabled={aiKeyBusy}
-                className="text-[11px] text-amber-400 hover:text-amber-300 cursor-pointer font-semibold"
-              >
-                Vẫn lưu key (bỏ qua kiểm tra mạng)
+          <div className="flex items-center gap-3 flex-wrap text-[11px]">
+            {(() => {
+              const meta = (aiKeyStatus?.providers || []).find((x: any) => x.id === aiProvider);
+              return meta?.keyUrl ? (
+                <a href={meta.keyUrl} target="_blank" rel="noreferrer noopener" className="text-sky-400 hover:underline">
+                  Lấy key miễn phí →
+                </a>
+              ) : null;
+            })()}
+            <span className="text-slate-500">
+              {(aiKeyStatus?.providers || []).find((x: any) => x.id === aiProvider)?.freeNote || "Gemini 3.5 Flash khuyến nghị cho user mới."}
+            </span>
+            {aiCanSkip && (
+              <button type="button" onClick={() => saveAiKey(false, true)} disabled={aiKeyBusy}
+                className="text-amber-400 hover:text-amber-300 font-semibold">
+                Vẫn lưu (bỏ qua kiểm tra)
               </button>
             )}
             {aiKeyStatus?.configured && aiKeyStatus.source === "app" && (
-              <button type="button" onClick={() => saveAiKey(true)} disabled={aiKeyBusy} className="text-[11px] text-slate-400 hover:text-rose-400 ml-auto cursor-pointer">
-                Xóa key trong app
+              <button type="button" onClick={() => saveAiKey(true)} disabled={aiKeyBusy}
+                className="text-slate-400 hover:text-rose-400 ml-auto">
+                Xóa key
               </button>
             )}
           </div>
-          {aiKeyErr && <p className="text-[11px] text-rose-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {aiKeyErr}</p>}
+          {aiKeyErr && <p className="text-[11px] text-rose-400 flex items-start gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {aiKeyErr}</p>}
           {aiKeyMsg && <p className="text-[11px] text-emerald-400 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5 shrink-0" /> {aiKeyMsg}</p>}
         </div>
       )}

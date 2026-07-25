@@ -189,6 +189,21 @@ export function Dashboard({
   const reduceMotion = useReducedMotion();
   const prefs = mergeDashboardPrefs(prefsProp || DEFAULT_DASHBOARD_PREFS);
   const show = (id: keyof typeof prefs.widgets) => prefs.widgets[id] !== false;
+  const orderIndex = useMemo(() => {
+    const m: Record<string, number> = {};
+    (prefs.widgetOrder || []).forEach((id, i) => { m[id] = i; });
+    return (id: string) => m[id] ?? 50;
+  }, [prefs.widgetOrder?.join(",")]);
+  const ord = (ids: string[]) => Math.min(...ids.map(id => orderIndex(id)));
+
+  const newsColClass = useMemo(() => {
+    const c = prefs.newsColumns ?? "auto";
+    if (c === 1) return "grid-cols-1";
+    if (c === 2) return "grid-cols-1 md:grid-cols-2";
+    if (c === 3) return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
+    // auto: 1 → 2 → 3 by viewport
+    return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
+  }, [prefs.newsColumns]);
 
   const [news, setNews] = useState<{ title: string; link: string; source: string; summary?: string }[]>([]);
   useEffect(() => {
@@ -196,7 +211,7 @@ export function Dashboard({
     const token = localStorage.getItem("family_token");
     if (!token) return;
     const feeds = (prefs.newsFeeds || []).join(",");
-    fetch(`/api/widgets/news?feeds=${encodeURIComponent(feeds)}&limit=${prefs.newsLimit || 8}`, {
+    fetch(`/api/widgets/news?feeds=${encodeURIComponent(feeds)}&limit=${prefs.newsLimit || 12}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then(r => (r.ok ? r.json() : null))
@@ -433,9 +448,11 @@ export function Dashboard({
   };
 
   return (
-    <div className="space-y-6" id="dashboard-tab">
+    <div className="flex flex-col gap-6" id="dashboard-tab">
       {/* Greetings Block — aurora hero that shifts palette with the time of day */}
+      {show("hero") && (
       <motion.div
+        style={{ order: orderIndex("hero") }}
         {...fadeUp(0)}
         className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-xl"
         id="dashboard-header-banner"
@@ -488,10 +505,11 @@ export function Dashboard({
           </div>
         </div>
       </motion.div>
+      )}
 
       {/* Đếm ngược sự kiện lớn (lễ / sinh nhật / sự kiện Quan trọng) */}
-      {countdowns.length > 0 && (
-        <motion.div {...fadeUp(0.09)} className="grid grid-cols-2 lg:grid-cols-4 gap-3" id="dashboard-countdowns">
+      {show("holidays") && countdowns.length > 0 && (
+        <motion.div style={{ order: orderIndex("holidays") }} {...fadeUp(0.09)} className="grid grid-cols-2 lg:grid-cols-4 gap-3" id="dashboard-countdowns">
           {countdowns.map(c => {
             const accentMap: Record<string, { ring: string; text: string; bg: string }> = {
               amber: { ring: "border-amber-500/25", text: "text-amber-400", bg: "from-amber-500/10" },
@@ -517,7 +535,7 @@ export function Dashboard({
 
       {/* Weather + Markets widgets — always rendered (skeleton while loading) to avoid layout shift */}
       {(show("weather") || show("markets")) && (
-      <motion.div {...fadeUp(0.12)} className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
+      <motion.div style={{ order: ord(["weather", "markets"]) }} {...fadeUp(0.12)} className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
 
         {/* Weather */}
         {show("weather") && (() => {
@@ -769,18 +787,20 @@ export function Dashboard({
       </motion.div>
       )}
 
-      {/* Tin tức RSS Việt Nam */}
+      {/* Tin tức RSS Việt Nam — multi-column on wide screens */}
       {show("news") && news.length > 0 && (
-        <motion.div {...fadeUp(0.14)} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
-          <div className="flex items-center justify-between">
+        <motion.div style={{ order: orderIndex("news") }} {...fadeUp(0.14)} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+          <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-slate-200">📰 Tin tức</h3>
-            <span className="text-[10px] text-slate-500">RSS chính thống VN</span>
+            <span className="text-[10px] text-slate-500">
+              RSS · {prefs.newsColumns === "auto" ? "tự động 1–3 cột" : `${prefs.newsColumns} cột`}
+            </span>
           </div>
-          <ul className="space-y-1.5">
+          <ul className={`grid ${newsColClass} gap-x-4 gap-y-1.5`}>
             {news.map((n, i) => (
-              <li key={i}>
+              <li key={i} className="min-w-0 border-b border-slate-800/60 pb-1.5 last:border-0">
                 <a href={n.link} target="_blank" rel="noreferrer noopener"
-                  className="block text-xs text-slate-300 hover:text-sky-300 truncate">
+                  className="block text-xs text-slate-300 hover:text-sky-300 line-clamp-2">
                   <span className="text-[10px] font-mono text-slate-500 mr-1.5 uppercase">{n.source}</span>
                   {n.title}
                 </a>
@@ -791,7 +811,7 @@ export function Dashboard({
       )}
 
       {/* Main Stats Row — glass cards with an accent glow that answers hover */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="dashboard-stats">
+      <div style={{ order: ord(["tasks", "urgent", "balance", "calendar"]) }} className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="dashboard-stats">
         {/* Card 1: My Remaining Tasks */}
         <motion.div
           {...fadeUp(0.18)}
@@ -884,7 +904,7 @@ export function Dashboard({
       </div>
 
       {/* Main Dashboard Bento Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" id="dashboard-grid">
+      <div style={{ order: ord(["calendar", "notes", "nudge", "birthdays", "meds", "shopping"]) }} className="grid grid-cols-1 lg:grid-cols-12 gap-6" id="dashboard-grid">
 
         {/* Left Column - Schedules & Notes (Col 7) */}
         <motion.div {...fadeUp(0.3)} className="lg:col-span-7 space-y-6">
