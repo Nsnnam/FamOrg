@@ -160,7 +160,8 @@ docker compose up -d
 
 Hoặc một lệnh cài: `bash scripts/nas_install.sh` (chạy root trên NAS).
 
-Chi tiết reverse proxy / firewall / widget lỗi: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
+Stack NAS dùng **`network_mode: host`** (Docker bridge trên nhiều Synology không ra Internet → widget/AI/Telegram lỗi).  
+Chi tiết: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
 
 Ứng dụng khả dụng tại:
 

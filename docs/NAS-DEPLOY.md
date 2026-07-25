@@ -209,10 +209,20 @@ Vàng SJC (vang.today) vẫn cần server; fallback hiển thị **PAXG / vàng 
 - **Gemini**: nếu “Lưu & kiểm tra” fail vì mạng, bấm **Vẫn lưu key (bỏ qua kiểm tra mạng)** — key được ghi vào `data/app_settings.json`.
 - **Telegram**: dùng **Gửi tin nhắn thử (nhanh)** trước khi gửi full backup (nhẹ hơn, dễ debug).
 
-### 8.5. Không dùng `network_mode: host` với stack nginx
+### 8.5. `network_mode: host` (bắt buộc trên NAS này)
 
-Stack hiện tại map port `3000→3000` và `8443→443` (nginx TLS share network với app).  
-**Không** thêm `network_mode: host` — sẽ phá port mapping và service name `watchtower`.
+Trên nhiều Synology (kể cả setup `your-nas`), **Docker bridge không ra được Internet** (ping 8.8.8.8 fail, DNS timeout) dù host NAS ra net bình thường.  
+Vì vậy stack FamOrg dùng **`network_mode: host`**:
+
+| Cổng host | Dịch vụ |
+|-----------|---------|
+| **3000** (`LOCAL_PORT`) | App HTTP (LAN) |
+| **8443** (`PUBLIC_PORT`) | nginx HTTPS |
+| **127.0.0.1:8080** | Watchtower API (chỉ localhost) |
+
+`deploy/nginx.conf` là template: nginx image thay `${LOCAL_PORT}` / `${PUBLIC_PORT}` lúc start.
+
+Nếu sau này bridge NAT được sửa (MASQUERADE/firewall), có thể chuyển lại bridge — hiện tại host network là cách ổn định để widget/AI/Telegram hoạt động.
 
 ## Lưu ý bảo mật
 
