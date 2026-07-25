@@ -1,4 +1,6 @@
-# Triển khai FamOrg trên Synology NAS
+# Triển khai FamOrg (FamOrg) trên Synology NAS
+
+Tên hiển thị mặc định trong app: **FamOrg** / **Family Hub** (đổi trong Thiết lập sau khi cài).
 
 Cấu hình mặc định cho setup này:
 

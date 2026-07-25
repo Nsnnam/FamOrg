@@ -68,12 +68,22 @@ import { motion } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { Avatar } from "./Avatar.js";
 import { optimizeImageFile } from "../utils/image.js";
-import { uploadDataUrl } from "../utils/uploadImage.js";
+import { uploadDataUrl, uploadBinaryFile } from "../utils/uploadImage.js";
 import { reloadOnce, scheduleReloadFallback } from "../utils/appReload.js";
 import { PushNotificationsCard } from "./PushNotificationsCard.js";
 import { ShimmerLine, Reveal } from "./Lively.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 import { VN_LOCATIONS } from "../utils/vnLocations.js";
+import { BrandingSettings, DEFAULT_BRANDING, mergeBranding } from "../utils/branding.js";
+import { AppearanceSettings, DEFAULT_APPEARANCE, BG_PRESETS, mergeAppearance } from "../utils/appearance.js";
+import {
+  DashboardPrefs, DEFAULT_DASHBOARD_PREFS, WIDGET_LABELS, MARKET_LABELS,
+  DEFAULT_NEWS_FEEDS, DashboardWidgetId, MarketCardId, mergeDashboardPrefs
+} from "../utils/dashboardPrefs.js";
+import {
+  mergeFinanceCategories, DEFAULT_FINANCE_CATEGORIES,
+  FinanceCategory, FinanceCategoryGroup, FinanceCategoriesState
+} from "../utils/financeCategories.js";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
 
@@ -95,6 +105,12 @@ interface SettingsProps {
   onDeleteBackup: (id: string) => Promise<any>;
   weatherLoc: string;
   onChangeWeatherLoc: (code: string) => void;
+  branding?: BrandingSettings;
+  onBrandingChange?: (b: BrandingSettings) => void;
+  appearance?: AppearanceSettings;
+  onAppearanceChange?: (a: AppearanceSettings) => void;
+  dashboardPrefs?: DashboardPrefs;
+  onDashboardPrefsChange?: (p: DashboardPrefs) => void;
 }
 
 export function Settings({
@@ -114,7 +130,13 @@ export function Settings({
   onRestoreBackup,
   onDeleteBackup,
   weatherLoc,
-  onChangeWeatherLoc
+  onChangeWeatherLoc,
+  branding = DEFAULT_BRANDING,
+  onBrandingChange,
+  appearance = DEFAULT_APPEARANCE,
+  onAppearanceChange,
+  dashboardPrefs = DEFAULT_DASHBOARD_PREFS,
+  onDashboardPrefsChange
 }: SettingsProps) {
   // In-app confirmation dialog (replaces native browser confirm)
   const { confirm, ConfirmDialog } = useConfirm();
@@ -212,6 +234,114 @@ export function Settings({
   const [netBusy, setNetBusy] = useState(false);
   const [netResult, setNetResult] = useState<any>(null);
   const [netErr, setNetErr] = useState("");
+
+  // Branding / appearance / dashboard / finance categories (admin)
+  const [brandDraft, setBrandDraft] = useState<BrandingSettings>(branding);
+  const [brandBusy, setBrandBusy] = useState(false);
+  const [brandMsg, setBrandMsg] = useState("");
+  const [appearDraft, setAppearDraft] = useState<AppearanceSettings>(appearance);
+  const [appearBusy, setAppearBusy] = useState(false);
+  const [dashDraft, setDashDraft] = useState<DashboardPrefs>(dashboardPrefs);
+  const [dashBusy, setDashBusy] = useState(false);
+  const [finCats, setFinCats] = useState<FinanceCategoriesState>(() => mergeFinanceCategories(null));
+  const [finBusy, setFinBusy] = useState(false);
+  const [finMsg, setFinMsg] = useState("");
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatEmoji, setNewCatEmoji] = useState("🏷️");
+  const [newCatKind, setNewCatKind] = useState<"expense" | "income" | "both">("expense");
+  const [newGroupName, setNewGroupName] = useState("");
+
+  useEffect(() => { setBrandDraft(branding); }, [branding]);
+  useEffect(() => { setAppearDraft(appearance); }, [appearance]);
+  useEffect(() => { setDashDraft(dashboardPrefs); }, [dashboardPrefs]);
+
+  useEffect(() => {
+    if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.MEMBER) return;
+    fetch("/api/settings/finance-categories", { headers: authHeaders() })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setFinCats(mergeFinanceCategories(d)))
+      .catch(() => setFinCats(mergeFinanceCategories(null)));
+  }, [currentUser.role]);
+
+  const saveBranding = async () => {
+    setBrandBusy(true); setBrandMsg("");
+    try {
+      const res = await fetch("/api/settings/branding", {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(brandDraft)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lưu thất bại");
+      const next = mergeBranding(data);
+      setBrandDraft(next);
+      onBrandingChange?.(next);
+      setBrandMsg("Đã lưu thương hiệu / tên app.");
+    } catch (e: any) {
+      setBrandMsg(e.message || "Lỗi lưu branding");
+    } finally {
+      setBrandBusy(false);
+    }
+  };
+
+  const saveAppearance = async () => {
+    setAppearBusy(true);
+    try {
+      const res = await fetch("/api/settings/appearance", {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(appearDraft)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lưu thất bại");
+      const next = mergeAppearance(data);
+      setAppearDraft(next);
+      onAppearanceChange?.(next);
+    } catch (e: any) {
+      alert(e.message || "Lỗi lưu giao diện");
+    } finally {
+      setAppearBusy(false);
+    }
+  };
+
+  const saveDashboardPrefs = async () => {
+    setDashBusy(true);
+    try {
+      const res = await fetch("/api/settings/dashboard", {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(dashDraft)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lưu thất bại");
+      const next = mergeDashboardPrefs(data);
+      setDashDraft(next);
+      onDashboardPrefsChange?.(next);
+    } catch (e: any) {
+      alert(e.message || "Lỗi lưu dashboard");
+    } finally {
+      setDashBusy(false);
+    }
+  };
+
+  const saveFinCats = async (next: FinanceCategoriesState) => {
+    setFinBusy(true); setFinMsg("");
+    try {
+      const res = await fetch("/api/settings/finance-categories", {
+        method: "PUT",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(next)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lưu thất bại");
+      setFinCats(mergeFinanceCategories(data));
+      setFinMsg("Đã lưu danh mục thu/chi.");
+    } catch (e: any) {
+      setFinMsg(e.message || "Lỗi lưu danh mục");
+    } finally {
+      setFinBusy(false);
+    }
+  };
 
   // Escape-to-close + scroll lock + focus trap for the edit-user & reset-password modals
   const editTargetRef = useRef<HTMLDivElement | null>(null);
@@ -1641,6 +1771,215 @@ export function Settings({
               </div>
             </form>
           </motion.div>
+        </div>
+      )}
+
+      {/* Branding — tên / logo / icon / tagline */}
+      {currentUser.role === UserRole.ADMIN && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+          <h3 className="text-sm font-bold text-slate-200">🎨 Thương hiệu & tên app</h3>
+          <p className="text-[11px] text-slate-500">Mặc định: <b className="text-slate-300">FamOrg</b> / <b className="text-slate-300">Family Hub</b>. Đổi tên, dòng phụ, logo, favicon.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label className="text-[11px] text-slate-400 space-y-1">
+              Tên app
+              <input value={brandDraft.appName} onChange={e => setBrandDraft(d => ({ ...d, appName: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200" />
+            </label>
+            <label className="text-[11px] text-slate-400 space-y-1">
+              Dòng phụ (tagline)
+              <input value={brandDraft.tagline} onChange={e => setBrandDraft(d => ({ ...d, tagline: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200" />
+            </label>
+            <label className="text-[11px] text-slate-400 space-y-1 sm:col-span-2">
+              Tiêu đề tab trình duyệt
+              <input value={brandDraft.siteTitle} onChange={e => setBrandDraft(d => ({ ...d, siteTitle: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200" />
+            </label>
+            <label className="text-[11px] text-slate-400 space-y-1 sm:col-span-2">
+              Phụ đề trang đăng nhập
+              <input value={brandDraft.authSubtitle} onChange={e => setBrandDraft(d => ({ ...d, authSubtitle: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200" />
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-[11px] text-slate-400">Logo:</span>
+            {(["emoji", "url", "image"] as const).map(t => (
+              <button key={t} type="button" onClick={() => setBrandDraft(d => ({ ...d, logoType: t }))}
+                className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border ${brandDraft.logoType === t ? "bg-sky-500/15 text-sky-300 border-sky-500/30" : "bg-slate-900 text-slate-500 border-slate-800"}`}>
+                {t === "emoji" ? "Emoji" : t === "url" ? "URL" : "Ảnh"}
+              </button>
+            ))}
+            {brandDraft.logoType === "emoji" && (
+              <input value={brandDraft.logoEmoji} onChange={e => setBrandDraft(d => ({ ...d, logoEmoji: e.target.value }))}
+                className="w-16 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-center text-lg" />
+            )}
+            {brandDraft.logoType === "url" && (
+              <input value={brandDraft.logoUrl} onChange={e => setBrandDraft(d => ({ ...d, logoUrl: e.target.value }))}
+                placeholder="/pwa-icon.svg hoặc https://..."
+                className="flex-1 min-w-[180px] bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-xs text-slate-200" />
+            )}
+            {brandDraft.logoType === "image" && (
+              <label className="text-[11px] text-sky-400 cursor-pointer font-semibold">
+                Tải ảnh logo
+                <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                  const f = e.target.files?.[0]; if (!f) return;
+                  try {
+                    const up = await uploadBinaryFile(f, "branding");
+                    setBrandDraft(d => ({ ...d, logoType: "image", logoImage: up.url }));
+                  } catch (err: any) { alert(err.message); }
+                  e.target.value = "";
+                }} />
+              </label>
+            )}
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-400 ml-auto">
+              <input type="checkbox" checked={brandDraft.syncFavicon} onChange={e => setBrandDraft(d => ({ ...d, syncFavicon: e.target.checked }))} />
+              Đồng bộ favicon
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={saveBranding} disabled={brandBusy}
+              className="bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5">
+              {brandBusy ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Lưu thương hiệu
+            </button>
+            <button type="button" onClick={() => setBrandDraft(DEFAULT_BRANDING)}
+              className="text-[11px] text-slate-400 hover:text-slate-200 px-2">Khôi phục mặc định</button>
+          </div>
+          {brandMsg && <p className="text-[11px] text-emerald-400">{brandMsg}</p>}
+        </div>
+      )}
+
+      {/* Appearance / background */}
+      {currentUser.role === UserRole.ADMIN && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+          <h3 className="text-sm font-bold text-slate-200">🌈 Nền & giao diện</h3>
+          <div className="flex flex-wrap gap-2">
+            {BG_PRESETS.map(p => (
+              <button key={p.id} type="button" onClick={() => setAppearDraft(d => ({ ...d, bgPreset: p.id }))}
+                className={`text-[10px] font-bold px-2.5 py-1.5 rounded-lg border ${appearDraft.bgPreset === p.id ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" : "bg-slate-900 text-slate-400 border-slate-800"}`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {appearDraft.bgPreset === "custom" && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <label className="text-[11px] text-sky-400 cursor-pointer font-semibold">
+                Import ảnh nền
+                <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                  const f = e.target.files?.[0]; if (!f) return;
+                  try {
+                    const up = await uploadBinaryFile(f, "backgrounds");
+                    setAppearDraft(d => ({ ...d, customBgUrl: up.url, bgPreset: "custom" }));
+                  } catch (err: any) { alert(err.message); }
+                  e.target.value = "";
+                }} />
+              </label>
+              <label className="text-[11px] text-slate-400 flex items-center gap-2">
+                Độ mờ lớp phủ
+                <input type="range" min={0.05} max={0.45} step={0.01} value={appearDraft.customBgOpacity}
+                  onChange={e => setAppearDraft(d => ({ ...d, customBgOpacity: Number(e.target.value) }))} />
+              </label>
+            </div>
+          )}
+          <button type="button" onClick={saveAppearance} disabled={appearBusy}
+            className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl">
+            {appearBusy ? "Đang lưu..." : "Lưu nền"}
+          </button>
+        </div>
+      )}
+
+      {/* Dashboard widgets config */}
+      {currentUser.role === UserRole.ADMIN && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+          <h3 className="text-sm font-bold text-slate-200">📊 Tùy biến Tổng quan (Dashboard)</h3>
+          <p className="text-[11px] text-slate-500">Bật/tắt khối hiển thị, chọn loại tỷ giá, nguồn tin RSS Việt Nam.</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {(Object.keys(WIDGET_LABELS) as DashboardWidgetId[]).map(id => (
+              <label key={id} className="flex items-center gap-2 text-[11px] text-slate-300 bg-slate-900/60 rounded-lg px-2 py-1.5 border border-slate-800">
+                <input type="checkbox" checked={dashDraft.widgets?.[id] !== false}
+                  onChange={e => setDashDraft(d => ({ ...d, widgets: { ...d.widgets, [id]: e.target.checked } }))} />
+                {WIDGET_LABELS[id]}
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] font-semibold text-slate-400 pt-1">Thẻ thị trường / tỷ giá</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(Object.keys(MARKET_LABELS) as MarketCardId[]).map(id => (
+              <label key={id} className="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-900 rounded-lg px-2 py-1 border border-slate-800">
+                <input type="checkbox" checked={!!dashDraft.markets?.[id]}
+                  onChange={e => setDashDraft(d => ({ ...d, markets: { ...d.markets, [id]: e.target.checked } }))} />
+                {MARKET_LABELS[id]}
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] font-semibold text-slate-400 pt-1">Nguồn tin RSS</p>
+          <div className="flex flex-wrap gap-1.5">
+            {DEFAULT_NEWS_FEEDS.map(f => (
+              <label key={f.id} className="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-900 rounded-lg px-2 py-1 border border-slate-800">
+                <input type="checkbox" checked={(dashDraft.newsFeeds || []).includes(f.id)}
+                  onChange={e => setDashDraft(d => {
+                    const set = new Set(d.newsFeeds || []);
+                    if (e.target.checked) set.add(f.id); else set.delete(f.id);
+                    return { ...d, newsFeeds: [...set] };
+                  })} />
+                {f.label}
+              </label>
+            ))}
+          </div>
+          <button type="button" onClick={saveDashboardPrefs} disabled={dashBusy}
+            className="bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl">
+            {dashBusy ? "Đang lưu..." : "Lưu tùy biến dashboard"}
+          </button>
+        </div>
+      )}
+
+      {/* Finance categories */}
+      {(currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MEMBER) && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+          <h3 className="text-sm font-bold text-slate-200">💰 Danh mục & nhóm thu/chi</h3>
+          <p className="text-[11px] text-slate-500">Nhóm chung cho thu+chi; sắp xếp theo tần suất dùng khi thêm giao dịch (tự động) + thứ tự thủ công.</p>
+          <div className="flex flex-wrap gap-2">
+            <input value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="Tên nhóm mới"
+              className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200" />
+            <button type="button" disabled={finBusy || !newGroupName.trim()} onClick={() => {
+              const g: FinanceCategoryGroup = { id: `grp_${Date.now()}`, name: newGroupName.trim(), emoji: "📁", sortOrder: finCats.groups.length };
+              void saveFinCats({ ...finCats, groups: [...finCats.groups, g] });
+              setNewGroupName("");
+            }} className="text-[11px] font-bold bg-slate-800 text-sky-300 px-2.5 py-1.5 rounded-lg">+ Nhóm</button>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input value={newCatEmoji} onChange={e => setNewCatEmoji(e.target.value)} className="w-12 text-center bg-slate-900 border border-slate-800 rounded-lg py-1.5" />
+            <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Tên danh mục"
+              className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 flex-1 min-w-[120px]" />
+            <select value={newCatKind} onChange={e => setNewCatKind(e.target.value as any)}
+              className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200">
+              <option value="expense">Chi</option>
+              <option value="income">Thu</option>
+              <option value="both">Cả hai</option>
+            </select>
+            <button type="button" disabled={finBusy || !newCatName.trim()} onClick={() => {
+              const c: FinanceCategory = {
+                id: `cat_${Date.now()}`, name: newCatName.trim(), emoji: newCatEmoji || "🏷️",
+                kind: newCatKind, sortOrder: finCats.categories.length, isSystem: false
+              };
+              void saveFinCats({ ...finCats, categories: [...finCats.categories, c] });
+              setNewCatName("");
+            }} className="text-[11px] font-bold bg-emerald-500/20 text-emerald-300 px-2.5 py-1.5 rounded-lg">+ Danh mục</button>
+          </div>
+          <ul className="max-h-48 overflow-y-auto space-y-1 text-[11px]">
+            {finCats.categories.map(c => (
+              <li key={c.id} className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-2 py-1 border border-slate-800/80">
+                <span>{c.emoji}</span>
+                <span className="text-slate-200 flex-1 truncate">{c.name}</span>
+                <span className="text-slate-500 font-mono">{c.kind}</span>
+                {!c.isSystem && (
+                  <button type="button" className="text-rose-400" onClick={() => {
+                    void saveFinCats({ ...finCats, categories: finCats.categories.filter(x => x.id !== c.id) });
+                  }}>xóa</button>
+                )}
+              </li>
+            ))}
+          </ul>
+          {finMsg && <p className="text-[11px] text-emerald-400">{finMsg}</p>}
         </div>
       )}
 

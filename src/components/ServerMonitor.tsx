@@ -34,6 +34,8 @@ interface ServerStats {
   network?: { interfaces: NetworkAddr[]; clientIp: string };
   app?: { version: string; commit: string; nodeVersion: string; processUptimeSec: number; rssBytes: number };
   data?: { dbBytes: number; uploadsBytes: number; pushDevices: number; sseClients: number; users: number };
+  synology?: Record<string, string | number | null> | null;
+  volumes?: { mount: string; totalBytes: number; freeBytes: number }[] | null;
 }
 
 // Một mẫu telemetry từ DB (server ghi 1 phút/lần).
@@ -434,6 +436,14 @@ export function ServerMonitor({ authHeaders, currentUser }: ServerMonitorProps) 
         <span className="flex items-center gap-1.5 font-mono"><Server className="w-3.5 h-3.5 text-sky-400" /> {stats.hostname} · {stats.platform}</span>
         <span className="flex items-center gap-1.5 font-mono"><Clock className="w-3.5 h-3.5 text-amber-400" /> Uptime {fmtUptime(stats.uptimeSec)}</span>
         <span className="flex items-center gap-1.5 font-mono"><Activity className="w-3.5 h-3.5 text-emerald-400" /> Load {stats.loadAvg.map(n => n.toFixed(2)).join(" / ")}</span>
+        {stats.synology && (
+          <span className="flex items-center gap-1.5 font-mono text-violet-300">
+            <HardDrive className="w-3.5 h-3.5 text-violet-400" />
+            Synology{stats.synology.model ? ` ${stats.synology.model}` : ""}
+            {stats.synology.productversion ? ` · DSM ${stats.synology.productversion}` : ""}
+            {stats.synology.buildnumber ? `-${stats.synology.buildnumber}` : ""}
+          </span>
+        )}
       </div>
     );
   }, [stats]);
@@ -601,6 +611,65 @@ export function ServerMonitor({ authHeaders, currentUser }: ServerMonitorProps) 
             )}
           </div>
         </Reveal>
+
+        {/* ── Synology NAS ── */}
+        {stats?.synology && (
+          <Reveal delay={0.22} className="relative overflow-hidden bg-slate-900 border border-violet-500/20 rounded-2xl shadow-md p-4 space-y-3">
+            <ShimmerLine accent="violet" />
+            <h4 className="text-xs font-bold text-violet-200 flex items-center gap-2">
+              <IconChip accent="violet"><Server className="w-4 h-4" /></IconChip> Thiết bị Synology
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+              {stats.synology.model != null && (
+                <div className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                  <p className="text-slate-500">Model</p>
+                  <p className="font-mono text-slate-200">{String(stats.synology.model)}</p>
+                </div>
+              )}
+              {stats.synology.productversion != null && (
+                <div className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                  <p className="text-slate-500">DSM</p>
+                  <p className="font-mono text-slate-200">{String(stats.synology.productversion)}{stats.synology.buildnumber ? `-${stats.synology.buildnumber}` : ""}</p>
+                </div>
+              )}
+              {stats.synology.serial != null && (
+                <div className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                  <p className="text-slate-500">Serial</p>
+                  <CopyValue value={String(stats.synology.serial)} className="text-[11px]" />
+                </div>
+              )}
+              {stats.synology.unique != null && (
+                <div className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                  <p className="text-slate-500">Unique</p>
+                  <p className="font-mono text-slate-200 truncate">{String(stats.synology.unique)}</p>
+                </div>
+              )}
+              {stats.synology.volume != null && (
+                <div className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                  <p className="text-slate-500">Volume app</p>
+                  <p className="font-mono text-slate-200">{String(stats.synology.volume)}</p>
+                </div>
+              )}
+              {stats.synology.kernel != null && (
+                <div className="bg-slate-950/40 border border-slate-800 rounded-xl px-3 py-2">
+                  <p className="text-slate-500">Kernel</p>
+                  <p className="font-mono text-slate-200 truncate">{String(stats.synology.kernel)}</p>
+                </div>
+              )}
+            </div>
+            {stats.volumes && stats.volumes.length > 0 && (
+              <div className="space-y-1 pt-1 border-t border-slate-800">
+                <p className="text-[10px] text-slate-500 font-bold uppercase">Volumes</p>
+                {stats.volumes.map(v => (
+                  <div key={v.mount} className="flex items-center justify-between text-[11px] font-mono bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-1.5">
+                    <span className="text-slate-400">{v.mount}</span>
+                    <span className="text-slate-200">{fmtGb(v.totalBytes - v.freeBytes)} / {fmtGb(v.totalBytes)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Reveal>
+        )}
 
         {/* ── Ứng dụng & dữ liệu ── */}
         <Reveal delay={0.24} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-md p-4 space-y-3">

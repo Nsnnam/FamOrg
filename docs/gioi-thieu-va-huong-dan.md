@@ -1,10 +1,10 @@
-# Family Organizer - app quản lý gia đình tự host
+# FamOrg (Family Hub) — app quản lý gia đình tự host
 
-![Ảnh bìa Family Organizer](./assets/family-organizer-cover.png)
+![Ảnh bìa](./assets/family-organizer-cover.png)
 
-Family Organizer là một ứng dụng quản lý gia đình chạy trên web/PWA, được thiết kế để cả nhà cùng dùng mỗi ngày: giao việc, xem lịch, ghi chú, đi chợ, quản lý chi tiêu, theo dõi sức khỏe, lưu giấy tờ và nhận nhắc nhở. Điểm hay của app là bạn có thể tự host trên Raspberry Pi hoặc một máy Linux nhỏ trong nhà, dữ liệu nằm trong máy của mình, vẫn có realtime sync và có thể cài như app trên điện thoại.
+**FamOrg** (tagline mặc định **Family Hub**) là ứng dụng quản lý gia đình chạy web/PWA — giao việc, lịch, ghi chú, đi chợ, thu chi, sức khỏe, giấy tờ, tin tức RSS và trợ lý AI. Tự host trên **Synology/Xpenology NAS**, Raspberry Pi hoặc Linux; dữ liệu nằm trong máy, realtime sync, cài PWA trên điện thoại.
 
-Repo hiện tại hướng tới mô hình "home server": một máy chủ nhỏ chạy 24/7, các thành viên truy cập bằng trình duyệt hoặc PWA trên iPhone/Android/laptop.
+Tên/logo/icon/nền có thể đổi trong **Thiết lập** (Admin).
 
 ## Tính năng nổi bật
 
@@ -78,9 +78,12 @@ App dùng phân quyền theo vai trò:
 7. Bật danh sách đi chợ chung và thử tạo thực đơn tuần.
 8. Nếu dùng tài chính, nhập ngân sách tháng, hóa đơn định kỳ và vài khoản thu/chi đầu tiên.
 9. Lưu các giấy tờ có ngày hết hạn để app nhắc trước.
-10. (Admin) Cấu hình **Gemini API key** nếu muốn AI viết ghi chú / thực đơn / bản tin tuần.
-11. (Admin) Cấu hình **Telegram** để backup offsite và bản tin tuần; thử **Gửi tin nhắn thử** trước.
-12. Nếu dashboard không hiện thời tiết/tỷ giá: Settings → **Kiểm tra kết nối mạng (container)** — xem [NAS-DEPLOY.md](./NAS-DEPLOY.md) mục 8.
+10. (Admin) **Thương hiệu**: đổi tên app / tagline / logo (mặc định FamOrg · Family Hub).
+11. (Admin) **Dashboard**: bật/tắt khối, chọn tỷ giá (USD/EUR/CNY/JPY), nguồn tin RSS VN.
+12. (Admin) Cấu hình **Gemini** và **Telegram**; thử tin nhắn Telegram trước khi gửi backup.
+13. **Chi tiêu**: thêm nhóm/danh mục; khi gõ số tiền dùng gợi ý mệnh giá / thêm số 0.
+14. **Ghi chú**: toolbar Markdown + chèn ảnh; **Giấy tờ**: upload zip/Office/PDF.
+15. Nếu widget lỗi mạng: Thiết lập → **Kiểm tra kết nối mạng** — [NAS-DEPLOY.md](./NAS-DEPLOY.md) §8.
 
 ## Cài đặt Docker trên NAS (tóm tắt)
 

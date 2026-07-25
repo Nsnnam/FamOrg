@@ -588,6 +588,78 @@ export function Notes({
                     </button>
                   </div>
                 </div>
+                {!editorPreview && (
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {[
+                      { t: "H1", snip: "# " },
+                      { t: "H2", snip: "## " },
+                      { t: "B", snip: "**in đậm**" },
+                      { t: "I", snip: "*nghiêng*" },
+                      { t: "S", snip: "~~gạch~~" },
+                      { t: "• List", snip: "- " },
+                      { t: "1. List", snip: "1. " },
+                      { t: "☐", snip: "- [ ] " },
+                      { t: "Link", snip: "[text](https://)" },
+                      { t: "Quote", snip: "> " },
+                      { t: "Code", snip: "`code`" },
+                      { t: "```", snip: "```\n\n```" },
+                      { t: "Table", snip: "| A | B |\n| --- | --- |\n| 1 | 2 |" },
+                      { t: "HR", snip: "\n---\n" }
+                    ].map(btn => (
+                      <button
+                        key={btn.t}
+                        type="button"
+                        title={btn.snip}
+                        onClick={() => {
+                          const el = contentRef.current;
+                          if (!el) {
+                            setFormContent(prev => (prev ? prev + "\n" + btn.snip : btn.snip));
+                            return;
+                          }
+                          const start = el.selectionStart ?? formContent.length;
+                          const end = el.selectionEnd ?? start;
+                          const next = formContent.slice(0, start) + btn.snip + formContent.slice(end);
+                          setFormContent(next);
+                          requestAnimationFrame(() => {
+                            el.focus();
+                            const pos = start + btn.snip.length;
+                            el.setSelectionRange(pos, pos);
+                          });
+                        }}
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-800 hover:bg-sky-500/20 text-slate-300 hover:text-sky-300 border border-slate-700"
+                      >{btn.t}</button>
+                    ))}
+                    <label className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-800 hover:bg-emerald-500/20 text-emerald-300 border border-slate-700 cursor-pointer">
+                      🖼 Ảnh
+                      <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!f) return;
+                        setImagePasting(true);
+                        try {
+                          const { optimizeAndUpload } = await import("../utils/uploadImage.js");
+                          const up = await optimizeAndUpload(f, "notes", {
+                            maxSourceBytes: 15 * 1024 * 1024,
+                            targetBytes: 900 * 1024,
+                            maxSizes: [1400, 1024, 768],
+                            qualities: [0.85, 0.75, 0.65]
+                          });
+                          const md = `\n![${f.name}](${up.url})\n`;
+                          const el = contentRef.current;
+                          if (!el) setFormContent(prev => prev + md);
+                          else {
+                            const start = el.selectionStart ?? formContent.length;
+                            setFormContent(formContent.slice(0, start) + md + formContent.slice(start));
+                          }
+                        } catch (err: any) {
+                          setFormError(err.message || "Tải ảnh thất bại");
+                        } finally {
+                          setImagePasting(false);
+                        }
+                      }} />
+                    </label>
+                  </div>
+                )}
                 {editorPreview ? (
                   <div className="w-full min-h-[12rem] max-h-[40vh] overflow-y-auto bg-slate-950 border border-slate-800 rounded-lg p-3">
                     <Suspense fallback={<MarkdownFallback />}>
@@ -598,7 +670,7 @@ export function Notes({
                   <textarea
                     ref={contentRef}
                     rows={10}
-                    placeholder={`# Tiêu đề\n\n**In đậm**, *in nghiêng*, ~~gạch ngang~~, [liên kết](https://...)\n\n## Danh sách\n- mục thường\n- [ ] việc cần làm\n- [x] đã xong\n\n1. có thứ tự\n\n> Trích dẫn\n\n\`code\` hoặc khối \`\`\` ... \`\`\`\n\n| Cột A | Cột B |\n| --- | --- |\n| 1 | 2 |`}
+                    placeholder={`# Tiêu đề\n\n**In đậm**, *in nghiêng*, ~~gạch ngang~~, [liên kết](https://...)\n\n## Danh sách\n- mục thường\n- [ ] việc cần làm\n- [x] đã xong\n\n1. có thứ tự\n\n> Trích dẫn\n\n\`code\` hoặc khối \`\`\` ... \`\`\`\n\n| Cột A | Cột B |\n| --- | --- |\n| 1 | 2 |\n\n![ảnh](/uploads/...)`}
                     value={formContent}
                     onChange={(e) => setFormContent(e.target.value)}
                     onPaste={handleContentPaste}
@@ -606,7 +678,7 @@ export function Notes({
                   />
                 )}
                 <p className="text-[10px] text-slate-500">
-                  Hỗ trợ Markdown đầy đủ: tiêu đề, in đậm/nghiêng, danh sách, checkbox, liên kết, trích dẫn, code, bảng… Dán ảnh Ctrl+V được.
+                  Markdown đầy đủ + thanh công cụ + chèn/dán ảnh. Hỗ trợ bảng, checklist, code, quote…
                   {imagePasting && <span className="text-sky-400 font-semibold"> Đang tải ảnh…</span>}
                 </p>
               </div>

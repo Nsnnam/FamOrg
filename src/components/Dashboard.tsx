@@ -32,6 +32,8 @@ import { ShimmerLine, IconChip } from "./Lively.js";
 import { getVietnamHolidaysForMonth } from "../utils/vietnamHolidays.js";
 import { expandRecurringOccurrences } from "../utils/recurrence.js";
 
+import { DashboardPrefs, DEFAULT_DASHBOARD_PREFS, mergeDashboardPrefs } from "../utils/dashboardPrefs.js";
+
 interface DashboardProps {
   currentUser: User;
   users: User[];
@@ -41,6 +43,9 @@ interface DashboardProps {
   transactions: FinancialTransaction[];
   activityLogs: any[];
   widgets: any;
+  prefs?: DashboardPrefs;
+  weatherLoc?: string;
+  onChangeWeatherLoc?: (code: string) => void;
   onViewPlan: (planId: string) => void;
   onNavigate: (tab: string) => void;
 }
@@ -177,10 +182,27 @@ export function Dashboard({
   transactions,
   activityLogs,
   widgets,
+  prefs: prefsProp,
   onViewPlan,
   onNavigate
 }: DashboardProps) {
   const reduceMotion = useReducedMotion();
+  const prefs = mergeDashboardPrefs(prefsProp || DEFAULT_DASHBOARD_PREFS);
+  const show = (id: keyof typeof prefs.widgets) => prefs.widgets[id] !== false;
+
+  const [news, setNews] = useState<{ title: string; link: string; source: string; summary?: string }[]>([]);
+  useEffect(() => {
+    if (!show("news")) return;
+    const token = localStorage.getItem("family_token");
+    if (!token) return;
+    const feeds = (prefs.newsFeeds || []).join(",");
+    fetch(`/api/widgets/news?feeds=${encodeURIComponent(feeds)}&limit=${prefs.newsLimit || 8}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.items) setNews(d.items); })
+      .catch(() => {});
+  }, [prefs.newsFeeds?.join(","), prefs.newsLimit, prefs.widgets.news]);
 
   // Entrance animation preset: cards slide up in sequence; plain fade when the
   // user prefers reduced motion.
@@ -494,10 +516,11 @@ export function Dashboard({
       )}
 
       {/* Weather + Markets widgets — always rendered (skeleton while loading) to avoid layout shift */}
+      {(show("weather") || show("markets")) && (
       <motion.div {...fadeUp(0.12)} className="grid grid-cols-1 lg:grid-cols-3 gap-4" id="dashboard-widgets">
 
         {/* Weather */}
-        {(() => {
+        {show("weather") && (() => {
           const w = widgets?.weather;
           const hasW = !!w?.current;
           const cur = hasW ? describeWeather(w.current.weather_code) : null;
@@ -611,8 +634,10 @@ export function Dashboard({
         })()}
 
         {/* Market mini-cards */}
+        {show("markets") && (
         <div className="lg:col-span-2 grid grid-cols-2 gap-4">
           {/* Bitcoin */}
+          {prefs.markets.btc !== false && (
           <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[92px]">
             <ShimmerLine via="via-amber-500/50" />
             <div className="flex items-center justify-between">
@@ -634,8 +659,10 @@ export function Dashboard({
               <TrendRow values={marketSeries.btc} />
             </div>
           </div>
+          )}
 
           {/* Ethereum */}
+          {prefs.markets.eth !== false && (
           <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-indigo-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[92px]">
             <ShimmerLine via="via-indigo-500/50" />
             <div className="flex items-center justify-between">
@@ -657,8 +684,10 @@ export function Dashboard({
               <TrendRow values={marketSeries.eth} />
             </div>
           </div>
+          )}
 
           {/* Gold */}
+          {prefs.markets.gold !== false && (
           <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-yellow-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-yellow-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[92px]">
             <ShimmerLine via="via-yellow-500/50" />
             <div className="flex items-center justify-between">
@@ -692,8 +721,10 @@ export function Dashboard({
               <TrendRow values={marketSeries.gold} />
             </div>
           </div>
+          )}
 
           {/* USD/VND */}
+          {prefs.markets.usdVnd !== false && (
           <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-emerald-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[92px]">
             <ShimmerLine via="via-emerald-500/50" />
             <div className="flex items-center justify-between">
@@ -714,8 +745,50 @@ export function Dashboard({
               <TrendRow values={marketSeries.fx} />
             </div>
           </div>
+          )}
+          {prefs.markets.eurVnd && widgets?.fx?.eurVnd != null && (
+            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[92px]">
+              <span className="text-xs font-bold text-blue-400">💶 EUR/VND</span>
+              <p className="text-lg font-extrabold text-slate-100 mt-2"><AnimatedNumber value={widgets.fx.eurVnd} format={fmtVnd} /></p>
+            </div>
+          )}
+          {prefs.markets.cnyVnd && widgets?.fx?.cnyVnd != null && (
+            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[92px]">
+              <span className="text-xs font-bold text-red-400">¥ CNY/VND</span>
+              <p className="text-lg font-extrabold text-slate-100 mt-2"><AnimatedNumber value={widgets.fx.cnyVnd} format={fmtVnd} /></p>
+            </div>
+          )}
+          {prefs.markets.jpyVnd && widgets?.fx?.jpyVnd != null && (
+            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[92px]">
+              <span className="text-xs font-bold text-pink-400">¥ JPY/VND</span>
+              <p className="text-lg font-extrabold text-slate-100 mt-2"><AnimatedNumber value={widgets.fx.jpyVnd} format={fmtVnd} /></p>
+            </div>
+          )}
         </div>
+        )}
       </motion.div>
+      )}
+
+      {/* Tin tức RSS Việt Nam */}
+      {show("news") && news.length > 0 && (
+        <motion.div {...fadeUp(0.14)} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-200">📰 Tin tức</h3>
+            <span className="text-[10px] text-slate-500">RSS chính thống VN</span>
+          </div>
+          <ul className="space-y-1.5">
+            {news.map((n, i) => (
+              <li key={i}>
+                <a href={n.link} target="_blank" rel="noreferrer noopener"
+                  className="block text-xs text-slate-300 hover:text-sky-300 truncate">
+                  <span className="text-[10px] font-mono text-slate-500 mr-1.5 uppercase">{n.source}</span>
+                  {n.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </motion.div>
+      )}
 
       {/* Main Stats Row — glass cards with an accent glow that answers hover */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="dashboard-stats">

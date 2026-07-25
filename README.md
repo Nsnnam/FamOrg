@@ -1,6 +1,6 @@
-# 🏡 Family Organizer
+# 🏡 FamOrg — Family Hub
 
-Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịch trình, nhiệm vụ, sức khỏe, giấy tờ, mua sắm, thưởng điểm cho trẻ và trợ lý AI — thiết kế để chạy ổn định 24/7 trên **Raspberry Pi 5** hoặc bất kỳ Linux server nào.
+Hệ thống quản lý gia đình tất-cả-trong-một (**mặc định tên: FamOrg**, tagline **Family Hub** — có thể đổi trong Thiết lập) — tài chính, lịch trình, nhiệm vụ, sức khỏe, giấy tờ, mua sắm, thưởng điểm cho trẻ và trợ lý AI — thiết kế để chạy ổn định 24/7 trên **Synology NAS / Xpenology**, Raspberry Pi hoặc Linux server.
 
 ---
 
@@ -10,9 +10,10 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 
 - Tóm tắt ngày: nhiệm vụ chờ xử lý, số dư quỹ gia đình, ghi chú ghim, sự kiện sắp tới
 - Widget thời tiết theo 63 tỉnh/thành (nguồn Open-Meteo, không cần API key)
-- Giá thị trường trực tiếp: BTC, ETH, Vàng SJC, tỷ giá USD/VND với sparkline 7 ngày
-- Nhắc sinh nhật thành viên (ẩn nếu không có ai sắp sinh nhật), nhắc uống thuốc, danh sách mua sắm
-- Nút **Nhắc người nhà**: gửi thông báo đẩy cho một thành viên hoặc cả nhà
+- Giá thị trường: BTC, ETH, Vàng SJC, USD/VND (+ tùy chọn EUR/CNY/JPY)
+- **Tin tức RSS** từ báo chính thống VN (VnExpress, Tuổi Trẻ, Chính phủ, VTV…)
+- **Tùy biến** bật/tắt từng khối dashboard, chọn thẻ tỷ giá và nguồn tin (Admin → Thiết lập)
+- Nhắc sinh nhật, nhắc thuốc, danh sách mua sắm, **Nhắc người nhà**
 
 ### 📋 Nhiệm Vụ (Tasks)
 
@@ -29,22 +30,17 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 
 ### 📝 Ghi Chú (Notes)
 
-- Soạn thảo Markdown đầy đủ (GFM): đầu mục, danh sách, checkbox, code inline, in đậm/nghiêng
-- Toggle Soạn / Xem trước ngay trong cùng màn hình
-- Ghim ghi chú quan trọng, phân quyền Công khai / Cá nhân
-- Trợ lý AI viết nháp ghi chú từ ý tưởng ngắn (cần Gemini key)
+- Markdown đầy đủ + **thanh công cụ** (H1/H2, đậm, list, bảng, code…)
+- **Chèn/dán ảnh** vào ghi chú (Ctrl+V hoặc nút Ảnh)
+- Soạn / Xem trước; ghim; quyền Công khai / Cá nhân; AI viết nháp (Gemini)
 
 ### 💰 Chi Tiêu (Finance)
 
-- Ghi thu nhập và chi tiêu theo danh mục (ăn uống, học tập, điện nước, y tế, đi lại, v.v.)
-- Đính kèm ảnh hóa đơn (lưu file, không base64); tự chuyển ảnh HEIC của iPhone sang JPEG
-- Biểu đồ tròn phân bổ dòng tiền, lọc theo tháng
-- Xuất báo cáo PDF
-- **Tài Sản** (Assets): Crypto (BTC/ETH giá live), Vàng (định giá tự động theo trọng lượng × giá 9999 × hệ số tuổi vàng), Bất động sản, Xe cộ, Cổ phiếu — kèm tính lời/lỗ so với giá mua
-- **Ngân Sách** (Budgets): Hạn mức chi tiêu theo tháng, tùy chọn "Carry Forward" sang tháng sau
-- **Hóa Đơn Tái Diễn** (Recurring Bills): Nhắc thanh toán định kỳ (điện, internet, bảo hiểm, v.v.)
-- **Mục Tiêu Tiết Kiệm** (Savings Goals): Theo dõi tiến độ, thêm/ghi nhận đóng góp
-- **Quản Lý Nợ** (Debt Tracker): Ghi khoản nợ, lịch trả, số tiền còn lại
+- Ghi thu/chi; **nhóm danh mục** và danh mục tùy chỉnh (chung thu+chi)
+- Sắp xếp danh mục theo **tần suất sử dụng** rồi thứ tự thủ công
+- Nhập tiền thông minh: biểu thức `50.000+20.000`, gợi ý **mệnh giá / thêm 3–6 số 0**
+- Đính kèm ảnh hóa đơn; biểu đồ, lọc kỳ, xuất PDF
+- **Tài Sản**, **Ngân Sách**, **Hóa đơn tái diễn**, **Tiết kiệm**, **Nợ**
 
 ### 🛒 Đi Chợ (Shopping)
 
@@ -61,9 +57,9 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 
 ### 📄 Giấy Tờ (Documents)
 
-- Kho lưu giấy tờ quan trọng (CMND, hộ chiếu, bảo hiểm, sổ đỏ, v.v.)
-- Theo dõi ngày hết hạn, cảnh báo trước 30 ngày
-- Phân theo chủ sở hữu, đính kèm ảnh scan
+- Kho giấy tờ (CMND, hộ chiếu, bảo hiểm, sổ đỏ…)
+- Đính kèm **ảnh, PDF, Office (doc/xls/ppt), zip/rar/7z** (tối đa 25MB/tệp)
+- Theo dõi hết hạn, phân chủ sở hữu
 
 ### 🎁 Thưởng Điểm (Rewards)
 
@@ -74,10 +70,15 @@ Hệ thống quản lý gia đình tất-cả-trong-một — tài chính, lịc
 
 ### 🖥️ Quản Lý Server (Server Monitor — chỉ Admin)
 
-- Theo dõi CPU, RAM, nhiệt độ, ổ đĩa theo thời gian thực
-- Lịch sử 7 ngày dạng sparkline
-- Shortcut link tới các dịch vụ homelab (Immich, Portainer, v.v.)
-- Kiểm tra phiên bản + nút **Cập nhật ngay** (gọi Watchtower HTTP API)
+- CPU, RAM, nhiệt độ, ổ đĩa + lịch sử 24h/7 ngày
+- **Thông tin Synology**: model, DSM version/build, serial, unique, volume, kernel, dung lượng từng volume
+- Shortcut homelab; cập nhật app qua Watchtower
+
+### 🎨 Thương hiệu & giao diện
+
+- Đổi **tên app**, tagline, tiêu đề tab, logo (emoji/URL/ảnh), favicon
+- Mặc định: **FamOrg** / **Family Hub**
+- Nền: nhiều preset màu + **import ảnh nền** tùy chỉnh
 
 ### 🤖 Trợ Lý AI (Gemini)
 

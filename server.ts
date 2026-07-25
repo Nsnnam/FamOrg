@@ -381,21 +381,22 @@ const canManageDocument = (
 };
 
 // --- MEDIA UPLOAD ---
-// Accepts an optimized base64 data URL, writes it to disk under the given
-// category folder, and returns the "/uploads/..." URL to store in the DB.
-const UPLOAD_CATEGORIES = new Set(["avatars", "assets", "receipts", "documents"]);
+// Accepts a base64 data URL (images, PDF, Office, zip/rar/7z) under category.
+const UPLOAD_CATEGORIES = new Set([
+  "avatars", "assets", "receipts", "documents", "notes", "branding", "backgrounds", "debts"
+]);
 
 app.post("/api/uploads", requireAuth, (req: AuthRequest, res: Response) => {
-  const { dataUrl, category, subfolder } = req.body || {};
+  const { dataUrl, category, subfolder, fileName } = req.body || {};
   if (!UPLOAD_CATEGORIES.has(category)) {
-    res.status(400).json({ error: "Loại ảnh tải lên không hợp lệ." });
+    res.status(400).json({ error: "Loại thư mục tải lên không hợp lệ." });
     return;
   }
   try {
-    const saved = saveDataUrlToFile(dataUrl, category, subfolder);
+    const saved = saveDataUrlToFile(dataUrl, category, subfolder, fileName);
     res.json(saved);
   } catch (err: any) {
-    res.status(400).json({ error: err.message || "Tải ảnh lên thất bại." });
+    res.status(400).json({ error: err.message || "Tải tệp lên thất bại." });
   }
 });
 
@@ -560,6 +561,69 @@ const readDisk = async () => {
   }
 };
 
+/** Đọc thông tin Synology DSM khi chạy host-network trên NAS. */
+async function readSynologyInfo(): Promise<Record<string, string | number | null> | null> {
+  const out: Record<string, string | number | null> = {};
+  const tryRead = async (p: string) => {
+    try { return (await fsp.readFile(p, "utf8")).trim(); } catch { return null; }
+  };
+  // Synology VERSION file: productversion, buildnumber, os_name, unique...
+  const verPaths = [
+    "/etc.defaults/VERSION",
+    "/etc/VERSION",
+    "/usr/syno/etc/VERSION"
+  ];
+  let verRaw: string | null = null;
+  for (const p of verPaths) {
+    verRaw = await tryRead(p);
+    if (verRaw) break;
+  }
+  if (verRaw) {
+    out.isSynology = 1;
+    for (const line of verRaw.split("\n")) {
+      const m = line.match(/^([a-zA-Z0-9_]+)="?([^"]*)"?$/);
+      if (!m) continue;
+      const k = m[1].toLowerCase();
+      if (["productversion", "buildnumber", "os_name", "unique", "base", "smallfix", "majorversion", "minorversion"].includes(k)) {
+        out[k] = m[2];
+      }
+    }
+  }
+  // Model / serial (host paths — need host network or mounted /proc /sys)
+  out.model = (await tryRead("/proc/sys/kernel/syno_hw_version"))
+    || (await tryRead("/sys/devices/virtual/dmi/id/product_name"))
+    || null;
+  out.serial = (await tryRead("/proc/sys/kernel/syno_serial"))
+    || (await tryRead("/sys/class/dmi/id/product_serial"))
+    || null;
+  // Kernel / uptime already known; DSM unique is enough for identity
+  try {
+    const uname = os.release();
+    out.kernel = uname;
+  } catch { /* */ }
+  // Volume path hint when data lives under /volumeN
+  const cwd = process.cwd();
+  const vol = cwd.match(/\/volume(\d+)/i);
+  if (vol) out.volume = `volume${vol[1]}`;
+  out.dataPath = cwd;
+
+  // Multi-disk free space for common Synology mounts
+  const disks: { mount: string; totalBytes: number; freeBytes: number }[] = [];
+  for (const mount of ["/volume1", "/volume2", "/volume3", "/data-volume", "/"]) {
+    try {
+      if (typeof fsp.statfs !== "function") break;
+      const st = await fsp.statfs(mount);
+      const totalBytes = Number(st.blocks) * Number(st.bsize);
+      const freeBytes = Number(st.bavail) * Number(st.bsize);
+      if (totalBytes > 0) disks.push({ mount, totalBytes, freeBytes });
+    } catch { /* mount missing */ }
+  }
+  if (disks.length) out.volumesJson = JSON.stringify(disks);
+
+  if (!out.isSynology && !out.model) return null;
+  return out;
+}
+
 // Ghi telemetry vào SQLite 1 phút/lần (24/7) để biểu đồ giữ được lịch sử
 // 24h/7 ngày qua các lần reload trang — client không cần poll dày.
 async function recordServerMetric() {
@@ -675,15 +739,21 @@ async function readDataSizes(): Promise<{ dbBytes: number; uploadsBytes: number 
 
 app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (req: AuthRequest, res: Response) => {
   try {
-    const [cpuPercent, tempC, ssdTempC, memory, disk, dataSizes] = await Promise.all([
+    const [cpuPercent, tempC, ssdTempC, memory, disk, dataSizes, synology] = await Promise.all([
       readCpuPercent(),
       readCpuTempC(),
       readSsdTempC(),
       readMemory(),
       readDisk(),
-      readDataSizes()
+      readDataSizes(),
+      readSynologyInfo()
     ]);
     const cpus = os.cpus();
+    let volumes: { mount: string; totalBytes: number; freeBytes: number }[] | undefined;
+    if (synology?.volumesJson && typeof synology.volumesJson === "string") {
+      try { volumes = JSON.parse(synology.volumesJson); } catch { /* */ }
+      delete (synology as any).volumesJson;
+    }
     res.json({
       at: new Date().toISOString(),
       hostname: os.hostname(),
@@ -695,9 +765,7 @@ app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (
       ssdTempC,
       memory,
       disk,
-      // Mạng & truy cập
       network: { interfaces: listNetworkAddrs(), clientIp: readClientIp(req) },
-      // Ứng dụng & dữ liệu
       app: {
         version: APP_VERSION,
         commit: GIT_SHA ? GIT_SHA.slice(0, 7) : "",
@@ -710,7 +778,9 @@ app.get("/api/server/stats", requireAuth, requireRole([UserRole.ADMIN]), async (
         pushDevices: FamilyDB.getPushSubscriptions().length,
         sseClients: sseClients.length,
         users: FamilyDB.getUsers().length
-      }
+      },
+      synology: synology || null,
+      volumes: volumes || null
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Không đọc được thông số máy chủ." });
@@ -820,6 +890,203 @@ app.post("/api/settings/telegram-digest/test", requireAuth, requireRole([UserRol
     res.json({ success: true, message: `Đã gửi bản tin tuần${aiUsed ? " (AI)" : ""} — kiểm tra chat Telegram nhé.` });
   } catch (err: any) {
     res.status(400).json({ error: outboundErrorMessage(err, "Bản tin tuần") || err.message || "Gửi bản tin tuần thất bại." });
+  }
+});
+
+// --- BRANDING / APPEARANCE / DASHBOARD / FINANCE CATEGORIES (app_settings JSON) ---
+function parseJsonSetting<T>(key: string, fallback: T): T {
+  try {
+    const raw = getAppSettings()[key];
+    if (!raw) return fallback;
+    return { ...(fallback as any), ...JSON.parse(raw) };
+  } catch {
+    return fallback;
+  }
+}
+
+const DEFAULT_BRANDING_SERVER = {
+  appName: "FamOrg",
+  tagline: "Family Hub",
+  siteTitle: "FamOrg — Family Hub",
+  description: "Hệ thống quản lý gia đình tất-cả-trong-một",
+  logoType: "emoji",
+  logoEmoji: "🏡",
+  logoUrl: "/pwa-icon.svg",
+  logoImage: "",
+  authSubtitle: "Hệ thống cộng tác hằng ngày của gia đình thân thương",
+  syncFavicon: true
+};
+
+app.get("/api/settings/branding", requireAuth, (_req: AuthRequest, res: Response) => {
+  res.json(parseJsonSetting("branding", DEFAULT_BRANDING_SERVER));
+});
+
+app.put("/api/settings/branding", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
+  const body = req.body || {};
+  const next = {
+    ...DEFAULT_BRANDING_SERVER,
+    ...parseJsonSetting("branding", DEFAULT_BRANDING_SERVER),
+    ...body
+  };
+  next.appName = String(next.appName || DEFAULT_BRANDING_SERVER.appName).trim().slice(0, 80);
+  next.tagline = String(next.tagline || "").trim().slice(0, 80);
+  next.siteTitle = String(next.siteTitle || `${next.appName} — ${next.tagline}`).trim().slice(0, 120);
+  next.description = String(next.description || "").trim().slice(0, 240);
+  next.logoType = ["emoji", "url", "image"].includes(next.logoType) ? next.logoType : "emoji";
+  next.logoEmoji = String(next.logoEmoji || "🏡").slice(0, 8);
+  next.logoUrl = String(next.logoUrl || "").slice(0, 500);
+  next.logoImage = String(next.logoImage || "").slice(0, 2_000_000);
+  next.authSubtitle = String(next.authSubtitle || "").slice(0, 200);
+  next.syncFavicon = Boolean(next.syncFavicon);
+  setAppSetting("branding", JSON.stringify(next));
+  res.json(next);
+});
+
+// Public-ish branding for login screen (no secrets)
+app.get("/api/public/branding", (_req: Request, res: Response) => {
+  res.json(parseJsonSetting("branding", DEFAULT_BRANDING_SERVER));
+});
+
+app.get("/api/settings/appearance", requireAuth, (_req: AuthRequest, res: Response) => {
+  res.json(parseJsonSetting("appearance", {
+    bgPreset: "default", customBgUrl: "", customBgOpacity: 0.18, accent: "sky"
+  }));
+});
+
+app.put("/api/settings/appearance", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
+  const cur = parseJsonSetting("appearance", {
+    bgPreset: "default", customBgUrl: "", customBgOpacity: 0.18, accent: "sky"
+  });
+  const next = { ...cur, ...(req.body || {}) };
+  next.bgPreset = String(next.bgPreset || "default").slice(0, 32);
+  next.customBgUrl = String(next.customBgUrl || "").slice(0, 2_000_000);
+  next.customBgOpacity = Math.min(0.5, Math.max(0.05, Number(next.customBgOpacity) || 0.18));
+  next.accent = String(next.accent || "sky").slice(0, 20);
+  setAppSetting("appearance", JSON.stringify(next));
+  res.json(next);
+});
+
+app.get("/api/settings/dashboard", requireAuth, (_req: AuthRequest, res: Response) => {
+  res.json(parseJsonSetting("dashboardPrefs", {}));
+});
+
+app.put("/api/settings/dashboard", requireAuth, requireRole([UserRole.ADMIN]), (req: AuthRequest, res: Response) => {
+  const cur = parseJsonSetting("dashboardPrefs", {});
+  const next = { ...cur, ...(req.body || {}) };
+  setAppSetting("dashboardPrefs", JSON.stringify(next));
+  res.json(next);
+});
+
+app.get("/api/settings/finance-categories", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (_req: AuthRequest, res: Response) => {
+  res.json(parseJsonSetting("financeCategories", { groups: [], categories: [] }));
+});
+
+app.put("/api/settings/finance-categories", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const groups = Array.isArray(req.body?.groups) ? req.body.groups : [];
+  const categories = Array.isArray(req.body?.categories) ? req.body.categories : [];
+  const clean = {
+    groups: groups.map((g: any, i: number) => ({
+      id: String(g.id || `grp_${Date.now()}_${i}`).slice(0, 40),
+      name: String(g.name || "Nhóm").trim().slice(0, 60),
+      emoji: String(g.emoji || "📁").slice(0, 8),
+      sortOrder: Number(g.sortOrder) || i
+    })),
+    categories: categories.map((c: any, i: number) => ({
+      id: String(c.id || `cat_${Date.now()}_${i}`).slice(0, 40),
+      name: String(c.name || "Danh mục").trim().slice(0, 60),
+      emoji: String(c.emoji || "🏷️").slice(0, 8),
+      kind: ["income", "expense", "both"].includes(c.kind) ? c.kind : "expense",
+      groupId: c.groupId ? String(c.groupId).slice(0, 40) : null,
+      sortOrder: Number(c.sortOrder) || i,
+      isSystem: Boolean(c.isSystem)
+    }))
+  };
+  setAppSetting("financeCategories", JSON.stringify(clean));
+  res.json(clean);
+});
+
+// Tin tức RSS VN — proxy server-side (tránh CORS), cache 15 phút.
+const newsCache: { at: number; items: any[] } = { at: 0, items: [] };
+const VN_RSS: Record<string, string> = {
+  vnexpress: "https://vnexpress.net/rss/tin-moi-nhat.rss",
+  tuoitre: "https://tuoitre.vn/rss/tin-moi-nhat.rss",
+  thanhnien: "https://thanhnien.vn/rss/home.rss",
+  vietnamnet: "https://vietnamnet.vn/rss/tin-noi-bat.rss",
+  baochinhphu: "https://baochinhphu.vn/rss/home.rss",
+  vtv: "https://vtv.vn/rss/tin-moi-nhat.rss"
+};
+
+function parseRssItems(xml: string, source: string, limit: number): any[] {
+  const items: any[] = [];
+  const blocks = xml.split(/<item[\s>]/i).slice(1);
+  for (const block of blocks) {
+    if (items.length >= limit) break;
+    const title = (block.match(/<title[^>]*><!\[CDATA\[(.*?)\]\]><\/title>/i)
+      || block.match(/<title[^>]*>([^<]*)<\/title>/i))?.[1]?.trim();
+    const link = (block.match(/<link[^>]*><!\[CDATA\[(.*?)\]\]><\/link>/i)
+      || block.match(/<link[^>]*>([^<]*)<\/link>/i))?.[1]?.trim();
+    const pub = (block.match(/<pubDate[^>]*>([^<]*)<\/pubDate>/i))?.[1]?.trim();
+    const desc = (block.match(/<description[^>]*><!\[CDATA\[(.*?)\]\]><\/description>/is)
+      || block.match(/<description[^>]*>([^<]*)<\/description>/i))?.[1]?.replace(/<[^>]+>/g, "").trim();
+    if (title && link) {
+      items.push({
+        title: title.slice(0, 200),
+        link: link.slice(0, 500),
+        source,
+        pubDate: pub || null,
+        summary: (desc || "").slice(0, 220)
+      });
+    }
+  }
+  return items;
+}
+
+app.get("/api/widgets/news", requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const prefs = parseJsonSetting("dashboardPrefs", { newsFeeds: ["vnexpress", "tuoitre"], newsLimit: 8 }) as any;
+    const feedIds: string[] = Array.isArray(req.query.feeds)
+      ? (req.query.feeds as string[])
+      : typeof req.query.feeds === "string"
+        ? String(req.query.feeds).split(",").map(s => s.trim()).filter(Boolean)
+        : (prefs.newsFeeds || ["vnexpress", "tuoitre"]);
+    const limit = Math.min(20, Math.max(3, Number(req.query.limit) || prefs.newsLimit || 8));
+    const cacheKey = feedIds.join(",") + ":" + limit;
+    if (newsCache.at && Date.now() - newsCache.at < 15 * 60 * 1000 && (newsCache as any).key === cacheKey) {
+      res.json({ items: newsCache.items, cached: true });
+      return;
+    }
+    const perFeed = Math.max(2, Math.ceil(limit / Math.max(1, feedIds.length)));
+    const settled = await Promise.all(feedIds.map(async (id) => {
+      const url = VN_RSS[id];
+      if (!url) return [] as any[];
+      try {
+        const r = await fetchOutbound(url, { headers: { Accept: "application/rss+xml, application/xml, text/xml" } }, 12_000);
+        if (!r.ok) return [];
+        const xml = await r.text();
+        return parseRssItems(xml, id, perFeed);
+      } catch (e) {
+        console.warn("[news] feed fail", id, (e as Error).message);
+        return [];
+      }
+    }));
+    // Interleave sources
+    const buckets = settled;
+    const items: any[] = [];
+    let i = 0;
+    while (items.length < limit) {
+      let added = false;
+      for (const b of buckets) {
+        if (b[i]) { items.push(b[i]); added = true; if (items.length >= limit) break; }
+      }
+      if (!added) break;
+      i++;
+    }
+    newsCache.at = Date.now();
+    newsCache.items = items;
+    (newsCache as any).key = cacheKey;
+    res.json({ items, cached: false, feeds: feedIds });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Không lấy được tin tức.", items: [] });
   }
 });
 
@@ -2669,33 +2936,59 @@ async function fetchCrypto() {
 }
 
 async function fetchFx() {
-  // Primary
+  // Primary: full USD base rates (need VND + cross for EUR/CNY/JPY via USD)
   try {
     const r = await fetchOutbound("https://open.er-api.com/v6/latest/USD", {}, 10_000);
     if (r.ok) {
       const j: any = await r.json();
-      if (j.rates?.VND) return { usdVnd: j.rates.VND, updated: j.time_last_update_utc ?? null };
+      const usdVnd = j.rates?.VND ?? null;
+      if (usdVnd) {
+        const eurUsd = j.rates?.EUR ? 1 / j.rates.EUR : null;
+        const cnyUsd = j.rates?.CNY ? 1 / j.rates.CNY : null;
+        const jpyUsd = j.rates?.JPY ? 1 / j.rates.JPY : null;
+        return {
+          usdVnd,
+          eurVnd: eurUsd ? eurUsd * usdVnd : null,
+          cnyVnd: cnyUsd ? cnyUsd * usdVnd : null,
+          jpyVnd: jpyUsd ? jpyUsd * usdVnd : null,
+          updated: j.time_last_update_utc ?? null
+        };
+      }
     }
   } catch (e) {
     console.warn("[fx] open.er-api failed:", (e as Error).message);
   }
-  // Fallback: Frankfurter (ECB)
+  // Fallback: Frankfurter USD→VND
   try {
-    const r = await fetchOutbound("https://api.frankfurter.app/latest?from=USD&to=VND", {}, 10_000);
+    const r = await fetchOutbound("https://api.frankfurter.app/latest?from=USD&to=VND,EUR,CNY,JPY", {}, 10_000);
     if (r.ok) {
       const j: any = await r.json();
-      if (j.rates?.VND) return { usdVnd: j.rates.VND, updated: j.date ?? null };
+      const usdVnd = j.rates?.VND ?? null;
+      if (usdVnd) {
+        return {
+          usdVnd,
+          eurVnd: j.rates?.EUR ? (usdVnd / j.rates.EUR) : null,
+          cnyVnd: j.rates?.CNY ? (usdVnd / j.rates.CNY) : null,
+          jpyVnd: j.rates?.JPY ? (usdVnd / j.rates.JPY) : null,
+          updated: j.date ?? null
+        };
+      }
     }
   } catch (e) {
     console.warn("[fx] frankfurter failed:", (e as Error).message);
   }
-  // Fallback: exchangerate.host
-  const r = await fetchOutbound("https://api.exchangerate.host/latest?base=USD&symbols=VND", {}, 10_000);
+  const r = await fetchOutbound("https://api.exchangerate.host/latest?base=USD&symbols=VND,EUR,CNY,JPY", {}, 10_000);
   if (!r.ok) throw new Error(`fx HTTP ${r.status}`);
   const j: any = await r.json();
   const usdVnd = j.rates?.VND ?? j.result ?? null;
   if (!usdVnd) throw new Error("fx: no VND rate from any source");
-  return { usdVnd, updated: j.date ?? null };
+  return {
+    usdVnd,
+    eurVnd: j.rates?.EUR ? usdVnd / j.rates.EUR : null,
+    cnyVnd: j.rates?.CNY ? usdVnd / j.rates.CNY : null,
+    jpyVnd: j.rates?.JPY ? usdVnd / j.rates.JPY : null,
+    updated: j.date ?? null
+  };
 }
 
 const VANG_TODAY_HEADERS = {

@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Family Organizer",
+  "name": "FamOrg",
   "short_name": "Family Hub",
-  "description": "Quản lý công việc, đi chợ, ngân sách, nhắc thuốc và điểm thưởng cho cả gia đình.",
+  "description": "FamOrg — Family Hub: quản lý công việc, đi chợ, ngân sách, nhắc thuốc và điểm thưởng cho cả gia đình.",
   "lang": "vi",
   "dir": "ltr",
   "start_url": "/",

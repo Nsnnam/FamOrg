@@ -3,9 +3,46 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Lock, User as UserIcon, Home, AlertCircle } from "lucide-react";
 import { motion } from "motion/react";
+import { DEFAULT_BRANDING, BrandingSettings, mergeBranding, applyBrandingToDocument, getLogoDisplay } from "../utils/branding.js";
+
+function AuthBrandHeader() {
+  const [b, setB] = useState<BrandingSettings>(DEFAULT_BRANDING);
+  useEffect(() => {
+    fetch("/api/public/branding")
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!d) return;
+        const next = mergeBranding(d);
+        setB(next);
+        applyBrandingToDocument(next);
+      })
+      .catch(() => {});
+  }, []);
+  const logo = getLogoDisplay(b);
+  return (
+    <div className="text-center space-y-2">
+      <div className="inline-flex bg-sky-500/10 p-3 rounded-2xl text-sky-400 border border-sky-500/10 mb-1 leading-none shadow-inner shadow-sky-400/5 text-3xl">
+        {logo.kind === "img" ? (
+          <img src={logo.value} alt="" className="w-10 h-10 object-contain rounded-lg" />
+        ) : logo.kind === "emoji" ? (
+          <span aria-hidden>{logo.value}</span>
+        ) : (
+          <Home className="w-8 h-8" />
+        )}
+      </div>
+      <h2 className="text-xl font-extrabold text-slate-100 tracking-tight">{b.appName}</h2>
+      {b.tagline && (
+        <p className="text-[10px] uppercase font-mono tracking-widest text-sky-400/80">{b.tagline}</p>
+      )}
+      {b.authSubtitle && (
+        <p className="text-slate-500 text-xs text-balance">{b.authSubtitle}</p>
+      )}
+    </div>
+  );
+}
 
 interface AuthProps {
   onLoginSuccess: (user: any, token: string) => void;
@@ -62,14 +99,8 @@ export function Auth({ onLoginSuccess }: AuthProps) {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-2xl space-y-6 z-10"
       >
-        {/* Upper visual logo */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex bg-sky-500/10 p-3 rounded-2xl text-sky-400 border border-sky-500/10 mb-1 leading-none shadow-inner shadow-sky-400/5">
-            <Home className="w-8 h-8" />
-          </div>
-          <h2 className="text-xl font-extrabold text-slate-100 tracking-tight">Family Organizer</h2>
-          <p className="text-slate-500 text-xs text-balance">Hệ thống cộng tác hằng ngày của gia đình thân thương</p>
-        </div>
+        {/* Upper visual logo — branding từ server /api/public/branding */}
+        <AuthBrandHeader />
 
         {errorStatus && (
           <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs font-semibold flex items-center gap-2">

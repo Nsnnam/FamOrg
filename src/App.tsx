@@ -74,6 +74,9 @@ import { useModalA11y } from "./hooks/useModalA11y.js";
 import { reloadOnce, scheduleReloadFallback } from "./utils/appReload.js";
 import { DEFAULT_VN_LOCATION, findVnLocation } from "./utils/vnLocations.js";
 import { fetchWidgetsFromBrowser, mergeWidgetData } from "./utils/widgetFallback.js";
+import { DEFAULT_BRANDING, BrandingSettings, mergeBranding, applyBrandingToDocument, getLogoDisplay } from "./utils/branding.js";
+import { AppearanceSettings, mergeAppearance, DEFAULT_APPEARANCE } from "./utils/appearance.js";
+import { DashboardPrefs, mergeDashboardPrefs, DEFAULT_DASHBOARD_PREFS } from "./utils/dashboardPrefs.js";
 import { motion, AnimatePresence } from "motion/react";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
@@ -103,6 +106,9 @@ export default function App() {
     return (saved as "light" | "dark") || "light";
   });
   const themeFadeTimer = useRef<number | null>(null);
+  const [branding, setBranding] = useState<BrandingSettings>(DEFAULT_BRANDING);
+  const [appearance, setAppearance] = useState<AppearanceSettings>(DEFAULT_APPEARANCE);
+  const [dashboardPrefs, setDashboardPrefs] = useState<DashboardPrefs>(DEFAULT_DASHBOARD_PREFS);
 
   // Áp theme lên DOM (class + màu thanh trình duyệt) — thuần DOM, không animation
   const applyThemeDom = useCallback((t: "light" | "dark") => {
@@ -117,6 +123,42 @@ export default function App() {
     localStorage.setItem("family_theme", theme);
     applyThemeDom(theme);
   }, [theme, applyThemeDom]);
+
+  useEffect(() => {
+    applyBrandingToDocument(branding);
+  }, [branding]);
+
+  useEffect(() => {
+    if (appearance.bgPreset === "custom" && appearance.customBgUrl) {
+      document.body.style.backgroundImage = `linear-gradient(rgba(2,6,23,${1 - appearance.customBgOpacity}), rgba(2,6,23,${1 - appearance.customBgOpacity})), url(${appearance.customBgUrl})`;
+      document.body.style.backgroundSize = "cover";
+      document.body.style.backgroundAttachment = "fixed";
+      document.body.style.backgroundPosition = "center";
+    } else {
+      document.body.style.backgroundImage = "";
+      document.body.style.backgroundSize = "";
+      document.body.style.backgroundAttachment = "";
+      document.body.style.backgroundPosition = "";
+    }
+  }, [appearance]);
+
+  // Load branding / appearance / dashboard prefs after login
+  useEffect(() => {
+    if (!authToken) return;
+    const headers = { Authorization: `Bearer ${authToken}` };
+    fetch("/api/settings/branding", { headers })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setBranding(mergeBranding(d)); })
+      .catch(() => {});
+    fetch("/api/settings/appearance", { headers })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setAppearance(mergeAppearance(d)); })
+      .catch(() => {});
+    fetch("/api/settings/dashboard", { headers })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setDashboardPrefs(mergeDashboardPrefs(d)); })
+      .catch(() => {});
+  }, [authToken]);
 
   const prefersReducedMotion = () =>
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -1681,12 +1723,17 @@ export default function App() {
         <div className="min-h-0 flex-1 space-y-8 overflow-y-auto pr-1">
           {/* Main Visual Title */}
           <div className="flex items-center gap-2.5 px-2">
-            <div className="bg-sky-500/10 p-2 rounded-xl text-sky-400 border border-sky-400/10 leading-none">
-              <Home className="w-5 h-5" />
+            <div className="bg-sky-500/10 p-2 rounded-xl text-sky-400 border border-sky-400/10 leading-none text-xl flex items-center justify-center min-w-[2.25rem] min-h-[2.25rem]">
+              {(() => {
+                const logo = getLogoDisplay(branding);
+                return logo.kind === "img"
+                  ? <img src={logo.value} alt="" className="w-5 h-5 object-contain rounded" />
+                  : <span aria-hidden>{logo.value}</span>;
+              })()}
             </div>
             <div>
-              <span className="text-md font-extrabold text-slate-100 block tracking-tight">Family Organizer</span>
-              <span className="text-[9px] uppercase font-mono tracking-widest text-slate-500">Raspberry Pi 5 Hub</span>
+              <span className="text-md font-extrabold text-slate-100 block tracking-tight">{branding.appName}</span>
+              <span className="text-[9px] uppercase font-mono tracking-widest text-slate-500">{branding.tagline}</span>
             </div>
           </div>
 
@@ -1899,6 +1946,9 @@ export default function App() {
                   transactions={transactions}
                   activityLogs={activityLogs}
                   widgets={widgets}
+                  prefs={dashboardPrefs}
+                  weatherLoc={weatherLoc}
+                  onChangeWeatherLoc={handleChangeWeatherLoc}
                   onViewPlan={handleViewPlan}
                   onNavigate={(tab) => {
                     setActiveTab(tab);
@@ -2053,6 +2103,12 @@ export default function App() {
                   onDeleteBackup={handleDeleteBackup}
                   weatherLoc={weatherLoc}
                   onChangeWeatherLoc={handleChangeWeatherLoc}
+                  branding={branding}
+                  onBrandingChange={(b) => setBranding(mergeBranding(b))}
+                  appearance={appearance}
+                  onAppearanceChange={(a) => setAppearance(mergeAppearance(a))}
+                  dashboardPrefs={dashboardPrefs}
+                  onDashboardPrefsChange={(p) => setDashboardPrefs(mergeDashboardPrefs(p))}
                 />
               )}
             </motion.div>
@@ -2084,8 +2140,8 @@ export default function App() {
                     <Home className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="text-sm font-bold text-slate-100 block">Synology Hub</span>
-                    <span className="text-[9px] uppercase font-mono text-slate-500">Family Organizer</span>
+                    <span className="text-sm font-bold text-slate-100 block">{branding.appName}</span>
+                    <span className="text-[9px] uppercase font-mono text-slate-500">{branding.tagline}</span>
                   </div>
                 </div>
                 <button 

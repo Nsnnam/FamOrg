@@ -58,6 +58,9 @@ import {
 } from "../utils/financePeriod.js";
 import { useTabFab } from "./FabHost.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
+import {
+  mergeFinanceCategories, sortCategoriesByPriority, categoryLabel, FinanceCategory
+} from "../utils/financeCategories.js";
 
 // Rút gọn số tiền cho nhãn trục/tooltip biểu đồ: 12tr, 1,5 tỷ, 500k.
 const fmtShortMoney = (n: number): string => {
@@ -249,6 +252,15 @@ function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, op
   // Khi rời ô: hiển thị theo value đã chốt; khi đang gõ: hiển thị raw (đã nhóm nghìn)
   const display = focused ? raw : (value > 0 ? value.toLocaleString("vi-VN") : "");
 
+  // Gợi ý mệnh giá + thêm 3–6 số 0 (giống app ThuChi)
+  const suggestions = useMemo(() => {
+    const digits = (focused ? raw : String(value || "")).replace(/\D/g, "");
+    if (!digits) return ["10000", "50000", "100000", "200000", "500000", "1000000"];
+    const out: string[] = [];
+    for (const z of [3, 4, 5, 6]) out.push(digits + "0".repeat(z));
+    return [...new Set(out)].slice(0, 6);
+  }, [raw, value, focused]);
+
   const commit = () => {
     onChange(evalMoneyExpression(raw));
     setFocused(false);
@@ -271,6 +283,14 @@ function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, op
     inputRef.current?.focus();
   };
 
+  const pickSuggestion = (s: string) => {
+    const formatted = formatMoneyExpr(s);
+    setRaw(formatted);
+    onChange(evalMoneyExpression(formatted));
+    setFocused(true);
+    inputRef.current?.focus();
+  };
+
   return (
     <div className="relative">
       <div className="flex items-stretch gap-1.5">
@@ -284,7 +304,7 @@ function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, op
           placeholder={placeholder}
           onFocus={() => { setRaw(value > 0 ? value.toLocaleString("vi-VN") : ""); setFocused(true); }}
           onChange={(e) => setFromInput(e.target.value)}
-          onBlur={commit}
+          onBlur={() => { /* delay so chip click registers */ setTimeout(commit, 120); }}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); inputRef.current?.blur(); } }}
           className={className}
         />
@@ -303,6 +323,22 @@ function MoneyInput({ value, onChange, placeholder, className, id, autoFocus, op
           </div>
         )}
       </div>
+      {focused && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {suggestions.map(s => (
+            <button
+              key={s}
+              type="button"
+              tabIndex={-1}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => pickSuggestion(s)}
+              className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md bg-slate-800 hover:bg-sky-500/20 text-slate-300 hover:text-sky-300 border border-slate-700"
+            >
+              {Number(s).toLocaleString("vi-VN")}
+            </button>
+          ))}
+        </div>
+      )}
       {focused && hasOperator && (
         <p className="mt-1 text-[11px] font-mono font-bold text-emerald-400">= {preview.toLocaleString("vi-VN")} đ</p>
       )}
@@ -383,6 +419,42 @@ export function Finance({
   const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
   const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [showCompare, setShowCompare] = useState(false);
+
+  // Danh mục tùy biến (server) + sắp theo tần suất dùng
+  const [customCats, setCustomCats] = useState<FinanceCategory[]>([]);
+  useEffect(() => {
+    const token = localStorage.getItem("family_token");
+    if (!token) return;
+    fetch("/api/settings/finance-categories", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        const merged = mergeFinanceCategories(d);
+        setCustomCats(merged.categories);
+      })
+      .catch(() => setCustomCats(mergeFinanceCategories(null).categories));
+  }, []);
+
+  const usageMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const t of transactions) {
+      const k = t.category || "";
+      m[k] = (m[k] || 0) + 1;
+    }
+    return m;
+  }, [transactions]);
+
+  const expenseCategoryOptions = useMemo(() => {
+    const list = customCats.filter(c => c.kind === "expense" || c.kind === "both");
+    const sorted = sortCategoriesByPriority(list.length ? list : mergeFinanceCategories(null).categories.filter(c => c.kind === "expense" || c.kind === "both"), usageMap);
+    return sorted.map(c => ({ value: c.id, label: categoryLabel(c) }));
+  }, [customCats, usageMap]);
+
+  const incomeCategoryOptions = useMemo(() => {
+    const list = customCats.filter(c => c.kind === "income" || c.kind === "both");
+    if (!list.length) return INCOME_CATEGORIES.map(c => ({ value: c, label: c }));
+    return sortCategoriesByPriority(list, usageMap).map(c => ({ value: c.name, label: categoryLabel(c) }));
+  }, [customCats, usageMap]);
+
   // Query Filter States
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -1212,7 +1284,7 @@ export function Finance({
                   value={budgetCategory}
                   onChange={setBudgetCategory}
                   ariaLabel="Hạng mục ngân sách"
-                  options={EXPENSE_CATEGORY_OPTIONS}
+                  options={expenseCategoryOptions.length ? expenseCategoryOptions : EXPENSE_CATEGORY_OPTIONS}
                 />
                 <MoneyInput
                   value={budgetLimit}
@@ -1518,7 +1590,7 @@ export function Finance({
               ariaLabel="Lọc theo hạng mục"
               options={[
                 { value: "all", label: "Mọi hạng mục" },
-                ...EXPENSE_CATEGORY_OPTIONS,
+                ...(expenseCategoryOptions.length ? expenseCategoryOptions : EXPENSE_CATEGORY_OPTIONS),
                 { value: "Bán tài sản", label: "Bán tài sản 🪙" }
               ]}
             />
@@ -1802,20 +1874,24 @@ export function Finance({
                       value={formCategory as string}
                       onChange={setFormCategory}
                       ariaLabel="Hạng mục chi phí"
-                      options={EXPENSE_CATEGORY_OPTIONS}
+                      options={expenseCategoryOptions.length ? expenseCategoryOptions : EXPENSE_CATEGORY_OPTIONS}
                     />
                   ) : (
                     <div className="space-y-2">
                       <FancySelect
-                        value={isPresetIncome(formCategory as string) ? (formCategory as string) : INCOME_CUSTOM}
+                        value={
+                          incomeCategoryOptions.some(o => o.value === formCategory) || isPresetIncome(formCategory as string)
+                            ? (formCategory as string)
+                            : INCOME_CUSTOM
+                        }
                         onChange={(v) => setFormCategory(v === INCOME_CUSTOM ? "" : v)}
                         ariaLabel="Nguồn thu"
                         options={[
-                          ...INCOME_CATEGORIES.map(c => ({ value: c, label: c })),
+                          ...incomeCategoryOptions,
                           { value: INCOME_CUSTOM, label: "Khác (tự nhập)…" }
                         ]}
                       />
-                      {!isPresetIncome(formCategory as string) && (
+                      {!(incomeCategoryOptions.some(o => o.value === formCategory) || isPresetIncome(formCategory as string)) && (
                         <input
                           type="text"
                           placeholder="Nhập nguồn thu khác: trúng số, tiền lì xì..."

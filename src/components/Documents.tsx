@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Plus, Trash2, Pencil, X, Calendar, User as UserIcon, Paperclip, ExternalLink, ShieldAlert, ChevronLeft, ChevronRight } from "lucide-react";
 import { FamilyDocument, DocumentFile, DocumentType, DOCUMENT_TYPE_LABELS, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
-import { optimizeAndUpload, uploadDataUrl } from "../utils/uploadImage.js";
+import { optimizeAndUpload, uploadDataUrl, uploadBinaryFile } from "../utils/uploadImage.js";
 import { useTabFab } from "./FabHost.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -131,7 +131,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // Nhận cả ảnh (tối ưu trước khi tải) lẫn PDF (tải nguyên bản, tối đa 10MB).
+  // Ảnh (tối ưu), PDF, Office (doc/xls/ppt…), nén (zip/rar/7z) — tối đa 25MB/tệp.
   const addPickedFiles = async (picked: File[]) => {
     if (picked.length === 0) return;
     if (files.length + picked.length > MAX_DOC_FILES) {
@@ -143,19 +143,9 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     try {
       const added: DocumentFile[] = [];
       for (const file of picked) {
-        const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+        const isImage = file.type.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
         let url: string; let sizeKb: number;
-        if (isPdf) {
-          if (file.size > 10 * 1024 * 1024) throw new Error(`PDF "${file.name}" quá lớn (tối đa 10MB).`);
-          const dataUrl = await new Promise<string>((resolve, reject) => {
-            const r = new FileReader();
-            r.onload = () => resolve(String(r.result));
-            r.onerror = () => reject(new Error("Không đọc được tệp PDF."));
-            r.readAsDataURL(file);
-          });
-          url = await uploadDataUrl(dataUrl, "documents");
-          sizeKb = Math.max(1, Math.round(file.size / 1024));
-        } else {
+        if (isImage) {
           const up = await optimizeAndUpload(file, "documents", {
             maxSourceBytes: 25 * 1024 * 1024,
             targetBytes: 1000 * 1024,
@@ -163,6 +153,11 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
             qualities: [0.86, 0.78, 0.68, 0.58],
             backgroundColor: "#ffffff"
           });
+          url = up.url;
+          sizeKb = up.sizeKb;
+        } else {
+          // PDF / Office / zip / rar / 7z / text
+          const up = await uploadBinaryFile(file, "documents");
           url = up.url;
           sizeKb = up.sizeKb;
         }
@@ -373,7 +368,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
               </label>
               <label className={`text-[11px] font-bold rounded-lg px-2.5 py-1 cursor-pointer flex items-center gap-1 shrink-0 ${uploading || files.length >= MAX_DOC_FILES ? "bg-slate-800 text-slate-600 cursor-not-allowed" : "bg-slate-800 hover:bg-slate-700 text-indigo-400"}`}>
                 <Plus className="w-3 h-3" /> {uploading ? "Đang tải..." : "Thêm tệp"}
-                <input type="file" accept="image/*,application/pdf,.pdf" multiple disabled={uploading || files.length >= MAX_DOC_FILES} onChange={handleFilePick} className="hidden" />
+                <input type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.zip,.rar,.7z,.txt,.csv,.rtf,application/msword,application/vnd.openxmlformats-officedocument.*,application/zip,application/x-rar-compressed,application/x-7z-compressed" multiple disabled={uploading || files.length >= MAX_DOC_FILES} onChange={handleFilePick} className="hidden" />
               </label>
             </div>
             {files.length > 0 && (
