@@ -57,7 +57,8 @@ async function sendTelegramText(token: string, chatId: string, text: string): Pr
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text })
+      body: JSON.stringify({ chat_id: chatId, text }),
+      signal: AbortSignal.timeout(15_000)
     });
   } catch { /* thông báo phụ — bỏ qua nếu lỗi */ }
 }
@@ -97,7 +98,11 @@ export async function sendBackupToTelegram(): Promise<{ sizeMb: number; fileName
     form.append("caption", `🗄 Backup Family Organizer ${new Date().toLocaleString("vi-VN")} — ${sizeMb}MB`);
     form.append("document", new Blob([await fs.promises.readFile(tmpFile)], { type: "application/zip" }), fileName);
 
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, { method: "POST", body: form });
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(120_000)
+    });
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
       throw new Error(`Telegram trả lỗi: ${data.description || `HTTP ${res.status}`}`);

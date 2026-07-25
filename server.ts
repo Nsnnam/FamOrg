@@ -85,6 +85,42 @@ const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 const WATCHTOWER_URL = process.env.WATCHTOWER_URL || "";
 const WATCHTOWER_TOKEN = process.env.WATCHTOWER_HTTP_API_TOKEN || "";
 
+// --- OUTBOUND HTTP HELPERS ---
+// All external API calls (weather, FX, gold, crypto, Gemini, Telegram) go through
+// these helpers so a hung DNS/IPv6 path on NAS Docker cannot freeze the UI forever.
+const OUTBOUND_DEFAULT_MS = 12_000;
+
+function outboundErrorMessage(err: any, label = "Kết nối ngoài"): string {
+  const msg = String(err?.message || err || "");
+  if (/abort|timeout|TimeoutError|UND_ERR_CONNECT_TIMEOUT/i.test(msg)) {
+    return `${label} quá thời gian chờ — container có thể không ra được Internet (DNS/IPv6). Xem docs/NAS-DEPLOY.md mục "Widget & AI không tải".`;
+  }
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(msg)) {
+    return `${label} không phân giải được DNS. Thêm dns: 8.8.8.8 vào docker-compose và restart.`;
+  }
+  if (/ECONNREFUSED|ECONNRESET|ENETUNREACH|EHOSTUNREACH|network/i.test(msg)) {
+    return `${label} bị chặn mạng (firewall/Docker). Kiểm tra outbound HTTPS từ container.`;
+  }
+  if (/fetch failed|Failed to fetch|TypeError/i.test(msg)) {
+    return `${label} thất bại (fetch failed). Thường do container không ra Internet.`;
+  }
+  return msg || `${label} thất bại.`;
+}
+
+async function fetchOutbound(url: string, init: RequestInit = {}, timeoutMs = OUTBOUND_DEFAULT_MS): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const headers = new Headers(init.headers || {});
+    if (!headers.has("User-Agent")) {
+      headers.set("User-Agent", "FamOrg/1.0 (+https://github.com/your-github-user/FamOrg)");
+    }
+    return await fetch(url, { ...init, headers, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // --- GEMINI API KEY ---
 // Admin can set a key from the UI (stored in app_settings.json); falls back to env.
 function getGeminiKey(): string {
@@ -106,14 +142,26 @@ function aiStatus() {
   return { configured: Boolean(key), source: geminiKeySource(), masked: maskKey(key) };
 }
 // Lightweight validation: make a tiny call so a bad key fails fast at save time.
-async function testGeminiKey(key: string): Promise<void> {
+// Hard timeout so a broken outbound path never hangs the Settings save button.
+async function testGeminiKey(key: string, timeoutMs = 15_000): Promise<void> {
   const { GoogleGenAI } = await import("@google/genai");
   const ai = new GoogleGenAI({ apiKey: key });
-  await ai.models.generateContent({
+  const work = ai.models.generateContent({
     model: "gemini-2.5-flash",
     contents: "ping",
     config: { responseMimeType: "text/plain" }
   } as any);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      work,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Timeout khi gọi Gemini (container có thể không ra Internet)")), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // Gemini thường trả 503 "model overloaded" / 429 khi quá tải — lỗi tạm thời.
@@ -676,8 +724,10 @@ app.get("/api/settings/ai", requireAuth, requireRole([UserRole.ADMIN]), (_req: A
 });
 
 // Save (and validate) a Gemini key, or clear it by sending an empty value.
+// Body: { apiKey, skipValidate?: boolean } — skipValidate lưu key khi mạng container lỗi.
 app.post("/api/settings/ai", requireAuth, requireRole([UserRole.ADMIN]), async (req: AuthRequest, res: Response) => {
   const apiKey = String(req.body?.apiKey ?? "").trim();
+  const skipValidate = Boolean(req.body?.skipValidate);
 
   if (!apiKey) {
     setAppSetting("geminiApiKey", null);
@@ -685,15 +735,26 @@ app.post("/api/settings/ai", requireAuth, requireRole([UserRole.ADMIN]), async (
     return;
   }
 
-  try {
-    await testGeminiKey(apiKey);
-  } catch (err: any) {
-    res.status(400).json({ error: "Key không dùng được (gọi thử Gemini thất bại): " + (err?.message || "lỗi không rõ") });
-    return;
+  if (!skipValidate) {
+    try {
+      await testGeminiKey(apiKey);
+    } catch (err: any) {
+      res.status(400).json({
+        error: "Key không dùng được (gọi thử Gemini thất bại): " + outboundErrorMessage(err, "Gemini"),
+        networkHint: true,
+        canSkipValidate: true
+      });
+      return;
+    }
   }
 
   setAppSetting("geminiApiKey", apiKey);
-  res.json({ ...aiStatus(), message: "Đã lưu Gemini API key. Tính năng AI đã sẵn sàng." });
+  res.json({
+    ...aiStatus(),
+    message: skipValidate
+      ? "Đã lưu Gemini API key (chưa kiểm tra mạng). Thử trợ lý AI sau khi container ra được Internet."
+      : "Đã lưu Gemini API key. Tính năng AI đã sẵn sàng."
+  });
 });
 
 // --- TELEGRAM BACKUP SETTINGS (admin only) ---
@@ -713,13 +774,42 @@ app.post("/api/settings/telegram-backup", requireAuth, requireRole([UserRole.ADM
   res.json(telegramBackupStatus());
 });
 
+// Gửi tin nhắn thử (nhẹ) — kiểm tra token/chat id + outbound Internet mà không nén backup.
+app.post("/api/settings/telegram-backup/ping", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
+  try {
+    const s = getAppSettings();
+    const token = (s.telegramBotToken || "").trim();
+    const chatId = (s.telegramChatId || "").trim();
+    if (!token || !chatId) {
+      res.status(400).json({ error: "Chưa cấu hình Telegram bot token / chat ID." });
+      return;
+    }
+    const r = await fetchOutbound(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: "✅ FamOrg: kết nối Telegram OK — bot nhận được tin nhắn thử."
+      })
+    }, 15_000);
+    const data: any = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) {
+      res.status(400).json({ error: `Telegram trả lỗi: ${data.description || `HTTP ${r.status}`}` });
+      return;
+    }
+    res.json({ success: true, message: "Đã gửi tin nhắn thử qua Telegram — kiểm tra chat nhé.", ...telegramBackupStatus() });
+  } catch (err: any) {
+    res.status(400).json({ error: outboundErrorMessage(err, "Telegram") });
+  }
+});
+
 // Gửi thử ngay 1 bản backup (kiểm tra token/chat id đúng chưa).
 app.post("/api/settings/telegram-backup/test", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
   try {
     const result = await sendBackupToTelegram();
     res.json({ success: true, message: `Đã gửi backup ${result.sizeMb}MB qua Telegram — kiểm tra chat của bạn nhé.`, ...telegramBackupStatus() });
   } catch (err: any) {
-    res.status(400).json({ error: err.message || "Gửi backup qua Telegram thất bại." });
+    res.status(400).json({ error: outboundErrorMessage(err, "Telegram backup") || err.message || "Gửi backup qua Telegram thất bại." });
   }
 });
 
@@ -729,8 +819,38 @@ app.post("/api/settings/telegram-digest/test", requireAuth, requireRole([UserRol
     const { aiUsed } = await sendWeeklyDigest();
     res.json({ success: true, message: `Đã gửi bản tin tuần${aiUsed ? " (AI)" : ""} — kiểm tra chat Telegram nhé.` });
   } catch (err: any) {
-    res.status(400).json({ error: err.message || "Gửi bản tin tuần thất bại." });
+    res.status(400).json({ error: outboundErrorMessage(err, "Bản tin tuần") || err.message || "Gửi bản tin tuần thất bại." });
   }
+});
+
+// Chẩn đoán outbound Internet từ container (admin) — giúp tìm lỗi widget/AI/Telegram.
+app.get("/api/settings/connectivity", requireAuth, requireRole([UserRole.ADMIN]), async (_req: AuthRequest, res: Response) => {
+  const targets: { id: string; label: string; url: string }[] = [
+    { id: "open_meteo", label: "Open-Meteo (thời tiết)", url: "https://api.open-meteo.com/v1/forecast?latitude=10.78&longitude=106.7&current=temperature_2m" },
+    { id: "coingecko", label: "CoinGecko (crypto)", url: "https://api.coingecko.com/api/v3/ping" },
+    { id: "er_api", label: "open.er-api (USD/VND)", url: "https://open.er-api.com/v6/latest/USD" },
+    { id: "vang_today", label: "vang.today (vàng SJC)", url: "https://www.vang.today/api/prices?type=SJL1L10" },
+    { id: "telegram", label: "api.telegram.org", url: "https://api.telegram.org" },
+    { id: "google", label: "generativelanguage.googleapis.com (Gemini)", url: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta" }
+  ];
+  const results = await Promise.all(targets.map(async (t) => {
+    const started = Date.now();
+    try {
+      const r = await fetchOutbound(t.url, { method: "GET" }, 10_000);
+      return { id: t.id, label: t.label, ok: r.ok || r.status < 500, status: r.status, ms: Date.now() - started };
+    } catch (err: any) {
+      return { id: t.id, label: t.label, ok: false, status: 0, ms: Date.now() - started, error: outboundErrorMessage(err, t.label) };
+    }
+  }));
+  const okCount = results.filter(r => r.ok).length;
+  res.json({
+    ok: okCount === results.length,
+    partial: okCount > 0 && okCount < results.length,
+    okCount,
+    total: results.length,
+    ipv4First: String(process.env.NODE_OPTIONS || "").includes("ipv4first"),
+    results
+  });
 });
 
 // Vòng kiểm tra gửi backup + bản tin tuần (mỗi 30 phút, module tự lo dedupe + khung giờ).
@@ -2486,7 +2606,7 @@ function deriveStormRisk(current: any, daily: any): any {
 
 async function fetchWeather(lat: number, lon: number, city: string) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_gusts_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_probability_max,wind_gusts_10m_max&timezone=Asia%2FHo_Chi_Minh&forecast_days=3`;
-  const r = await fetch(url);
+  const r = await fetchOutbound(url, {}, 12_000);
   if (!r.ok) throw new Error(`weather HTTP ${r.status}`);
   const j: any = await r.json();
   return { city, current: j.current, daily: j.daily, stormRisk: deriveStormRisk(j.current, j.daily) };
@@ -2507,7 +2627,7 @@ async function fetchQuakes(lat: number, lon: number) {
   const RADIUS_KM = 500;
   const start = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const url = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${lat}&longitude=${lon}&maxradiuskm=${RADIUS_KM}&starttime=${start}&minmagnitude=2.5&orderby=time&limit=5`;
-  const r = await fetch(url);
+  const r = await fetchOutbound(url, {}, 12_000);
   if (!r.ok) throw new Error(`quakes HTTP ${r.status}`);
   const j: any = await r.json();
   const events = (j.features || []).map((f: any) => {
@@ -2523,17 +2643,59 @@ async function fetchQuakes(lat: number, lon: number) {
 }
 
 async function fetchCrypto() {
-  const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd,vnd&include_24hr_change=true";
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`crypto HTTP ${r.status}`);
-  return await r.json();
+  // Primary: CoinGecko (USD + VND + 24h change)
+  try {
+    const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd,vnd&include_24hr_change=true";
+    const r = await fetchOutbound(url, {}, 12_000);
+    if (r.ok) return await r.json();
+    console.warn("[crypto] CoinGecko HTTP", r.status);
+  } catch (e) {
+    console.warn("[crypto] CoinGecko failed:", (e as Error).message);
+  }
+  // Fallback: Binance public ticker (USD only; VND filled later via FX)
+  const rBtc = await fetchOutbound("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", {}, 10_000);
+  const rEth = await fetchOutbound("https://api.binance.com/api/v3/ticker/24hr?symbol=ETHUSDT", {}, 10_000);
+  if (!rBtc.ok || !rEth.ok) throw new Error(`crypto fallback HTTP btc=${rBtc.status} eth=${rEth.status}`);
+  const btc: any = await rBtc.json();
+  const eth: any = await rEth.json();
+  const btcUsd = Number(btc.lastPrice) || 0;
+  const ethUsd = Number(eth.lastPrice) || 0;
+  const btcChg = Number(btc.priceChangePercent) || 0;
+  const ethChg = Number(eth.priceChangePercent) || 0;
+  return {
+    bitcoin: { usd: btcUsd, vnd: null, usd_24h_change: btcChg },
+    ethereum: { usd: ethUsd, vnd: null, usd_24h_change: ethChg }
+  };
 }
 
 async function fetchFx() {
-  const r = await fetch("https://open.er-api.com/v6/latest/USD");
+  // Primary
+  try {
+    const r = await fetchOutbound("https://open.er-api.com/v6/latest/USD", {}, 10_000);
+    if (r.ok) {
+      const j: any = await r.json();
+      if (j.rates?.VND) return { usdVnd: j.rates.VND, updated: j.time_last_update_utc ?? null };
+    }
+  } catch (e) {
+    console.warn("[fx] open.er-api failed:", (e as Error).message);
+  }
+  // Fallback: Frankfurter (ECB)
+  try {
+    const r = await fetchOutbound("https://api.frankfurter.app/latest?from=USD&to=VND", {}, 10_000);
+    if (r.ok) {
+      const j: any = await r.json();
+      if (j.rates?.VND) return { usdVnd: j.rates.VND, updated: j.date ?? null };
+    }
+  } catch (e) {
+    console.warn("[fx] frankfurter failed:", (e as Error).message);
+  }
+  // Fallback: exchangerate.host
+  const r = await fetchOutbound("https://api.exchangerate.host/latest?base=USD&symbols=VND", {}, 10_000);
   if (!r.ok) throw new Error(`fx HTTP ${r.status}`);
   const j: any = await r.json();
-  return { usdVnd: j.rates?.VND ?? null, updated: j.time_last_update_utc ?? null };
+  const usdVnd = j.rates?.VND ?? j.result ?? null;
+  if (!usdVnd) throw new Error("fx: no VND rate from any source");
+  return { usdVnd, updated: j.date ?? null };
 }
 
 const VANG_TODAY_HEADERS = {
@@ -2564,12 +2726,37 @@ function pickVangTodayQuote(payload: any, code: string): any | null {
 }
 
 async function fetchVangTodayQuote(code: string) {
-  const r = await fetch(`https://www.vang.today/api/prices?type=${encodeURIComponent(code)}`, {
+  const r = await fetchOutbound(`https://www.vang.today/api/prices?type=${encodeURIComponent(code)}`, {
     headers: VANG_TODAY_HEADERS
-  });
+  }, 12_000);
   if (!r.ok) throw new Error(`vang.today ${code} HTTP ${r.status}`);
   const payload: any = await r.json();
   return { payload, quote: pickVangTodayQuote(payload, code) };
+}
+
+async function fetchGoldFromPaxg(usdVnd: number | null) {
+  // PAXG ≈ 1 troy oz gold (CoinGecko, free, no key).
+  const r = await fetchOutbound(
+    "https://api.coingecko.com/api/v3/simple/price?ids=pax-gold&vs_currencies=usd&include_24hr_change=true",
+    {},
+    12_000
+  );
+  if (!r.ok) throw new Error(`PAXG HTTP ${r.status}`);
+  const j: any = await r.json();
+  const usdPerOz = marketNumber(j?.["pax-gold"]?.usd);
+  if (!usdPerOz) throw new Error("PAXG missing price");
+  const changePct = marketNumber(j?.["pax-gold"]?.usd_24h_change);
+  let vndPerTael: number | null = null;
+  if (usdVnd) {
+    vndPerTael = Math.round((usdPerOz / 31.1035) * 37.5 * usdVnd);
+  }
+  return {
+    source: "Vàng thế giới (PAXG, tham khảo)",
+    usdPerOz,
+    changePct,
+    vndPerTael,
+    updated: new Date().toISOString()
+  };
 }
 
 async function fetchGold(usdVnd: number | null) {
@@ -2596,25 +2783,31 @@ async function fetchGold(usdVnd: number | null) {
   }
 
   // Fallback to world gold from the same provider.
-  const { payload, quote } = await fetchVangTodayQuote("XAUUSD");
-  const usdPerOz = marketNumber(quote?.sell) || marketNumber(quote?.buy);
-  if (!usdPerOz) throw new Error("vang.today XAUUSD response missing price");
-
-  const change = marketNumber(quote?.change_sell) || marketNumber(quote?.change_buy) || 0;
-  const prev = usdPerOz - change;
-  const changePct = prev ? (change / prev) * 100 : null;
-  let vndPerTael: number | null = null;
-  if (usdVnd) {
-    // Approximate VND per tael (1 tael = 37.5g, 1 troy oz = 31.1035g).
-    vndPerTael = Math.round((usdPerOz / 31.1035) * 37.5 * usdVnd);
+  try {
+    const { payload, quote } = await fetchVangTodayQuote("XAUUSD");
+    const usdPerOz = marketNumber(quote?.sell) || marketNumber(quote?.buy);
+    if (usdPerOz) {
+      const change = marketNumber(quote?.change_sell) || marketNumber(quote?.change_buy) || 0;
+      const prev = usdPerOz - change;
+      const changePct = prev ? (change / prev) * 100 : null;
+      let vndPerTael: number | null = null;
+      if (usdVnd) {
+        // Approximate VND per tael (1 tael = 37.5g, 1 troy oz = 31.1035g).
+        vndPerTael = Math.round((usdPerOz / 31.1035) * 37.5 * usdVnd);
+      }
+      return {
+        source: "Vàng thế giới (XAU, tham khảo)",
+        usdPerOz,
+        changePct,
+        vndPerTael,
+        updated: quote?.update_time ?? payload.timestamp ?? payload.current_time ?? null
+      };
+    }
+  } catch (e) {
+    console.error("Gold vang.today XAUUSD loi, dung PAXG:", e);
   }
-  return {
-    source: "Vàng thế giới (XAU, tham khảo)",
-    usdPerOz,
-    changePct,
-    vndPerTael,
-    updated: quote?.update_time ?? payload.timestamp ?? payload.current_time ?? null
-  };
+
+  return fetchGoldFromPaxg(usdVnd);
 }
 
 app.get("/api/widgets/overview", requireAuth, async (req: AuthRequest, res: Response) => {
@@ -2628,12 +2821,39 @@ app.get("/api/widgets/overview", requireAuth, async (req: AuthRequest, res: Resp
   const city = typeof req.query.city === "string" && req.query.city.trim() ? req.query.city.trim().slice(0, 60) : WEATHER_CITY;
   const geoKey = `${lat.toFixed(3)}_${lon.toFixed(3)}`;
 
-  const weather = await cachedFetch(`weather_${geoKey}`, 15 * 60 * 1000, () => fetchWeather(lat, lon, city));
-  const quakes = await cachedFetch(`quakes_${geoKey}`, 30 * 60 * 1000, () => fetchQuakes(lat, lon));
-  const cryptoPrices = await cachedFetch("crypto", 5 * 60 * 1000, fetchCrypto);
-  const fx = await cachedFetch("fx", 30 * 60 * 1000, fetchFx);
+  // Parallel — one slow source must not block the whole dashboard.
+  const [weather, quakes, cryptoPrices, fx] = await Promise.all([
+    cachedFetch(`weather_${geoKey}`, 15 * 60 * 1000, () => fetchWeather(lat, lon, city)),
+    cachedFetch(`quakes_${geoKey}`, 30 * 60 * 1000, () => fetchQuakes(lat, lon)),
+    cachedFetch("crypto", 5 * 60 * 1000, fetchCrypto),
+    cachedFetch("fx", 30 * 60 * 1000, fetchFx)
+  ]);
   const gold = await cachedFetch("gold", 30 * 60 * 1000, () => fetchGold(fx?.usdVnd ?? null));
-  res.json({ weather, quakes, crypto: cryptoPrices, fx, gold });
+
+  // Fill VND for crypto if provider only returned USD (Binance fallback).
+  let cryptoOut = cryptoPrices;
+  if (cryptoOut && fx?.usdVnd) {
+    const rate = Number(fx.usdVnd);
+    if (rate > 0) {
+      cryptoOut = { ...cryptoOut };
+      for (const id of ["bitcoin", "ethereum"]) {
+        const c = cryptoOut[id];
+        if (c && (c.vnd == null || c.vnd === 0) && c.usd) {
+          cryptoOut[id] = { ...c, vnd: Math.round(c.usd * rate) };
+        }
+      }
+    }
+  }
+
+  res.json({
+    weather,
+    quakes,
+    crypto: cryptoOut,
+    fx,
+    gold,
+    partial: !weather || !cryptoOut || !fx || !gold,
+    fetchedAt: new Date().toISOString()
+  });
 });
 
 // --- LỊCH SỬ GIÁ THỊ TRƯỜNG (sparkline BTC/ETH/Vàng/USD ở Tổng quan) ---

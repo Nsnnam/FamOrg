@@ -73,6 +73,7 @@ import { GlobalSearch } from "./components/GlobalSearch.js";
 import { useModalA11y } from "./hooks/useModalA11y.js";
 import { reloadOnce, scheduleReloadFallback } from "./utils/appReload.js";
 import { DEFAULT_VN_LOCATION, findVnLocation } from "./utils/vnLocations.js";
+import { fetchWidgetsFromBrowser, mergeWidgetData } from "./utils/widgetFallback.js";
 import { motion, AnimatePresence } from "motion/react";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
@@ -651,14 +652,45 @@ export default function App() {
       const loc = findVnLocation(code);
       const geoQuery = `?lat=${loc.lat}&lon=${loc.lon}&city=${encodeURIComponent(loc.name)}`;
       // Lấy giá hiện tại + lịch sử 7 ngày (cho sparkline tăng trưởng ở Tổng quan)
-      const [res, histRes] = await Promise.all([
-        fetch(`/api/widgets/overview${geoQuery}`, { headers: getAuthHeader() }),
-        fetch("/api/widgets/history?days=7", { headers: getAuthHeader() })
-      ]);
-      if (res.ok) {
-        const data = await res.json();
-        const hist = histRes.ok ? await histRes.json() : null;
-        setWidgets({ ...data, history: hist?.points || [] });
+      let serverData: any = null;
+      let histPoints: any[] = [];
+      try {
+        const [res, histRes] = await Promise.all([
+          fetch(`/api/widgets/overview${geoQuery}`, { headers: getAuthHeader() }),
+          fetch("/api/widgets/history?days=7", { headers: getAuthHeader() })
+        ]);
+        if (res.ok) serverData = await res.json();
+        if (histRes.ok) {
+          const hist = await histRes.json();
+          histPoints = hist?.points || [];
+        }
+      } catch (e) {
+        console.warn("[widgets] server overview failed:", e);
+      }
+
+      const needFallback =
+        !serverData ||
+        !serverData.weather?.current ||
+        !serverData.crypto?.bitcoin ||
+        !serverData.fx?.usdVnd ||
+        !(serverData.gold && (serverData.gold.sell || serverData.gold.vndPerTael || serverData.gold.usdPerOz));
+
+      let browserData = null;
+      if (needFallback) {
+        try {
+          browserData = await fetchWidgetsFromBrowser({
+            lat: loc.lat,
+            lon: loc.lon,
+            city: loc.name
+          });
+        } catch (e) {
+          console.warn("[widgets] browser fallback failed:", e);
+        }
+      }
+
+      const merged = mergeWidgetData(serverData, browserData);
+      if (merged) {
+        setWidgets({ ...merged, history: histPoints });
       }
     } catch (e) {
       console.error(e);
@@ -2052,8 +2084,8 @@ export default function App() {
                     <Home className="w-5 h-5" />
                   </div>
                   <div>
-                    <span className="text-sm font-bold text-slate-100 block">Family Hub</span>
-                    <span className="text-[9px] uppercase font-mono text-slate-500">Raspberry Pi Server</span>
+                    <span className="text-sm font-bold text-slate-100 block">Synology Hub</span>
+                    <span className="text-[9px] uppercase font-mono text-slate-500">Family Organizer</span>
                   </div>
                 </div>
                 <button 

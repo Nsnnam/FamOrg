@@ -1,7 +1,8 @@
 services:
   family-organizer:
-    # Prebuilt image (avoid local Alpine build on NAS). Override via IMAGE=...
-    image: ${IMAGE:-ghcr.io/happysmartlight/family-organizer:latest}
+    # Prebuilt multi-arch image from GHCR (CI on main). Override via IMAGE=...
+    # After push to main: ghcr.io/your-github-user/famorg:latest
+    image: ${IMAGE:-ghcr.io/your-github-user/famorg:latest}
     build:
       context: .
       dockerfile: Dockerfile
@@ -20,13 +21,20 @@ services:
       - "${PUBLIC_PORT:-8443}:443"
     volumes:
       - ./data:/app/data
+    # Explicit public DNS — Synology Docker sometimes cannot resolve external hosts
+    # with the NAS default DNS, which breaks weather / FX / Gemini / Telegram.
     dns:
       - 8.8.8.8
       - 1.1.1.1
+      - 8.8.4.4
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - NODE_ENV=production
       - PORT=3000
       - TZ=Asia/Ho_Chi_Minh
+      # Prefer IPv4 — dual-stack DNS on some NAS setups hangs Node fetch on IPv6
+      - NODE_OPTIONS=--dns-result-order=ipv4first
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - APP_URL=${APP_URL:-https://your-domain.example:8443}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}

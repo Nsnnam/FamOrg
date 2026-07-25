@@ -31,7 +31,8 @@ import {
   Upload,
   Send,
   Calendar,
-  Copy
+  Copy,
+  Wifi
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -190,6 +191,7 @@ export function Settings({
   const [aiKeyBusy, setAiKeyBusy] = useState(false);
   const [aiKeyMsg, setAiKeyMsg] = useState("");
   const [aiKeyErr, setAiKeyErr] = useState("");
+  const [aiCanSkip, setAiCanSkip] = useState(false);
 
   // ICS subscribe feed — mọi thành viên đăng ký lịch gia đình vào Apple/Google Calendar
   const [icsToken, setIcsToken] = useState("");
@@ -200,11 +202,16 @@ export function Settings({
   const [tgStatus, setTgStatus] = useState<TgBackupStatus | null>(null);
   const [tgToken, setTgToken] = useState("");
   const [tgChatId, setTgChatId] = useState("");
-  const [tgBusy, setTgBusy] = useState<"" | "save" | "test">("");
+  const [tgBusy, setTgBusy] = useState<"" | "save" | "test" | "ping">("");
   const [tgMsg, setTgMsg] = useState("");
   const [tgErr, setTgErr] = useState("");
   const [tgDigestBusy, setTgDigestBusy] = useState(false);
   const [tgDigestMsg, setTgDigestMsg] = useState("");
+
+  // Outbound connectivity probe (admin)
+  const [netBusy, setNetBusy] = useState(false);
+  const [netResult, setNetResult] = useState<any>(null);
+  const [netErr, setNetErr] = useState("");
 
   // Escape-to-close + scroll lock + focus trap for the edit-user & reset-password modals
   const editTargetRef = useRef<HTMLDivElement | null>(null);
@@ -261,6 +268,14 @@ export function Settings({
       .catch(() => {});
   }, []);
 
+  const friendlyNetErr = (err: unknown, action: string) => {
+    const msg = err instanceof Error ? err.message : String(err || "");
+    if (/Failed to fetch|NetworkError|Load failed/i.test(msg) || err instanceof TypeError) {
+      return `Không gọi được server khi ${action} (Failed to fetch). Thử F5; nếu AI/Telegram vẫn lỗi, bấm "Kiểm tra kết nối mạng" bên dưới — container có thể không ra Internet (DNS Docker).`;
+    }
+    return msg || `Lỗi khi ${action}.`;
+  };
+
   // Lưu cấu hình Telegram (token/chat id chỉ gửi khi người dùng có nhập) hoặc bật/tắt
   const saveTgConfig = async (patch: { botToken?: string; chatId?: string; enabled?: boolean; weeklyDigestEnabled?: boolean }) => {
     setTgBusy("save"); setTgMsg(""); setTgErr("");
@@ -270,13 +285,29 @@ export function Settings({
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify(patch)
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Lưu cấu hình thất bại.");
       setTgStatus(data);
       setTgToken("");
       setTgMsg("Đã lưu cấu hình Telegram.");
     } catch (err: any) {
-      setTgErr(err.message || "Lưu cấu hình thất bại.");
+      setTgErr(friendlyNetErr(err, "lưu Telegram"));
+    } finally {
+      setTgBusy("");
+    }
+  };
+
+  /** Tin nhắn thử nhẹ — kiểm tra token + Internet, không nén backup. */
+  const sendTgPing = async () => {
+    setTgBusy("ping"); setTgMsg(""); setTgErr("");
+    try {
+      const res = await fetch("/api/settings/telegram-backup/ping", { method: "POST", headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Gửi tin thử thất bại.");
+      setTgStatus(data);
+      setTgMsg(data.message || "Đã gửi tin nhắn thử qua Telegram.");
+    } catch (err: any) {
+      setTgErr(friendlyNetErr(err, "thử Telegram"));
     } finally {
       setTgBusy("");
     }
@@ -286,12 +317,12 @@ export function Settings({
     setTgBusy("test"); setTgMsg(""); setTgErr("");
     try {
       const res = await fetch("/api/settings/telegram-backup/test", { method: "POST", headers: authHeaders() });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Gửi thử thất bại.");
       setTgStatus(data);
       setTgMsg(data.message || "Đã gửi backup qua Telegram.");
     } catch (err: any) {
-      setTgErr(err.message || "Gửi thử thất bại.");
+      setTgErr(friendlyNetErr(err, "gửi backup Telegram"));
     } finally {
       setTgBusy("");
     }
@@ -301,35 +332,55 @@ export function Settings({
     setTgDigestBusy(true); setTgDigestMsg(""); setTgMsg(""); setTgErr("");
     try {
       const res = await fetch("/api/settings/telegram-digest/test", { method: "POST", headers: authHeaders() });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Gửi thử thất bại.");
       setTgDigestMsg(data.message || "Đã gửi bản tin tuần qua Telegram.");
     } catch (err: any) {
-      setTgDigestMsg("Lỗi: " + (err.message || "Gửi thử thất bại."));
+      setTgDigestMsg("Lỗi: " + friendlyNetErr(err, "gửi bản tin tuần"));
     } finally {
       setTgDigestBusy(false);
     }
   };
 
-  const saveAiKey = async (clear = false) => {
+  const saveAiKey = async (clear = false, skipValidate = false) => {
     setAiKeyBusy(true);
     setAiKeyMsg("");
     setAiKeyErr("");
+    if (clear) setAiCanSkip(false);
     try {
       const res = await fetch("/api/settings/ai", {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: clear ? "" : aiKeyInput.trim() })
+        body: JSON.stringify({ apiKey: clear ? "" : aiKeyInput.trim(), skipValidate })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Lưu key thất bại.");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAiCanSkip(Boolean(data.canSkipValidate));
+        throw new Error(data.error || "Lưu key thất bại.");
+      }
       setAiKeyStatus({ configured: data.configured, source: data.source, masked: data.masked });
       setAiKeyMsg(data.message || "Đã cập nhật.");
       setAiKeyInput("");
+      setAiCanSkip(false);
     } catch (err: any) {
-      setAiKeyErr(err.message || "Lưu key thất bại.");
+      setAiKeyErr(friendlyNetErr(err, "lưu Gemini key"));
+      if (err instanceof TypeError) setAiCanSkip(true);
     } finally {
       setAiKeyBusy(false);
+    }
+  };
+
+  const checkConnectivity = async () => {
+    setNetBusy(true); setNetErr(""); setNetResult(null);
+    try {
+      const res = await fetch("/api/settings/connectivity", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Không kiểm tra được.");
+      setNetResult(data);
+    } catch (err: any) {
+      setNetErr(friendlyNetErr(err, "kiểm tra mạng"));
+    } finally {
+      setNetBusy(false);
     }
   };
 
@@ -1617,7 +1668,7 @@ export function Settings({
             />
             <button
               type="button"
-              onClick={() => saveAiKey(false)}
+              onClick={() => saveAiKey(false, false)}
               disabled={aiKeyBusy || !aiKeyInput.trim()}
               className="bg-violet-500 hover:bg-violet-400 disabled:opacity-50 text-slate-950 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-all"
             >
@@ -1625,10 +1676,20 @@ export function Settings({
               Lưu & kiểm tra
             </button>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer noopener" className="text-[11px] text-sky-400 hover:underline">
               Lấy key miễn phí ở Google AI Studio →
             </a>
+            {aiCanSkip && aiKeyInput.trim() && (
+              <button
+                type="button"
+                onClick={() => saveAiKey(false, true)}
+                disabled={aiKeyBusy}
+                className="text-[11px] text-amber-400 hover:text-amber-300 cursor-pointer font-semibold"
+              >
+                Vẫn lưu key (bỏ qua kiểm tra mạng)
+              </button>
+            )}
             {aiKeyStatus?.configured && aiKeyStatus.source === "app" && (
               <button type="button" onClick={() => saveAiKey(true)} disabled={aiKeyBusy} className="text-[11px] text-slate-400 hover:text-rose-400 ml-auto cursor-pointer">
                 Xóa key trong app
@@ -1702,6 +1763,15 @@ export function Settings({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
+                onClick={sendTgPing}
+                disabled={tgBusy !== ""}
+                className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+              >
+                <Send className={`w-4 h-4 ${tgBusy === "ping" ? "animate-pulse" : ""}`} />
+                {tgBusy === "ping" ? "Đang gửi tin thử..." : "Gửi tin nhắn thử (nhanh)"}
+              </button>
+              <button
+                type="button"
                 onClick={sendTgTest}
                 disabled={tgBusy !== ""}
                 className="bg-slate-800 hover:bg-slate-700 text-sky-400 text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
@@ -1755,6 +1825,57 @@ export function Settings({
 
           {tgErr && <p className="text-[11px] text-rose-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {tgErr}</p>}
           {tgMsg && <p className="text-[11px] text-emerald-400 flex items-center gap-1.5"><CheckCircle className="w-3.5 h-3.5 shrink-0" /> {tgMsg}</p>}
+        </div>
+      )}
+
+      {/* Chẩn đoán mạng outbound từ container — admin only */}
+      {currentUser.role === UserRole.ADMIN && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <Wifi className="w-4 h-4 text-cyan-400" /> Kiểm tra kết nối mạng (container)
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Widget thời tiết/tỷ giá, Gemini và Telegram đều cần container Docker ra được Internet.
+                Nếu mục nào đỏ: kiểm tra DNS Docker (8.8.8.8) và restart stack — xem docs/NAS-DEPLOY.md.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={checkConnectivity}
+              disabled={netBusy}
+              className="shrink-0 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all"
+            >
+              <RefreshCw className={`w-4 h-4 ${netBusy ? "animate-spin" : ""}`} />
+              {netBusy ? "Đang kiểm tra..." : "Kiểm tra ngay"}
+            </button>
+          </div>
+          {netErr && <p className="text-[11px] text-rose-400 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {netErr}</p>}
+          {netResult && (
+            <div className="space-y-2">
+              <p className={`text-[11px] font-semibold ${netResult.ok ? "text-emerald-400" : netResult.partial ? "text-amber-400" : "text-rose-400"}`}>
+                {netResult.ok
+                  ? `Tất cả OK (${netResult.okCount}/${netResult.total})`
+                  : netResult.partial
+                    ? `Một phần OK (${netResult.okCount}/${netResult.total}) — widget có thể thiếu dữ liệu`
+                    : `Không ra Internet (${netResult.okCount}/${netResult.total}) — cần sửa DNS/Docker`}
+                {netResult.ipv4First ? " · IPv4-first bật" : " · nên bật NODE_OPTIONS=--dns-result-order=ipv4first"}
+              </p>
+              <ul className="space-y-1">
+                {(netResult.results || []).map((r: any) => (
+                  <li key={r.id} className="flex items-start gap-2 text-[11px]">
+                    <span className={`font-mono shrink-0 ${r.ok ? "text-emerald-400" : "text-rose-400"}`}>{r.ok ? "OK" : "FAIL"}</span>
+                    <span className="text-slate-300 min-w-0 flex-1">
+                      {r.label}
+                      <span className="text-slate-500 font-mono"> · {r.ms}ms{r.status ? ` · HTTP ${r.status}` : ""}</span>
+                      {r.error && <span className="block text-rose-400/90 mt-0.5">{r.error}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

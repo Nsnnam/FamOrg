@@ -78,6 +78,28 @@ App dùng phân quyền theo vai trò:
 7. Bật danh sách đi chợ chung và thử tạo thực đơn tuần.
 8. Nếu dùng tài chính, nhập ngân sách tháng, hóa đơn định kỳ và vài khoản thu/chi đầu tiên.
 9. Lưu các giấy tờ có ngày hết hạn để app nhắc trước.
+10. (Admin) Cấu hình **Gemini API key** nếu muốn AI viết ghi chú / thực đơn / bản tin tuần.
+11. (Admin) Cấu hình **Telegram** để backup offsite và bản tin tuần; thử **Gửi tin nhắn thử** trước.
+12. Nếu dashboard không hiện thời tiết/tỷ giá: Settings → **Kiểm tra kết nối mạng (container)** — xem [NAS-DEPLOY.md](./NAS-DEPLOY.md) mục 8.
+
+## Cài đặt Docker trên NAS (tóm tắt)
+
+Chi tiết đầy đủ: [NAS-DEPLOY.md](./NAS-DEPLOY.md).
+
+```bash
+cd /path/to/your/docker
+git clone https://github.com/your-github-user/FamOrg.git
+cd FamOrg
+cp .env.example .env
+# IMAGE=ghcr.io/your-github-user/famorg:latest
+# APP_URL=https://your-domain.example:8443
+docker compose pull && docker compose up -d
+```
+
+- LAN: `http://192.0.2.10:3000`
+- Public HTTPS: `https://your-domain.example:8443`
+
+**Lưu ý:** Container cần ra được Internet (DNS `8.8.8.8`, IPv4-first) để widget thị trường, Gemini và Telegram hoạt động. Nếu lỗi *Failed to fetch* khi lưu key/AI, dùng nút kiểm tra mạng trong Settings.
 10. Cài PWA lên điện thoại của từng người và bật thông báo đẩy nếu server đã cấu hình VAPID.
 
 ## Cấu hình phần cứng khuyến nghị

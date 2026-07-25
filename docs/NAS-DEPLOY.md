@@ -140,6 +140,79 @@ docker compose up -d --build
 | HTTPS lỗi trên :8443 | Cert + reverse proxy source 8443, hoặc trùng port Docker/proxy |
 | 502 Bad Gateway | Container chưa chạy / sai destination port |
 | Port conflict | Đổi `LOCAL_PORT` / `PUBLIC_PORT` hoặc bỏ bind 8443 nếu proxy giữ 8443 |
+| **Widget thời tiết / BTC / vàng / USD trống (skeleton)** | Xem mục **8** bên dưới |
+| **Lưu Gemini / Telegram báo Failed to fetch** | Xem mục **8** — container không ra Internet hoặc request treo |
+| AI/Telegram test timeout | Settings → **Kiểm tra kết nối mạng (container)** |
+
+## 8. Widget & AI không tải (outbound Internet)
+
+Triệu chứng điển hình trên dashboard:
+
+- Ô **Thời tiết**, **Bitcoin**, **Ethereum**, **Vàng**, **USD/VND** mãi skeleton xám
+- Settings → lưu Gemini key / test Telegram: **Failed to fetch** hoặc timeout
+
+Nguyên nhân phổ biến trên **Synology Docker**: container **không ra được Internet** (DNS NAS hỏng, IPv6 treo, hoặc firewall).
+
+### 8.1. Chẩn đoán trong app (nhanh)
+
+1. Đăng nhập **Admin** → **Thiết lập**
+2. Cuộn tới **Kiểm tra kết nối mạng (container)** → **Kiểm tra ngay**
+3. Xem từng mục: Open-Meteo, CoinGecko, open.er-api, vang.today, Telegram, Gemini
+
+- Tất cả **OK** → mạng container ổn; nếu UI vẫn trống, hard-refresh (Ctrl+F5)
+- **FAIL** DNS/timeout → làm bước 8.2
+
+### 8.2. Sửa Docker network (khuyến nghị)
+
+`docker-compose.yml` đã cấu hình:
+
+```yaml
+dns:
+  - 8.8.8.8
+  - 1.1.1.1
+  - 8.8.4.4
+environment:
+  - NODE_OPTIONS=--dns-result-order=ipv4first
+```
+
+Image mặc định: **`ghcr.io/your-github-user/famorg:latest`** (CI build khi push `main`).
+
+Áp dụng lại image mới:
+
+```bash
+cd /path/to/your/famorg
+git pull
+# Cập nhật IMAGE trong .env nếu còn trỏ image cũ:
+#   IMAGE=ghcr.io/your-github-user/famorg:latest
+docker compose pull
+docker compose up -d
+# Nếu package GHCR private:
+#   echo $GITHUB_PAT | docker login ghcr.io -u your-github-user --password-stdin
+```
+
+Kiểm tra từ **bên trong** container:
+
+```bash
+docker exec -it famorg_app sh -c \
+  'wget -qO- --timeout=8 https://api.open-meteo.com/v1/forecast?latitude=10.78\&longitude=106.7\&current=temperature_2m | head -c 200'
+```
+
+Nếu lệnh trên fail: vào DSM → **Container Manager** → network/firewall, cho phép container outbound HTTPS (443).
+
+### 8.3. Fallback trình duyệt
+
+Từ bản sửa này, nếu server không lấy được giá, **trình duyệt** sẽ tự gọi Open-Meteo / CoinGecko / FX (CORS) để hiển thị widget.  
+Vàng SJC (vang.today) vẫn cần server; fallback hiển thị **PAXG / vàng thế giới**.
+
+### 8.4. Gemini & Telegram khi mạng lỗi
+
+- **Gemini**: nếu “Lưu & kiểm tra” fail vì mạng, bấm **Vẫn lưu key (bỏ qua kiểm tra mạng)** — key được ghi vào `data/app_settings.json`.
+- **Telegram**: dùng **Gửi tin nhắn thử (nhanh)** trước khi gửi full backup (nhẹ hơn, dễ debug).
+
+### 8.5. Không dùng `network_mode: host` với stack nginx
+
+Stack hiện tại map port `3000→3000` và `8443→443` (nginx TLS share network với app).  
+**Không** thêm `network_mode: host` — sẽ phá port mapping và service name `watchtower`.
 
 ## Lưu ý bảo mật
 

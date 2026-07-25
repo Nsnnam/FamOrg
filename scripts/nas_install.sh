@@ -6,7 +6,7 @@ export PATH=/usr/local/bin:/usr/bin:/bin:/sbin
 APP_DIR="/path/to/your/famorg"
 PUBLIC_URL="https://your-domain.example:8443"
 REPO_TARBALL="https://github.com/your-github-user/FamOrg/archive/refs/heads/main.tar.gz"
-IMAGE_DEFAULT="ghcr.io/happysmartlight/family-organizer:latest"
+IMAGE_DEFAULT="ghcr.io/your-github-user/famorg:latest"
 THUCHI_CERTS="/path/to/your/docker/external-certs/certs"
 SYNO_CERT="/usr/syno/etc/certificate/_archive/CERT_ARCHIVE_ID"
 

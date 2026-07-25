@@ -49,6 +49,8 @@ ENV BUILD_TIME=$BUILD_TIME
 # Set environment
 ENV NODE_ENV=production
 ENV PORT=3000
+# Prefer IPv4 so outbound HTTPS (weather, FX, Gemini, Telegram) does not hang on broken IPv6
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
 
 # Copy necessary production files from builder
 COPY --from=builder /app/package*.json ./

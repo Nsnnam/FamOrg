@@ -152,10 +152,15 @@ git clone https://github.com/your-github-user/FamOrg.git
 cd FamOrg
 cp .env.example .env
 # APP_URL=https://your-domain.example:8443
-docker compose up -d --build
+# IMAGE=ghcr.io/your-github-user/famorg:latest
+docker compose pull
+docker compose up -d
+# Lần đầu nếu chưa có image trên GHCR: docker compose up -d --build
 ```
 
-Chi tiết reverse proxy / firewall: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
+Hoặc một lệnh cài: `bash scripts/nas_install.sh` (chạy root trên NAS).
+
+Chi tiết reverse proxy / firewall / widget lỗi: [docs/NAS-DEPLOY.md](docs/NAS-DEPLOY.md)
 
 Ứng dụng khả dụng tại:
 
@@ -168,12 +173,19 @@ Dữ liệu lưu bền vững tại `./data/` trên máy host.
 
 **Qua giao diện (khuyến nghị):** Settings → Phiên bản & Cập nhật → **Cập nhật ngay**
 
-**Thủ công:**
+**Thủ công (image GHCR — khuyến nghị trên NAS):**
+
+```bash
+cd /path/to/your/famorg
+git pull
+# Đảm bảo .env có: IMAGE=ghcr.io/your-github-user/famorg:latest
+docker compose pull && docker compose up -d
+```
+
+**Build local (khi dev / chưa có image):**
 
 ```bash
 cd /path/to/FamOrg && git pull && docker compose up -d --build
-# hoặc nếu dùng image GHCR:
-# docker compose pull && docker compose up -d
 ```
 
 ---
@@ -261,6 +273,29 @@ Các biến đặt trong file `.env` ở thư mục gốc (được `docker-comp
 ### Quản lý thành viên
 
 Settings → Thành viên & Phân quyền → Tạo mới hoặc chỉnh sửa vai trò / mật khẩu.
+
+### Cấu hình AI (Gemini)
+
+1. Lấy key miễn phí: [Google AI Studio](https://aistudio.google.com/apikey)
+2. Settings → **Trí tuệ AI (Gemini API Key)** → dán key → **Lưu & kiểm tra**
+3. Nếu báo lỗi mạng/timeout: bấm **Vẫn lưu key (bỏ qua kiểm tra mạng)**, rồi Settings → **Kiểm tra kết nối mạng (container)**
+
+### Cấu hình Telegram
+
+1. Tạo bot qua [@BotFather](https://t.me/BotFather), lấy token
+2. Lấy Chat ID (ví dụ [@userinfobot](https://t.me/userinfobot))
+3. Settings → **Backup tự động qua Telegram** → dán token + chat ID → **Lưu & bật**
+4. Thử **Gửi tin nhắn thử (nhanh)** trước; khi ổn mới **Gửi backup ngay để thử**
+5. Bật **Bản tin tuần** nếu muốn tóm tắt sáng thứ Hai
+
+### Widget thời tiết / tỷ giá trống?
+
+Dashboard lấy dữ liệu qua server (Open-Meteo, CoinGecko, vang.today…).  
+Nếu ô vẫn skeleton xám:
+
+1. Settings → **Kiểm tra kết nối mạng (container)**
+2. Xem [docs/NAS-DEPLOY.md §8](docs/NAS-DEPLOY.md) — DNS Docker `8.8.8.8` + `NODE_OPTIONS=--dns-result-order=ipv4first`
+3. App có **fallback trình duyệt** (Open-Meteo/CoinGecko/FX) khi server không ra Internet
 
 ### Backup & Restore
 

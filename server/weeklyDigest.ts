@@ -336,7 +336,8 @@ async function sendTelegramHtml(token: string, chatId: string, html: string): Pr
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text: html, parse_mode: "HTML" })
+    body: JSON.stringify({ chat_id: chatId, text: html, parse_mode: "HTML" }),
+    signal: AbortSignal.timeout(20_000)
   });
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) {
