@@ -1023,9 +1023,13 @@ export function Dashboard({
             </div>
 
             {pinnedNotes.length === 0 ? (
-              <div className="bg-slate-950/40 border border-dashed border-slate-800 p-6 rounded-xl text-center">
-                <p className="text-sm text-slate-500">Chưa có ghi chú nào được pin lên màn hình chính.</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate("notes")}
+                className="w-full bg-slate-950/40 border border-dashed border-slate-800 hover:border-sky-500/40 hover:bg-sky-500/5 px-4 py-3 rounded-xl text-left text-xs text-slate-500 transition-colors cursor-pointer"
+              >
+                Chưa có ghi chú được ghim. <span className="font-semibold text-sky-400">Mở ghi chú để tạo hoặc ghim nội dung.</span>
+              </button>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {pinnedNotes.map((note) => {
@@ -1120,19 +1124,18 @@ export function Dashboard({
             </div>
           </div>
 
-          {/* Activity Logs inside family */}
-          <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-activity-logs">
-            <ShimmerLine via="via-indigo-500/50" />
-            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-              <IconChip accent="indigo"><Activity className="w-4 h-4" /></IconChip>
-              Nhật ký gia đình
-            </h3>
+          {/* Nhật ký chỉ hiện khi đã có dữ liệu: Tổng quan không bị kéo dài bởi
+              một card trống và dữ liệu quản trị không cần tải ở lúc khởi động. */}
+          {activityLogs.length > 0 && (
+            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4" id="widget-activity-logs">
+              <ShimmerLine via="via-indigo-500/50" />
+              <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                <IconChip accent="indigo"><Activity className="w-4 h-4" /></IconChip>
+                Nhật ký gia đình
+              </h3>
 
-            <div className="bg-slate-950 p-2 rounded-xl border border-slate-800 max-h-[178px] overflow-y-auto space-y-2 font-mono scrollbar-thin">
-              {activityLogs.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-500">Chưa có hoạt động hệ thống.</div>
-              ) : (
-                activityLogs.map((log) => {
+              <div className="bg-slate-950 p-2 rounded-xl border border-slate-800 max-h-[178px] overflow-y-auto space-y-2 font-mono scrollbar-thin">
+                {activityLogs.map((log) => {
                   const formatTime = (isoString: string) => {
                     const d = new Date(isoString);
                     return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
@@ -1147,10 +1150,10 @@ export function Dashboard({
                       <span className="text-slate-400 font-sans">{log.details}</span>
                     </div>
                   );
-                })
-              )}
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
         </motion.div>
       </div>

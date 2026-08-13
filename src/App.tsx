@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { flushSync } from "react-dom";
 import { 
   Home, 
@@ -57,18 +57,7 @@ import {
 } from "./types.js";
 import { Auth } from "./components/Auth.js";
 import { Avatar } from "./components/Avatar.js";
-import { Dashboard } from "./components/Dashboard.js";
-import { Tasks } from "./components/Tasks.js";
-import { Schedules } from "./components/Schedules.js";
-import { Notes } from "./components/Notes.js";
-import { Finance } from "./components/Finance.js";
-import { Shopping } from "./components/Shopping.js";
-import { Documents } from "./components/Documents.js";
-import { ChildHealth } from "./components/ChildHealth.js";
-import { Assistant } from "./components/Assistant.js";
 import { FabProvider } from "./components/FabHost.js";
-import { Settings } from "./components/Settings.js";
-import { ServerMonitor } from "./components/ServerMonitor.js";
 import { GlobalSearch } from "./components/GlobalSearch.js";
 import { useModalA11y } from "./hooks/useModalA11y.js";
 import { reloadOnce, scheduleReloadFallback } from "./utils/appReload.js";
@@ -78,6 +67,18 @@ import { DEFAULT_BRANDING, BrandingSettings, mergeBranding, applyBrandingToDocum
 import { AppearanceSettings, mergeAppearance, DEFAULT_APPEARANCE, appearanceBodyClass } from "./utils/appearance.js";
 import { DashboardPrefs, mergeDashboardPrefs, DEFAULT_DASHBOARD_PREFS } from "./utils/dashboardPrefs.js";
 import { motion, AnimatePresence } from "motion/react";
+
+const Dashboard = lazy(() => import("./components/Dashboard.js").then(m => ({ default: m.Dashboard })));
+const Tasks = lazy(() => import("./components/Tasks.js").then(m => ({ default: m.Tasks })));
+const Schedules = lazy(() => import("./components/Schedules.js").then(m => ({ default: m.Schedules })));
+const Notes = lazy(() => import("./components/Notes.js").then(m => ({ default: m.Notes })));
+const Finance = lazy(() => import("./components/Finance.js").then(m => ({ default: m.Finance })));
+const Shopping = lazy(() => import("./components/Shopping.js").then(m => ({ default: m.Shopping })));
+const Documents = lazy(() => import("./components/Documents.js").then(m => ({ default: m.Documents })));
+const ChildHealth = lazy(() => import("./components/ChildHealth.js").then(m => ({ default: m.ChildHealth })));
+const Assistant = lazy(() => import("./components/Assistant.js").then(m => ({ default: m.Assistant })));
+const Settings = lazy(() => import("./components/Settings.js").then(m => ({ default: m.Settings })));
+const ServerMonitor = lazy(() => import("./components/ServerMonitor.js").then(m => ({ default: m.ServerMonitor })));
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
 
@@ -790,13 +791,57 @@ export default function App() {
     fetchWidgets(normalized);
   };
 
-  // Dispatch fully unified refetch sequences
-  const fetchAllData = (locOverride?: string) => {
+  // Ưu tiên dữ liệu cần cho màn hình Tổng quan. Các khu vực chuyên biệt
+  // được tải khi người dùng mở tab tương ứng, tránh dồn hàng chục request
+  // và dữ liệu không dùng ngay vào lần khởi động trên mạng gia đình/NAS.
+  const fetchDashboardData = (locOverride?: string) => {
     fetchUsers();
     fetchTasks();
     fetchPlans();
     fetchNotes();
     fetchTransactions();
+    fetchNotifications();
+    fetchWidgets(locOverride);
+    fetchAppVersion();
+  };
+
+  const fetchTabData = (tab: string) => {
+    switch (tab) {
+      case "tasks":
+        fetchTasks();
+        fetchRewards();
+        break;
+      case "finance":
+        fetchTransactions();
+        fetchFinancePlanning();
+        break;
+      case "notes":
+        fetchNotes();
+        break;
+      case "shopping":
+        fetchShopping();
+        break;
+      case "child-health":
+        fetchChildHealth();
+        fetchMedications();
+        fetchMedicationLogs();
+        break;
+      case "documents":
+        fetchDocuments();
+        break;
+      case "settings":
+        fetchUsers();
+        fetchBackupsAndLogs();
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Chỉ dùng sau khi khôi phục dữ liệu hoặc trong luồng thật sự cần đồng bộ
+  // toàn bộ kho dữ liệu. Không gọi khi khởi động thông thường.
+  const fetchAllData = (locOverride?: string) => {
+    fetchDashboardData(locOverride);
     fetchRewards();
     fetchFinancePlanning();
     fetchMedications();
@@ -804,10 +849,7 @@ export default function App() {
     fetchChildHealth();
     fetchDocuments();
     fetchShopping();
-    fetchNotifications();
     fetchBackupsAndLogs();
-    fetchWidgets(locOverride);
-    fetchAppVersion();
   };
 
   const fetchAppVersion = async () => {
@@ -847,6 +889,13 @@ export default function App() {
     };
   }, [currentUser]);
 
+  // Tải dữ liệu theo khu vực khi điều hướng, thay vì kéo toàn bộ dữ liệu ngay
+  // từ lúc mở ứng dụng. Lệnh gọi có tính idempotent để tab luôn nhận bản mới nhất.
+  useEffect(() => {
+    if (!currentUser) return;
+    fetchTabData(activeTab);
+  }, [activeTab, currentUser]);
+
   // Listen to realtime server pushes (SSE sync connection)
   useEffect(() => {
     if (!currentUser) {
@@ -861,8 +910,9 @@ export default function App() {
     const bootstrap = async () => {
       bootstrappedWeatherCode = await fetchWeatherLocation();
       setWeatherLoc(bootstrappedWeatherCode);
-      // Refresh core states only after the shared weather location is known.
-      fetchAllData(bootstrappedWeatherCode);
+      // Mở nhanh Tổng quan trước; dữ liệu của các khu vực chuyên biệt sẽ
+      // được tải theo tab khi người dùng cần.
+      fetchDashboardData(bootstrappedWeatherCode);
     };
     void bootstrap();
 
@@ -1982,6 +2032,7 @@ export default function App() {
               transition={{ duration: 0.15 }}
               className="min-h-full pb-[max(6rem,calc(env(safe-area-inset-bottom)+5rem))]"
             >
+              <Suspense fallback={<div className="min-h-[18rem] rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center"><div className="flex items-center gap-2 text-xs text-slate-400"><span className="size-4 rounded-full border-2 border-slate-700 border-t-sky-400 animate-spin" /> Đang tải khu vực...</div></div>}>
               {activeTab === "dashboard" && (
                 <Dashboard
                   currentUser={currentUser}
@@ -2157,6 +2208,7 @@ export default function App() {
                   onDashboardPrefsChange={(p) => setDashboardPrefs(mergeDashboardPrefs(p))}
                 />
               )}
+              </Suspense>
             </motion.div>
           </AnimatePresence>
         </main>
@@ -2258,7 +2310,9 @@ export default function App() {
         </div>
       )}
 
-      <Assistant currentUser={currentUser} authHeaders={getAuthHeader()} />
+      <Suspense fallback={null}>
+        <Assistant currentUser={currentUser} authHeaders={getAuthHeader()} />
+      </Suspense>
 
       {/* PASSWORD-GATED ACCOUNT SWITCH MODAL */}
       {switchTargetId && (() => {
