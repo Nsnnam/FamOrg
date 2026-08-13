@@ -10,9 +10,9 @@ import time
 
 import paramiko
 
-HOST = os.environ.get("FAMORG_SSH_HOST", "your-domain.example")
+HOST = os.environ.get("FAMORG_SSH_HOST", "your-nas.example")
 PORT = int(os.environ.get("FAMORG_SSH_PORT", "22"))
-USER = os.environ.get("FAMORG_SSH_USER", "your-admin-user")
+USER = os.environ.get("FAMORG_SSH_USER", "YOUR_SSH_USER")
 PASSWORD = os.environ.get("FAMORG_SSH_PASS", "")
 REMOTE = "/tmp/famorg_update_now.sh"
 LOCAL = os.path.join(os.path.dirname(__file__), "nas_update_now.sh")

@@ -299,7 +299,7 @@ async function generateOpenAiCompat(
     Authorization: `Bearer ${cfg.apiKey}`
   };
   if (cfg.provider === "openrouter") {
-    headers["HTTP-Referer"] = process.env.APP_URL || "https://github.com/your-github-user/FamOrg";
+    headers["HTTP-Referer"] = process.env.APP_URL || "https://example.invalid/famorg";
     headers["X-Title"] = "FamOrg";
   }
 

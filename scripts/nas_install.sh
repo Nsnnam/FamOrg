@@ -3,16 +3,16 @@
 set -euo pipefail
 export PATH=/usr/local/bin:/usr/bin:/bin:/sbin
 
-APP_DIR="/path/to/your/famorg"
+APP_DIR="/srv/famorg"
 PUBLIC_URL="https://your-domain.example:8443"
 REPO_TARBALL="https://github.com/your-github-user/FamOrg/archive/refs/heads/main.tar.gz"
 IMAGE_DEFAULT="ghcr.io/your-github-user/famorg:latest"
-THUCHI_CERTS="/path/to/your/docker/external-certs/certs"
-SYNO_CERT="/usr/syno/etc/certificate/_archive/CERT_ARCHIVE_ID"
+THUCHI_CERTS="${THUCHI_CERTS:-}"
+SYNO_CERT="${SYNO_CERT:-}"
 
 echo "==> Preparing ${APP_DIR}"
-mkdir -p /path/to/your/docker
-cd /path/to/your/docker
+mkdir -p "$(dirname "$APP_DIR")"
+cd "$(dirname "$APP_DIR")"
 rm -rf FamOrg.tmp
 mkdir -p FamOrg.tmp
 cd FamOrg.tmp
@@ -47,7 +47,7 @@ if [ -d "${APP_DIR}" ]; then
   mv "${APP_DIR}" "${APP_DIR}.old"
 fi
 mv "${APP_DIR}.new" "${APP_DIR}"
-rm -rf /path/to/your/famorg.tmp
+rm -rf "${APP_DIR}.tmp"
 
 cd "${APP_DIR}"
 if [ ! -f .env ]; then
@@ -58,7 +58,9 @@ grep -q '^LOCAL_PORT=' .env || echo 'LOCAL_PORT=3000' >> .env
 grep -q '^PUBLIC_PORT=' .env || echo 'PUBLIC_PORT=8443' >> .env
 grep -q '^APP_URL=' .env || echo "APP_URL=${PUBLIC_URL}" >> .env
 grep -q '^GITHUB_REPO=' .env || echo 'GITHUB_REPO=your-github-user/FamOrg' >> .env
-grep -q '^WATCHTOWER_HTTP_API_TOKEN=' .env || echo 'WATCHTOWER_HTTP_API_TOKEN=GENERATE_A_NEW_TOKEN_DURING_INSTALL' >> .env
+if ! grep -q '^WATCHTOWER_HTTP_API_TOKEN=' .env; then
+  echo "WATCHTOWER_HTTP_API_TOKEN=$(openssl rand -hex 24)" >> .env
+fi
 grep -q '^IMAGE=' .env || echo "IMAGE=${IMAGE_DEFAULT}" >> .env
 
 sed -i "s|^LOCAL_PORT=.*|LOCAL_PORT=3000|" .env
@@ -70,10 +72,10 @@ sed -i "s|^IMAGE=.*|IMAGE=${IMAGE_DEFAULT}|" .env
 mkdir -p data certs
 chmod 777 data || true
 
-# TLS certs: prefer external-certs certs (same domain), else Synology DDNS archive
+# TLS certs: prefer an optional external certificate directory, else Synology DDNS archive
 if [ ! -f certs/fullchain.pem ] || [ ! -f certs/privkey.pem ]; then
   if [ -f "${THUCHI_CERTS}/fullchain.pem" ] && [ -f "${THUCHI_CERTS}/privkey.pem" ]; then
-    echo "==> Copying certs from external-certs"
+    echo "==> Copying certs from external certificate directory"
     cp -a "${THUCHI_CERTS}/fullchain.pem" "${THUCHI_CERTS}/privkey.pem" certs/
   elif [ -f "${SYNO_CERT}/fullchain.pem" ] && [ -f "${SYNO_CERT}/privkey.pem" ]; then
     echo "==> Copying certs from Synology DDNS archive"

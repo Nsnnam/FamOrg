@@ -2,7 +2,7 @@
 """Deploy FamOrg to Synology: pipe install script over SSH (no SFTP).
 
 Credentials via env (never hardcode):
-  FAMORG_SSH_HOST   default your-domain.example
+  FAMORG_SSH_HOST   default your-nas.example
   FAMORG_SSH_PORT   default 22
   FAMORG_SSH_USER   required
   FAMORG_SSH_PASS   required
@@ -17,7 +17,7 @@ import time
 
 import paramiko
 
-HOST = os.environ.get("FAMORG_SSH_HOST", "your-domain.example")
+HOST = os.environ.get("FAMORG_SSH_HOST", "your-nas.example")
 PORT = int(os.environ.get("FAMORG_SSH_PORT", "22"))
 USER = os.environ.get("FAMORG_SSH_USER", "")
 PASSWORD = os.environ.get("FAMORG_SSH_PASS", "")

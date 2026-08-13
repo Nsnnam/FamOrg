@@ -134,7 +134,7 @@ Hệ thống quản lý gia đình tất-cả-trong-một (**mặc định tên:
 | **Local (LAN)** | `192.0.2.10:3000` | Truy cập trong nhà |
 | **Public host port** | `8443` | Port public trên NAS |
 | **Public HTTPS** | **https://your-domain.example:8443** | Domain + port 8443 |
-| **Docker data** | `/path/to/your/famorg` | Volume5 trên Synology |
+| **Docker data** | `/srv/famorg` | Volume5 trên Synology |
 | **SSH** | port `22` | Terminal DSM |
 
 `APP_URL` mặc định: **https://your-domain.example:8443**. Container HTTP nội bộ; TLS qua reverse proxy hoặc port-forward + cert.
@@ -178,7 +178,7 @@ Dữ liệu lưu bền vững tại `./data/` trên máy host.
 **Thủ công (image GHCR — khuyến nghị trên NAS):**
 
 ```bash
-cd /path/to/your/famorg
+cd /srv/famorg
 git pull
 # Đảm bảo .env có: IMAGE=ghcr.io/your-github-user/famorg:latest
 docker compose pull && docker compose up -d

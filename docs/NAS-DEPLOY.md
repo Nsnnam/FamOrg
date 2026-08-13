@@ -1,6 +1,6 @@
-# Triển khai FamOrg (FamOrg) trên Synology NAS
+# Triển khai FamOrg trên Synology NAS
 
-Tên hiển thị mặc định trong app: **FamOrg** / **Family Hub** (đổi trong Thiết lập sau khi cài).
+Tên hiển thị mặc định trong app: **FamOrg** / **Family Hub** (có thể đổi trong Thiết lập sau khi cài).
 
 Cấu hình mặc định cho setup này:
 
@@ -8,7 +8,7 @@ Cấu hình mặc định cho setup này:
 |-----|---------|
 | IP LAN | `192.0.2.10` |
 | SSH | port **22** |
-| Docker path | **`/path/to/your/famorg`** |
+| Docker path | **`/srv/famorg`** |
 | Local port | **3000** |
 | Public port (host Docker) | **8443** |
 | Domain public (HTTPS) | **https://your-domain.example:8443** |
@@ -19,9 +19,9 @@ Stack dùng `network_mode: host`: app listen HTTP trên NAS port **3000**, còn 
 
 ## 1. Chuẩn bị trên DSM
 
-1. **Container Manager** (Docker) đã cài — volume làm việc: **data-volume**.
+1. **Container Manager** (Docker) đã cài — volume làm việc của NAS.
 2. SSH: Control Panel → Terminal & SNMP → Enable SSH, port **22**.
-3. Shared folder Docker trên data-volume, ví dụ: `/path/to/your/docker`.
+3. Shared folder Docker trên NAS, ví dụ: `/srv`.
 
 ## 2. Clone & chạy container
 
@@ -30,7 +30,7 @@ Stack dùng `network_mode: host`: app listen HTTP trên NAS port **3000**, còn 
 ```bash
 ssh -p 22 USER@192.0.2.10
 
-cd /path/to/your/docker
+cd /srv
 git clone https://github.com/your-github-user/FamOrg.git
 cd FamOrg
 cp .env.example .env
@@ -41,15 +41,15 @@ docker compose up -d --build
 Hoặc:
 
 ```bash
-APP_DIR=/path/to/your/famorg bash scripts/synology-deploy.sh
+APP_DIR=/srv/famorg bash scripts/synology-deploy.sh
 ```
 
 ### Cách B — Container Manager (giao diện)
 
-1. File Station: tạo `/path/to/your/famorg` (upload hoặc clone).
+1. File Station: tạo `/srv/famorg` (upload hoặc clone).
 2. Có file `.env` (copy từ `.env.example`) và đặt `LOCAL_PORT=3000`, `PUBLIC_PORT=8443`, `APP_URL=https://your-domain.example:8443`.
-3. Đặt certificate tại `/path/to/your/famorg/certs/fullchain.pem` và `/path/to/your/famorg/certs/privkey.pem` nếu dùng nginx HTTPS đi kèm.
-4. Container Manager → **Project** → path = `FamOrg` trên data-volume.
+3. Đặt certificate tại `/srv/famorg/certs/fullchain.pem` và `/srv/famorg/certs/privkey.pem` nếu dùng nginx HTTPS đi kèm.
+4. Container Manager → **Project** → path = `FamOrg` trên volume dữ liệu đã chọn.
 5. Build / Start.
 
 ### Kiểm tra
@@ -77,7 +77,7 @@ Mục tiêu: **https://your-domain.example:8443/**
 Copy certificate vào thư mục `certs/`, sau đó khởi động cả app và nginx:
 
 ```bash
-cd /path/to/your/famorg
+cd /srv/famorg
 mkdir -p certs
 # chép fullchain.pem và privkey.pem vào certs/
 docker compose up -d --build
@@ -124,7 +124,7 @@ GITHUB_REPO=your-github-user/FamOrg
 Áp dụng:
 
 ```bash
-cd /path/to/your/famorg
+cd /srv/famorg
 docker compose up -d
 ```
 
@@ -133,7 +133,7 @@ docker compose up -d
 Trước mỗi lần cập nhật, sao lưu SQLite, cài đặt và upload; không xóa thư mục `data/`.
 
 ```bash
-cd /path/to/your/famorg
+cd /srv/famorg
 mkdir -p data/backups
 stamp=$(date +%Y%m%d-%H%M%S)
 tar -czf "data/backups/famorg-$stamp.tgz" data/family.db data/app_settings.json data/uploads 2>/dev/null || true
@@ -148,7 +148,7 @@ Nếu bản mới không khởi động, xem `docker compose logs --tail=200 fam
 ## 6. Dữ liệu
 
 ```text
-/path/to/your/famorg/data/
+/srv/famorg/data/
 ├── family.db
 ├── app_settings.json
 ├── backups/
@@ -215,14 +215,14 @@ Image mặc định: **`ghcr.io/your-github-user/famorg:latest`** (CI build khi 
 Áp dụng lại image mới:
 
 ```bash
-cd /path/to/your/famorg
+cd /srv/famorg
 git pull
 # Cập nhật IMAGE trong .env nếu còn trỏ image cũ:
 #   IMAGE=ghcr.io/your-github-user/famorg:latest
 docker compose pull
 docker compose up -d
 # Nếu package GHCR private:
-#   echo $GITHUB_PAT | docker login ghcr.io -u your-github-user --password-stdin
+#   echo $GITHUB_PAT | docker login ghcr.io -u "$GITHUB_USER" --password-stdin
 ```
 
 Kiểm tra từ **bên trong** container:
@@ -246,7 +246,7 @@ Vàng SJC (vang.today) vẫn cần server; fallback hiển thị **PAXG / vàng 
 
 ### 8.5. `network_mode: host` (bắt buộc trên NAS này)
 
-Trên nhiều Synology (kể cả setup `your-nas`), **Docker bridge không ra được Internet** (ping 8.8.8.8 fail, DNS timeout) dù host NAS ra net bình thường.  
+Trên một số setup Synology, **Docker bridge không ra được Internet** (ping 8.8.8.8 fail, DNS timeout) dù host NAS ra net bình thường.
 Vì vậy stack FamOrg dùng **`network_mode: host`**:
 
 | Cổng host | Dịch vụ |

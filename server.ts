@@ -117,7 +117,7 @@ async function fetchOutbound(url: string, init: RequestInit = {}, timeoutMs = OU
   try {
     const headers = new Headers(init.headers || {});
     if (!headers.has("User-Agent")) {
-      headers.set("User-Agent", "FamOrg/1.0 (+https://github.com/your-github-user/FamOrg)");
+      headers.set("User-Agent", "FamOrg/1.0");
     }
     return await fetch(url, { ...init, headers, signal: ctrl.signal });
   } finally {

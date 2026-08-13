@@ -3,10 +3,10 @@
 set -euo pipefail
 export PATH=/usr/local/bin:/usr/bin:/bin:/sbin
 
-APP=/path/to/your/famorg
+APP=/srv/famorg
 IMAGE=ghcr.io/your-github-user/famorg:latest
 REPO_TARBALL=https://github.com/your-github-user/FamOrg/archive/refs/heads/main.tar.gz
-TMP=/path/to/your/famorg.tmp
+TMP=${APP}.tmp
 
 echo "==> Current containers"
 docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' || true
@@ -60,9 +60,9 @@ chmod 777 data 2>/dev/null || true
 
 # Ensure TLS certs exist
 if [ ! -f certs/fullchain.pem ] || [ ! -f certs/privkey.pem ]; then
-  if [ -f /path/to/your/docker/external-certs/certs/fullchain.pem ]; then
+  if [ -n "${THUCHI_CERTS:-}" ] && [ -f "${THUCHI_CERTS}/fullchain.pem" ]; then
     mkdir -p certs
-    cp -a /path/to/your/docker/external-certs/certs/fullchain.pem /path/to/your/docker/external-certs/certs/privkey.pem certs/
+    cp -a "${THUCHI_CERTS}/fullchain.pem" "${THUCHI_CERTS}/privkey.pem" certs/
   fi
 fi
 

@@ -171,7 +171,7 @@ Truy cập:
 
 - LAN: `http://192.0.2.10:3000`
 - Public HTTPS (mặc định): **https://your-domain.example:8443**
-- Docker path: `/path/to/your/famorg` · SSH port `22`
+- Docker path: `/srv/famorg` · SSH port `22`
 
 Public ra Internet nên dùng HTTPS reverse proxy + certificate; xem [NAS-DEPLOY.md](NAS-DEPLOY.md).
 

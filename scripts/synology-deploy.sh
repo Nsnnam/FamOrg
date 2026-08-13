@@ -3,7 +3,7 @@
 # Usage: bash scripts/synology-deploy.sh
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/path/to/your/famorg}"
+APP_DIR="${APP_DIR:-/srv/famorg}"
 REPO_URL="${REPO_URL:-https://github.com/your-github-user/FamOrg.git}"
 PUBLIC_URL="${PUBLIC_URL:-https://your-domain.example:8443}"
 
