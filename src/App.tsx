@@ -75,7 +75,7 @@ import { reloadOnce, scheduleReloadFallback } from "./utils/appReload.js";
 import { DEFAULT_VN_LOCATION, findVnLocation } from "./utils/vnLocations.js";
 import { fetchWidgetsFromBrowser, mergeWidgetData } from "./utils/widgetFallback.js";
 import { DEFAULT_BRANDING, BrandingSettings, mergeBranding, applyBrandingToDocument, getLogoDisplay } from "./utils/branding.js";
-import { AppearanceSettings, mergeAppearance, DEFAULT_APPEARANCE } from "./utils/appearance.js";
+import { AppearanceSettings, mergeAppearance, DEFAULT_APPEARANCE, appearanceBodyClass } from "./utils/appearance.js";
 import { DashboardPrefs, mergeDashboardPrefs, DEFAULT_DASHBOARD_PREFS } from "./utils/dashboardPrefs.js";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -106,6 +106,7 @@ export default function App() {
     return (saved as "light" | "dark") || "light";
   });
   const themeFadeTimer = useRef<number | null>(null);
+  const appliedBodyBgClasses = useRef<string[]>([]);
   const [branding, setBranding] = useState<BrandingSettings>(DEFAULT_BRANDING);
   const [appearance, setAppearance] = useState<AppearanceSettings>(DEFAULT_APPEARANCE);
   const [dashboardPrefs, setDashboardPrefs] = useState<DashboardPrefs>(DEFAULT_DASHBOARD_PREFS);
@@ -128,9 +129,19 @@ export default function App() {
     applyBrandingToDocument(branding);
   }, [branding]);
 
+  // Áp preset nền bằng class Tailwind (trước đây appearanceBodyClass tồn tại nhưng
+  // không được gọi nên bấm Lưu nền không làm giao diện thay đổi).
   useEffect(() => {
+    const body = document.body;
+    if (appliedBodyBgClasses.current.length) body.classList.remove(...appliedBodyBgClasses.current);
+    const nextClasses = appearanceBodyClass(appearance, theme).split(/\s+/).filter(Boolean);
+    body.classList.add(...nextClasses);
+    appliedBodyBgClasses.current = nextClasses;
+
     if (appearance.bgPreset === "custom" && appearance.customBgUrl) {
-      document.body.style.backgroundImage = `linear-gradient(rgba(2,6,23,${1 - appearance.customBgOpacity}), rgba(2,6,23,${1 - appearance.customBgOpacity})), url(${appearance.customBgUrl})`;
+      const overlay = theme === "dark" ? "2,6,23" : "248,250,252";
+      const alpha = Math.max(0.05, Math.min(0.95, 1 - appearance.customBgOpacity));
+      document.body.style.backgroundImage = `linear-gradient(rgba(${overlay},${alpha}), rgba(${overlay},${alpha})), url(${appearance.customBgUrl})`;
       document.body.style.backgroundSize = "cover";
       document.body.style.backgroundAttachment = "fixed";
       document.body.style.backgroundPosition = "center";
@@ -140,7 +151,10 @@ export default function App() {
       document.body.style.backgroundAttachment = "";
       document.body.style.backgroundPosition = "";
     }
-  }, [appearance]);
+    return () => {
+      if (appliedBodyBgClasses.current.length) body.classList.remove(...appliedBodyBgClasses.current);
+    };
+  }, [appearance, theme]);
 
   // Load branding / appearance / dashboard prefs after login
   useEffect(() => {
@@ -683,14 +697,37 @@ export default function App() {
     }
   };
 
-  // Địa phương thời tiết lưu riêng theo từng user (localStorage, không đụng DB).
+  // Vị trí thời tiết được lưu server-side theo từng user; localStorage chỉ dùng
+  // để migrate bản cài đặt cũ và làm fallback khi NAS tạm thời mất kết nối.
   const weatherLocKey = (uid: string) => `weather_loc_${uid}`;
+
+  const fetchWeatherLocation = async (): Promise<string> => {
+    if (!currentUser) return DEFAULT_VN_LOCATION.code;
+    const legacyCode = localStorage.getItem(weatherLocKey(currentUser.id));
+    try {
+      const res = await fetch("/api/settings/weather-location", { headers: getAuthHeader() });
+      const data = res.ok ? await res.json() : null;
+      const code = findVnLocation(data?.code || legacyCode || DEFAULT_VN_LOCATION.code).code;
+      // Migrate lựa chọn từng thiết bị cũ lên server đúng một lần.
+      if (data && !data.saved && legacyCode && legacyCode !== data.code) {
+        await fetch("/api/settings/weather-location", {
+          method: "PUT",
+          headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+          body: JSON.stringify({ code: legacyCode })
+        }).catch(() => {});
+      }
+      localStorage.setItem(weatherLocKey(currentUser.id), code);
+      return code;
+    } catch {
+      return findVnLocation(legacyCode || DEFAULT_VN_LOCATION.code).code;
+    }
+  };
 
   const fetchWidgets = async (locOverride?: string) => {
     if (!currentUser) return;
     try {
-      // Đọc địa phương của user (ưu tiên override khi vừa đổi để tránh trễ state).
-      const code = locOverride ?? localStorage.getItem(weatherLocKey(currentUser.id)) ?? DEFAULT_VN_LOCATION.code;
+      // Ưu tiên override khi vừa đổi, sau đó state server-side và cuối cùng legacy localStorage.
+      const code = locOverride ?? weatherLoc ?? localStorage.getItem(weatherLocKey(currentUser.id)) ?? DEFAULT_VN_LOCATION.code;
       const loc = findVnLocation(code);
       const geoQuery = `?lat=${loc.lat}&lon=${loc.lon}&city=${encodeURIComponent(loc.name)}`;
       // Lấy giá hiện tại + lịch sử 7 ngày (cho sparkline tăng trưởng ở Tổng quan)
@@ -739,16 +776,22 @@ export default function App() {
     }
   };
 
-  // Người dùng đổi địa phương thời tiết: lưu riêng theo user + lấy lại widget ngay.
+  // Người dùng đổi địa phương: lưu theo tài khoản trên NAS rồi lấy lại widget ngay.
   const handleChangeWeatherLoc = (code: string) => {
     if (!currentUser) return;
-    setWeatherLoc(code);
-    localStorage.setItem(weatherLocKey(currentUser.id), code);
-    fetchWidgets(code);
+    const normalized = findVnLocation(code).code;
+    setWeatherLoc(normalized);
+    localStorage.setItem(weatherLocKey(currentUser.id), normalized);
+    fetch("/api/settings/weather-location", {
+      method: "PUT",
+      headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({ code: normalized })
+    }).catch(() => {});
+    fetchWidgets(normalized);
   };
 
   // Dispatch fully unified refetch sequences
-  const fetchAllData = () => {
+  const fetchAllData = (locOverride?: string) => {
     fetchUsers();
     fetchTasks();
     fetchPlans();
@@ -763,7 +806,7 @@ export default function App() {
     fetchShopping();
     fetchNotifications();
     fetchBackupsAndLogs();
-    fetchWidgets();
+    fetchWidgets(locOverride);
     fetchAppVersion();
   };
 
@@ -814,11 +857,14 @@ export default function App() {
       return;
     }
 
-    // Nạp địa phương thời tiết đã lưu của user này (mỗi người một cài đặt riêng)
-    setWeatherLoc(localStorage.getItem(weatherLocKey(currentUser.id)) || DEFAULT_VN_LOCATION.code);
-
-    // Refresh core states on login
-    fetchAllData();
+    let bootstrappedWeatherCode = DEFAULT_VN_LOCATION.code;
+    const bootstrap = async () => {
+      bootstrappedWeatherCode = await fetchWeatherLocation();
+      setWeatherLoc(bootstrappedWeatherCode);
+      // Refresh core states only after the shared weather location is known.
+      fetchAllData(bootstrappedWeatherCode);
+    };
+    void bootstrap();
 
     // Refresh dashboard widgets (weather/markets) periodically
     const widgetTimer = setInterval(() => { fetchWidgets(); }, 10 * 60 * 1000);
@@ -1695,7 +1741,7 @@ export default function App() {
 
   return (
     <FabProvider>
-    <div className="h-screen overflow-hidden bg-slate-950 flex text-slate-200 selection:bg-sky-200 selection:text-sky-700 font-sans relative">
+    <div className={`h-screen overflow-hidden flex ${appearance.bgPreset === "custom" ? "bg-transparent" : appearanceBodyClass(appearance, theme)} ${theme === "dark" ? "text-slate-200" : "text-slate-800"} selection:bg-sky-200 selection:text-sky-700 font-sans relative transition-colors duration-300`}>
 
       {/* PWA: offline banner */}
       {!networkOnline && (

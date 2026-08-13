@@ -5,7 +5,7 @@
 
 import { getAppSettings, setAppSetting } from "./db.js";
 
-export type AiProviderId = "gemini" | "groq" | "openrouter" | "openai";
+export type AiProviderId = "gemini" | "groq" | "openrouter" | "openai" | "custom";
 
 export interface AiConfig {
   provider: AiProviderId;
@@ -27,51 +27,54 @@ export const AI_PROVIDERS: {
   {
     id: "gemini",
     label: "Google Gemini (AI Studio)",
-    freeNote: "Key miễn phí tại Google AI Studio — model Flash mới (3.5/3.6).",
+    freeNote: "AI Studio có free tier theo project/model; quota thực tế xem trong AI Studio.",
     keyUrl: "https://aistudio.google.com/apikey",
     defaultModel: "gemini-3.5-flash",
     models: [
+      { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash (stable)" },
       { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash (khuyến nghị)" },
-      { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash (mới nhất)" },
       { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite (nhanh)" },
       { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" },
-      { id: "gemini-flash-latest", label: "gemini-flash-latest (alias)" },
-      { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash (cũ — có thể lỗi user mới)" }
+      { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+      { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
+      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" }
     ]
   },
   {
     id: "groq",
-    label: "Groq (miễn phí)",
-    freeNote: "API nhanh, free tier — key tại console.groq.com",
+    label: "Groq (developer/free quota)",
+    freeNote: "API nhanh; hạn mức phụ thuộc tài khoản và model tại Groq Console.",
     keyUrl: "https://console.groq.com/keys",
-    defaultModel: "llama-3.3-70b-versatile",
+    defaultModel: "openai/gpt-oss-20b",
     baseUrl: "https://api.groq.com/openai/v1",
     models: [
-      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B" },
+      { id: "openai/gpt-oss-20b", label: "OpenAI GPT-OSS 20B" },
+      { id: "openai/gpt-oss-120b", label: "OpenAI GPT-OSS 120B" },
       { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B Instant" },
-      { id: "gemma2-9b-it", label: "Gemma 2 9B" },
-      { id: "qwen/qwen3-32b", label: "Qwen3 32B" }
+      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B Versatile" },
+      { id: "groq/compound-mini", label: "Groq Compound Mini" }
     ]
   },
   {
     id: "openrouter",
     label: "OpenRouter (free models)",
-    freeNote: "Nhiều model free — openrouter.ai/keys (chọn model :free)",
+    freeNote: "Router free động; danh sách và hạn mức thay đổi, xem openrouter.ai/models.",
     keyUrl: "https://openrouter.ai/keys",
-    defaultModel: "google/gemini-2.0-flash-exp:free",
+    defaultModel: "openrouter/free",
     baseUrl: "https://openrouter.ai/api/v1",
     models: [
-      { id: "google/gemini-2.0-flash-exp:free", label: "Gemini 2.0 Flash (free)" },
-      { id: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B free" },
-      { id: "meta-llama/llama-3.2-3b-instruct:free", label: "Llama 3.2 3B free" },
-      { id: "qwen/qwen-2.5-7b-instruct:free", label: "Qwen 2.5 7B free" },
-      { id: "mistralai/mistral-7b-instruct:free", label: "Mistral 7B free" }
+      { id: "openrouter/free", label: "OpenRouter Free Router (khuyến nghị)" },
+      { id: "nvidia/nemotron-3-super-120b-a12b:free", label: "NVIDIA Nemotron 3 Super free" },
+      { id: "google/gemma-4-26b-a4b-it:free", label: "Google Gemma 4 26B free" },
+      { id: "openai/gpt-oss-20b:free", label: "OpenAI GPT-OSS 20B free" },
+      { id: "nvidia/nemotron-3-nano-30b-a3b:free", label: "NVIDIA Nemotron 3 Nano free" }
     ]
   },
   {
     id: "openai",
-    label: "OpenAI-compatible / tự host",
-    freeNote: "Ollama, LM Studio, Together, Fireworks, SpaceXAI… — dán base URL + key.",
+    label: "OpenAI-compatible / OpenAI",
+
+    freeNote: "Ollama/LM Studio tự host hoặc bất kỳ endpoint OpenAI-compatible; model có thể tự nhập.",
     keyUrl: "https://platform.openai.com/api-keys",
     defaultModel: "gpt-4o-mini",
     baseUrl: "https://api.openai.com/v1",
@@ -79,6 +82,19 @@ export const AI_PROVIDERS: {
       { id: "gpt-4o-mini", label: "gpt-4o-mini" },
       { id: "gpt-4.1-mini", label: "gpt-4.1-mini" },
       { id: "gpt-4o", label: "gpt-4o" }
+    ]
+  },
+  {
+    id: "custom",
+    label: "Endpoint tùy chỉnh (Ollama / LM Studio)",
+    freeNote: "Tự host trên NAS hoặc máy trong LAN; nhập Base URL và model tùy ý.",
+    keyUrl: "https://ollama.com/download",
+    defaultModel: "llama3.2",
+    baseUrl: "http://host.docker.internal:11434/v1",
+    models: [
+      { id: "llama3.2", label: "llama3.2 (Ollama)" },
+      { id: "qwen2.5", label: "qwen2.5 (Ollama)" },
+      { id: "mistral", label: "mistral (Ollama)" }
     ]
   }
 ];
@@ -117,7 +133,7 @@ export function aiStatusPublic() {
     provider: cfg.provider,
     providerLabel: meta?.label || cfg.provider,
     model: cfg.model,
-    baseUrl: cfg.provider === "openai" ? cfg.baseUrl || "" : undefined,
+    baseUrl: ["openai", "custom"].includes(cfg.provider) ? cfg.baseUrl || "" : undefined,
     providers: AI_PROVIDERS.map(p => ({
       id: p.id,
       label: p.label,
@@ -125,7 +141,7 @@ export function aiStatusPublic() {
       keyUrl: p.keyUrl,
       defaultModel: p.defaultModel,
       models: p.models,
-      needsBaseUrl: p.id === "openai"
+      needsBaseUrl: ["openai", "custom"].includes(p.id)
     }))
   };
 }
@@ -225,7 +241,9 @@ async function generateGemini(
     "gemini-3.5-flash",
     "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
-    "gemini-flash-latest"
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite"
   ]);
   let lastErr: any;
   for (const model of candidates) {

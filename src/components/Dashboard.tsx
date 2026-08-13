@@ -199,10 +199,11 @@ export function Dashboard({
   const newsColClass = useMemo(() => {
     const c = prefs.newsColumns ?? "auto";
     if (c === 1) return "grid-cols-1";
-    if (c === 2) return "grid-cols-1 md:grid-cols-2";
-    if (c === 3) return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
-    // auto: 1 → 2 → 3 by viewport
-    return "grid-cols-1 md:grid-cols-2 xl:grid-cols-3";
+    if (c === 2) return "grid-cols-1 sm:grid-cols-2";
+    if (c === 3) return "grid-cols-1 sm:grid-cols-2 2xl:grid-cols-3";
+    if (c === 4) return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
+    // auto: compact responsive flow, 1 → 2 → 3 → 4 by available viewport.
+    return "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4";
   }, [prefs.newsColumns]);
 
   const [news, setNews] = useState<{ title: string; link: string; source: string; summary?: string }[]>([]);
@@ -789,21 +790,24 @@ export function Dashboard({
 
       {/* Tin tức RSS Việt Nam — multi-column on wide screens */}
       {show("news") && news.length > 0 && (
-        <motion.div style={{ order: orderIndex("news") }} {...fadeUp(0.14)} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+        <motion.div style={{ order: orderIndex("news") }} {...fadeUp(0.14)} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 space-y-1.5">
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-slate-200">📰 Tin tức</h3>
             <span className="text-[10px] text-slate-500">
-              RSS · {prefs.newsColumns === "auto" ? "tự động 1–3 cột" : `${prefs.newsColumns} cột`}
+              RSS · {prefs.newsColumns === "auto" ? "tự động 1–4 cột" : `${prefs.newsColumns} cột`}
             </span>
           </div>
           <ul className={`grid ${newsColClass} gap-x-4 gap-y-1.5`}>
             {news.map((n, i) => (
-              <li key={i} className="min-w-0 border-b border-slate-800/60 pb-1.5 last:border-0">
+              <li key={i} className="min-w-0 border-b border-slate-800/60 pb-1 last:border-0">
                 <a href={n.link} target="_blank" rel="noreferrer noopener"
-                  className="block text-xs text-slate-300 hover:text-sky-300 line-clamp-2">
-                  <span className="text-[10px] font-mono text-slate-500 mr-1.5 uppercase">{n.source}</span>
+                  className="block text-[11px] leading-4 text-slate-300 hover:text-sky-300 line-clamp-1">
+                  <span className="text-[9px] font-mono text-slate-500 mr-1 uppercase">{n.source}</span>
                   {n.title}
                 </a>
+                {prefs.newsShowSummary && n.summary && (
+                  <p className="text-[10px] leading-4 text-slate-500 line-clamp-2 mt-0.5">{n.summary}</p>
+                )}
               </li>
             ))}
           </ul>

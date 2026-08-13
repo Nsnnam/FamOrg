@@ -20,7 +20,7 @@ export type DashboardWidgetId =
 
 export type MarketCardId = "btc" | "eth" | "gold" | "usdVnd" | "eurVnd" | "cnyVnd" | "jpyVnd";
 
-export type NewsColumns = "auto" | 1 | 2 | 3;
+export type NewsColumns = "auto" | 1 | 2 | 3 | 4;
 
 export interface DashboardPrefs {
   widgets: Record<DashboardWidgetId, boolean>;
@@ -29,8 +29,10 @@ export interface DashboardPrefs {
   markets: Record<MarketCardId, boolean>;
   newsFeeds: string[];
   newsLimit: number;
-  /** 1 | 2 | 3 columns, or auto by viewport */
+  /** 1–4 columns, or auto by viewport */
   newsColumns: NewsColumns;
+  /** Compact RSS card layout; hides summaries by default to avoid excess height. */
+  newsShowSummary: boolean;
 }
 
 export const DEFAULT_NEWS_FEEDS = [
@@ -39,7 +41,14 @@ export const DEFAULT_NEWS_FEEDS = [
   { id: "thanhnien", label: "Thanh Niên", url: "https://thanhnien.vn/rss/home.rss" },
   { id: "vietnamnet", label: "VietNamNet", url: "https://vietnamnet.vn/rss/tin-noi-bat.rss" },
   { id: "baochinhphu", label: "Báo Chính phủ", url: "https://baochinhphu.vn/rss/home.rss" },
-  { id: "vtv", label: "VTV News", url: "https://vtv.vn/rss/tin-moi-nhat.rss" }
+  { id: "vtv", label: "VTV News", url: "https://vtv.vn/rss/tin-moi-nhat.rss" },
+  { id: "dantri", label: "Dân Trí", url: "https://dantri.com.vn/rss/home.rss" },
+  { id: "laodong", label: "Lao Động", url: "https://laodong.vn/rss/home.rss" },
+  { id: "nhandan", label: "Nhân Dân", url: "https://nhandan.vn/rss/home.rss" },
+  { id: "qdnd", label: "Quân đội Nhân dân", url: "https://www.qdnd.vn/rss/home.rss" },
+  { id: "cafef", label: "CafeF", url: "https://cafef.vn/thi-truong-chung-khoan.rss" },
+  { id: "genk", label: "GenK", url: "https://genk.vn/technology.rss" },
+  { id: "suckhoedoisong", label: "Sức khỏe & Đời sống", url: "https://suckhoedoisong.vn/rss/home.rss" }
 ];
 
 /** Logical layout blocks that can be reordered */
@@ -89,7 +98,8 @@ export const DEFAULT_DASHBOARD_PREFS: DashboardPrefs = {
   },
   newsFeeds: ["vnexpress", "tuoitre", "thanhnien", "baochinhphu"],
   newsLimit: 12,
-  newsColumns: "auto"
+  newsColumns: "auto",
+  newsShowSummary: false
 };
 
 export function mergeDashboardPrefs(raw?: Partial<DashboardPrefs> | null): DashboardPrefs {
@@ -97,11 +107,12 @@ export function mergeDashboardPrefs(raw?: Partial<DashboardPrefs> | null): Dashb
   if (!raw) return base;
   if (raw.widgets) base.widgets = { ...base.widgets, ...raw.widgets };
   if (raw.markets) base.markets = { ...base.markets, ...raw.markets };
-  if (Array.isArray(raw.newsFeeds) && raw.newsFeeds.length) base.newsFeeds = raw.newsFeeds;
+  if (Array.isArray(raw.newsFeeds)) base.newsFeeds = raw.newsFeeds;
   if (typeof raw.newsLimit === "number") base.newsLimit = Math.min(30, Math.max(3, raw.newsLimit));
-  if (raw.newsColumns === "auto" || raw.newsColumns === 1 || raw.newsColumns === 2 || raw.newsColumns === 3) {
+  if (raw.newsColumns === "auto" || raw.newsColumns === 1 || raw.newsColumns === 2 || raw.newsColumns === 3 || raw.newsColumns === 4) {
     base.newsColumns = raw.newsColumns;
   }
+  if (typeof raw.newsShowSummary === "boolean") base.newsShowSummary = raw.newsShowSummary;
   if (Array.isArray(raw.widgetOrder) && raw.widgetOrder.length) {
     const seen = new Set<string>();
     const order: DashboardWidgetId[] = [];

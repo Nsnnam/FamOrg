@@ -12,10 +12,10 @@ Cấu hình mặc định cho setup này:
 | Local port | **3000** |
 | Public port (host Docker) | **8443** |
 | Domain public (HTTPS) | **https://your-domain.example:8443** |
-| Container port | `3000` |
+| App HTTP nội bộ | `127.0.0.1:3000` |
+| Nginx HTTPS | `:8443` |
 
-App trong Docker listen HTTP nội bộ trên container `3000`, map host **8443** (public) và **3000** (LAN).  
-Nếu muốn HTTPS đúng nghĩa trên `:8443`, cần cert reverse proxy hoặc TLS terminator trỏ vào port đó; mặc định container vẫn HTTP trên 8443 trừ khi bạn bọc SSL.
+Stack dùng `network_mode: host`: app listen HTTP trên NAS port **3000**, còn nginx listen HTTPS trên **8443** và proxy về app. Không dùng mapping `3000:8443` trong cấu hình này. Nginx cần `./certs/fullchain.pem` và `./certs/privkey.pem` tương ứng với domain `your-domain.example`.
 
 ## 1. Chuẩn bị trên DSM
 
@@ -47,9 +47,10 @@ APP_DIR=/path/to/your/famorg bash scripts/synology-deploy.sh
 ### Cách B — Container Manager (giao diện)
 
 1. File Station: tạo `/path/to/your/famorg` (upload hoặc clone).
-2. Có file `.env` (copy từ `.env.example`).
-3. Container Manager → **Project** → path = `FamOrg` trên data-volume.
-4. Build / Start.
+2. Có file `.env` (copy từ `.env.example`) và đặt `LOCAL_PORT=3000`, `PUBLIC_PORT=8443`, `APP_URL=https://your-domain.example:8443`.
+3. Đặt certificate tại `/path/to/your/famorg/certs/fullchain.pem` và `/path/to/your/famorg/certs/privkey.pem` nếu dùng nginx HTTPS đi kèm.
+4. Container Manager → **Project** → path = `FamOrg` trên data-volume.
+5. Build / Start.
 
 ### Kiểm tra
 
@@ -71,29 +72,40 @@ Mục tiêu: **https://your-domain.example:8443/**
 
 ### Certificate (khuyến nghị)
 
-**Cách 1 — Reverse Proxy DSM (source port 8443)**
+**Cách 1 — Nginx HTTPS đi kèm compose (khuyến nghị cho cấu hình hiện tại)**
+
+Copy certificate vào thư mục `certs/`, sau đó khởi động cả app và nginx:
+
+```bash
+cd /path/to/your/famorg
+mkdir -p certs
+# chép fullchain.pem và privkey.pem vào certs/
+docker compose up -d --build
+```
+
+Nginx nhận HTTPS tại `https://your-domain.example:8443` và proxy nội bộ về `http://127.0.0.1:3000`.
+
+**Cách 2 — Reverse Proxy DSM**
 
 Control Panel → Login Portal → Advanced → Reverse Proxy → Create:
 
 | Field | Value |
-|-------|--------|
+|-------|-------|
 | Description | FamOrg |
 | Source protocol | **HTTPS** |
 | Source hostname | `your-domain.example` |
 | Source port | **8443** |
 | Destination protocol | **HTTP** |
 | Destination hostname | `localhost` |
-| Destination port | **3000** (hoặc 8443 nếu map thẳng container) |
+| Destination port | **3000** |
 
 Gán certificate Let's Encrypt cho hostname `your-domain.example`.
 
-> Lưu ý: nếu Reverse Proxy listen 8443, **không** để Docker cũng bind 8443 (trùng port). Khi đó chỉ map Docker local `3000`, public do proxy.
+> Lưu ý: chỉ chọn một TLS terminator trên port **8443**. Nếu dùng Reverse Proxy DSM, dừng service nginx trong compose hoặc đổi `PUBLIC_PORT` để tránh trùng port.
 
-**Cách 2 — Docker public 8443 + HTTP (đơn giản)**
+**Cách 3 — Chỉ app HTTP LAN**
 
-- Giữ `ports: "8443:3000"` trong compose.
-- Truy cập `http://your-domain.example:8443` (browser có thể cảnh báo nếu gõ https mà app chưa TLS).
-- `APP_URL` vẫn đặt `https://...` chỉ khi bạn thực sự terminate TLS trước app.
+Nếu đã dùng Reverse Proxy DSM để terminate TLS, đặt `PUBLIC_PORT` thành một port không dùng hoặc tắt service nginx trong compose; app chính vẫn chạy tại `http://192.0.2.10:3000`.
 
 ### DDNS
 
@@ -116,13 +128,22 @@ cd /path/to/your/famorg
 docker compose up -d
 ```
 
-## 5. Cập nhật
+## 5. Cập nhật an toàn
+
+Trước mỗi lần cập nhật, sao lưu SQLite, cài đặt và upload; không xóa thư mục `data/`.
 
 ```bash
 cd /path/to/your/famorg
-git pull
+mkdir -p data/backups
+stamp=$(date +%Y%m%d-%H%M%S)
+tar -czf "data/backups/famorg-$stamp.tgz" data/family.db data/app_settings.json data/uploads 2>/dev/null || true
+git pull --ff-only
 docker compose up -d --build
+docker compose ps
+curl -fsS http://127.0.0.1:3000/api/health || true
 ```
+
+Nếu bản mới không khởi động, xem `docker compose logs --tail=200 family-organizer nginx`, rồi khôi phục bản Git trước đó và giữ nguyên `data/`.
 
 ## 6. Dữ liệu
 
@@ -134,7 +155,19 @@ docker compose up -d --build
 └── uploads/
 ```
 
-## 7. Xử lý sự cố
+## 7. Các thay đổi chức năng trong bản này
+
+| Khu vực | Hành vi mới |
+|---|---|
+| Thời tiết | Vị trí lưu server-side theo tài khoản; thiết bị mới nhận lại lựa chọn cũ. Mặc định là Vĩnh Phúc (Vĩnh Yên). |
+| Dashboard/RSS | Checkbox `false` và danh sách RSS rỗng được giữ nguyên; có thêm nguồn Dân Trí, Lao Động, Nhân Dân, QĐND, CafeF, GenK và Sức khỏe & Đời sống. |
+| Tin tức | Có chế độ 1–4 cột hoặc tự động theo viewport; mặc định ẩn mô tả để giảm chiều cao. |
+| Giao diện | Preset nền được áp dụng lên app shell; hỗ trợ URL/data URL ảnh nền và picker favicon/logo/icon danh mục. |
+| AI | Có Gemini, Groq, OpenRouter, OpenAI-compatible và endpoint custom cho Ollama/LM Studio; model có thể nhập tự do. |
+
+Vị trí thời tiết và dashboard được đồng bộ qua API, nên cần đăng nhập cùng tài khoản trên các thiết bị. Nếu cài đặt cũ có lựa chọn weather trong localStorage, app sẽ tự migrate lên server khi đăng nhập lần tiếp theo.
+
+## 8. Xử lý sự cố
 
 | Triệu chứng | Cách xử lý |
 |-------------|------------|

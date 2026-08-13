@@ -82,7 +82,7 @@ export const VN_LOCATIONS: VnLocation[] = [
   { code: "yenbai", name: "Yên Bái", lat: 21.7050, lon: 104.8700 },
 ];
 
-export const DEFAULT_VN_LOCATION = VN_LOCATIONS[0]; // TP. Hồ Chí Minh
+export const DEFAULT_VN_LOCATION = VN_LOCATIONS.find(l => l.code === "vinhphuc") || VN_LOCATIONS[0]; // Vĩnh Phúc (Vĩnh Yên)
 
 export const findVnLocation = (code: string | null | undefined): VnLocation =>
   VN_LOCATIONS.find(l => l.code === code) || DEFAULT_VN_LOCATION;

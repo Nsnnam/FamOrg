@@ -64,6 +64,23 @@ function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("family_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+const FINANCE_ICON_OPTIONS = [
+  "🏷️", "🍲", "📚", "⚡", "🛍️", "💊", "🚗", "🏦", "🤝", "🌸", "🎁", "💰", "💻", "📈", "🏠", "💳", "🎀", "💵", "🧾", "🎯", "✈️", "🐾", "🎵", "📱", "🔧", "🌱", "👨‍👩‍👧"
+];
+
+function FinanceIconPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1 max-w-[420px]">
+      {FINANCE_ICON_OPTIONS.map(icon => (
+        <button key={icon} type="button" aria-label={`Chọn icon ${icon}`} onClick={() => onChange(icon)}
+          className={`w-7 h-7 rounded-md border text-base leading-none ${value === icon ? "border-sky-400 bg-sky-500/20" : "border-slate-800 bg-slate-900 hover:border-slate-600"}`}>
+          {icon}
+        </button>
+      ))}
+    </div>
+  );
+}
 import { motion } from "motion/react";
 import { useConfirm } from "./ConfirmDialog.js";
 import { Avatar } from "./Avatar.js";
@@ -253,6 +270,7 @@ export function Settings({
   const [newCatEmoji, setNewCatEmoji] = useState("🏷️");
   const [newCatKind, setNewCatKind] = useState<"expense" | "income" | "both">("expense");
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupEmoji, setNewGroupEmoji] = useState("📁");
 
   useEffect(() => { setBrandDraft(branding); }, [branding]);
   useEffect(() => { setAppearDraft(appearance); }, [appearance]);
@@ -496,7 +514,7 @@ export function Settings({
           provider: aiProvider,
           apiKey: clear ? "" : (aiKeyInput.trim() || undefined),
           model: aiModel,
-          baseUrl: aiProvider === "openai" ? aiBaseUrl : undefined
+            baseUrl: ["openai", "custom"].includes(aiProvider) ? aiBaseUrl : undefined
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -1173,13 +1191,13 @@ export function Settings({
             </div>
           </form>
 
-          {/* Địa phương thời tiết (lưu riêng từng người trên máy này) */}
+          {/* Địa phương thời tiết (lưu theo tài khoản, đồng bộ thiết bị) */}
           <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 space-y-3 max-w-md">
             <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
               <MapPin className="w-4.5 h-4.5 text-sky-400" /> Địa phương xem thời tiết
             </h3>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Chọn tỉnh/thành của bạn để trang Tổng quan hiển thị thời tiết và cảnh báo động đất theo khu vực. Cài đặt này riêng cho từng người và lưu trên thiết bị này.
+              Chọn tỉnh/thành để trang Tổng quan hiển thị thời tiết và cảnh báo động đất theo khu vực. Lựa chọn được lưu theo tài khoản và tự đồng bộ khi bạn đăng nhập trên web hoặc điện thoại khác.
             </p>
             <div className="text-xs">
               <FancySelect
@@ -1841,8 +1859,16 @@ export function Settings({
               </button>
             ))}
             {brandDraft.logoType === "emoji" && (
-              <input value={brandDraft.logoEmoji} onChange={e => setBrandDraft(d => ({ ...d, logoEmoji: e.target.value }))}
-                className="w-16 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-center text-lg" />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <input value={brandDraft.logoEmoji} onChange={e => setBrandDraft(d => ({ ...d, logoEmoji: e.target.value }))}
+                  className="w-16 bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-center text-lg" />
+                <div className="flex flex-wrap gap-1 max-w-[300px]">
+                  {["🏠", "🏡", "👨‍👩‍👧", "❤️", "🌈", "⭐", "🌱", "🦋", "🐳", "🚀", "💎", "📚", "🍀", "🎯"].map(icon => (
+                    <button key={icon} type="button" onClick={() => setBrandDraft(d => ({ ...d, logoEmoji: icon }))}
+                      className={`w-7 h-7 rounded-md border text-base ${brandDraft.logoEmoji === icon ? "border-sky-400 bg-sky-500/20" : "border-slate-800 bg-slate-900"}`}>{icon}</button>
+                  ))}
+                </div>
+              </div>
             )}
             {brandDraft.logoType === "url" && (
               <input value={brandDraft.logoUrl} onChange={e => setBrandDraft(d => ({ ...d, logoUrl: e.target.value }))}
@@ -1922,7 +1948,7 @@ export function Settings({
       {currentUser.role === UserRole.ADMIN && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
           <h3 className="text-sm font-bold text-slate-200">📊 Tùy biến Tổng quan (Dashboard)</h3>
-          <p className="text-[11px] text-slate-500">Bật/tắt khối, kéo thứ tự (▲▼), chọn tỷ giá, tin RSS, số cột tin tức.</p>
+          <p className="text-[11px] text-slate-500">Bật/tắt khối, kéo thứ tự (▲▼), chọn tỷ giá, nguồn RSS, mật độ và số cột tin tức. Giá trị bỏ chọn được lưu chính xác, kể cả khi bỏ chọn toàn bộ.</p>
 
           <p className="text-[11px] font-semibold text-slate-400">Thứ tự khối (kéo ▲▼)</p>
           <ul className="space-y-1 max-h-56 overflow-y-auto">
@@ -1994,16 +2020,22 @@ export function Settings({
                   const v = e.target.value;
                   setDashDraft(d => ({
                     ...d,
-                    newsColumns: v === "auto" ? "auto" : (Number(v) as 1 | 2 | 3)
+                    newsColumns: v === "auto" ? "auto" : (Number(v) as 1 | 2 | 3 | 4)
                   }));
                 }}
                 className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200"
               >
-                <option value="auto">Tự động (1→2→3 theo màn)</option>
+                <option value="auto">Tự động (1→2→3→4 theo màn)</option>
                 <option value="1">1 cột</option>
                 <option value="2">2 cột</option>
                 <option value="3">3 cột</option>
+                <option value="4">4 cột</option>
               </select>
+            </label>
+            <label className="text-slate-400 flex items-center gap-1.5">
+              <input type="checkbox" checked={dashDraft.newsShowSummary === true}
+                onChange={e => setDashDraft(d => ({ ...d, newsShowSummary: e.target.checked }))} />
+              Hiện mô tả bài viết
             </label>
           </div>
           <button type="button" onClick={saveDashboardPrefs} disabled={dashBusy}
@@ -2018,17 +2050,33 @@ export function Settings({
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4.5 space-y-3">
           <h3 className="text-sm font-bold text-slate-200">💰 Danh mục & nhóm thu/chi</h3>
           <p className="text-[11px] text-slate-500">Nhóm chung cho thu+chi; sắp xếp theo tần suất dùng khi thêm giao dịch (tự động) + thứ tự thủ công.</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 items-start">
             <input value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="Tên nhóm mới"
               className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200" />
+            <div className="flex-1 min-w-[240px]"><FinanceIconPicker value={newGroupEmoji} onChange={setNewGroupEmoji} /></div>
             <button type="button" disabled={finBusy || !newGroupName.trim()} onClick={() => {
-              const g: FinanceCategoryGroup = { id: `grp_${Date.now()}`, name: newGroupName.trim(), emoji: "📁", sortOrder: finCats.groups.length };
+              const g: FinanceCategoryGroup = { id: `grp_${Date.now()}`, name: newGroupName.trim(), emoji: newGroupEmoji || "📁", sortOrder: finCats.groups.length };
               void saveFinCats({ ...finCats, groups: [...finCats.groups, g] });
               setNewGroupName("");
+              setNewGroupEmoji("📁");
             }} className="text-[11px] font-bold bg-slate-800 text-sky-300 px-2.5 py-1.5 rounded-lg">+ Nhóm</button>
           </div>
-          <div className="flex flex-wrap gap-2 items-center">
-            <input value={newCatEmoji} onChange={e => setNewCatEmoji(e.target.value)} className="w-12 text-center bg-slate-900 border border-slate-800 rounded-lg py-1.5" />
+          <div className="text-[11px] text-slate-400">Icon các nhóm hiện có</div>
+          <ul className="flex flex-wrap gap-1.5">
+            {finCats.groups.map(g => (
+              <li key={g.id} className="flex items-center gap-1.5 bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1">
+                <select value={g.emoji || "📁"} aria-label={`Icon nhóm ${g.name}`} onChange={e => {
+                  const next = { ...finCats, groups: finCats.groups.map(x => x.id === g.id ? { ...x, emoji: e.target.value } : x) };
+                  void saveFinCats(next);
+                }} className="bg-transparent text-base w-8">
+                  {FINANCE_ICON_OPTIONS.map(icon => <option key={icon} value={icon}>{icon}</option>)}
+                </select>
+                <span className="text-slate-200">{g.name}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2 items-start">
+            <div><div className="text-[10px] text-slate-500 mb-1">Icon danh mục mới</div><FinanceIconPicker value={newCatEmoji} onChange={setNewCatEmoji} /></div>
             <input value={newCatName} onChange={e => setNewCatName(e.target.value)} placeholder="Tên danh mục"
               className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 flex-1 min-w-[120px]" />
             <select value={newCatKind} onChange={e => setNewCatKind(e.target.value as any)}
@@ -2049,7 +2097,12 @@ export function Settings({
           <ul className="max-h-48 overflow-y-auto space-y-1 text-[11px]">
             {finCats.categories.map(c => (
               <li key={c.id} className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-2 py-1 border border-slate-800/80">
-                <span>{c.emoji}</span>
+                <select value={c.emoji || "🏷️"} aria-label={`Icon danh mục ${c.name}`} onChange={e => {
+                  const next = { ...finCats, categories: finCats.categories.map(x => x.id === c.id ? { ...x, emoji: e.target.value } : x) };
+                  void saveFinCats(next);
+                }} className="bg-transparent text-base w-8">
+                  {FINANCE_ICON_OPTIONS.map(icon => <option key={icon} value={icon}>{icon}</option>)}
+                </select>
                 <span className="text-slate-200 flex-1 truncate">{c.name}</span>
                 <span className="text-slate-500 font-mono">{c.kind}</span>
                 {!c.isSystem && (
@@ -2094,7 +2147,8 @@ export function Settings({
                   { id: "gemini", label: "Google Gemini" },
                   { id: "groq", label: "Groq" },
                   { id: "openrouter", label: "OpenRouter" },
-                  { id: "openai", label: "OpenAI-compatible" }
+                  { id: "openai", label: "OpenAI-compatible" },
+                  { id: "custom", label: "Endpoint tùy chỉnh / Ollama" }
                 ]).map((p: any) => (
                   <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
@@ -2102,28 +2156,29 @@ export function Settings({
             </label>
             <label className="text-[11px] text-slate-400 space-y-1">
               Model
-              <select
+              <input
                 value={aiModel}
+                list="famorg-ai-models"
                 onChange={e => setAiModel(e.target.value)}
+                placeholder="Nhập model tùy chỉnh nếu cần"
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
-              >
+              />
+              <datalist id="famorg-ai-models">
                 {(() => {
                   const meta = (aiKeyStatus?.providers || []).find((x: any) => x.id === aiProvider);
                   const models = meta?.models || [{ id: aiModel, label: aiModel }];
-                  return models.map((m: any) => (
-                    <option key={m.id} value={m.id}>{m.label}</option>
-                  ));
+                  return models.map((m: any) => <option key={m.id} value={m.id}>{m.label}</option>);
                 })()}
-              </select>
+              </datalist>
             </label>
           </div>
-          {aiProvider === "openai" && (
+          {(aiProvider === "openai" || aiProvider === "custom") && (
             <label className="text-[11px] text-slate-400 space-y-1 block">
               Base URL (OpenAI-compatible)
               <input
                 value={aiBaseUrl}
                 onChange={e => setAiBaseUrl(e.target.value)}
-                placeholder="https://api.openai.com/v1 hoặc http://host:11434/v1"
+                placeholder="https://api.openai.com/v1, Groq, OpenRouter hoặc http://host:11434/v1"
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200"
               />
             </label>

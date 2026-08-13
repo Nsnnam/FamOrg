@@ -15,6 +15,7 @@ import { sqliteAppendServerMetric, sqliteGetServerMetrics } from "./server/sqlit
 import { UserRole, isLimitedViewer, DishSlot, MealIngredient, DOCUMENT_TYPE_LABELS } from "./src/types.js";
 import { buildPlanFromLibrary, dedupeAndAnnotateGroceries } from "./src/utils/mealPlan.js";
 import { normalizeSearchText, matchesQuery, excerptAround } from "./src/utils/searchText.js";
+import { VN_LOCATIONS, DEFAULT_VN_LOCATION } from "./src/utils/vnLocations.js";
 import { saveDataUrlToFile, UPLOADS_DIR } from "./server/media.js";
 import { streamFullBackup, fullBackupFilename, importFullBackup } from "./server/fullBackup.js";
 import { telegramBackupStatus, sendBackupToTelegram, runTelegramBackupTick } from "./server/telegramBackup.js";
@@ -138,6 +139,11 @@ function aiStatus() {
 
 // Body parser - supports rich receipt images in finances
 app.use(express.json({ limit: "15mb" }));
+
+// Lightweight unauthenticated probe for Docker/DSM smoke checks.
+app.get("/api/health", (_req: Request, res: Response) => {
+  res.json({ ok: true, service: "famorg", version: APP_VERSION, time: new Date().toISOString() });
+});
 
 // --- SESSION TOKEN SIGNING ---
 // Tokens are stateless: "userId.HMAC(userId)". They cannot be forged without the
@@ -934,6 +940,31 @@ app.put("/api/settings/appearance", requireAuth, requireRole([UserRole.ADMIN]), 
   res.json(next);
 });
 
+const DEFAULT_WEATHER_LOCATION_CODE = DEFAULT_VN_LOCATION.code;
+
+function normalizeWeatherLocationCode(value: unknown): string {
+  const code = String(value || "").trim().toLowerCase();
+  return VN_LOCATIONS.some(location => location.code === code) ? code : DEFAULT_WEATHER_LOCATION_CODE;
+}
+
+// Vị trí thời tiết được lưu theo user trong app_settings để mọi thiết bị đăng nhập
+// cùng tài khoản nhận đúng lựa chọn; localStorage chỉ còn là fallback/migration.
+app.get("/api/settings/weather-location", requireAuth, (req: AuthRequest, res: Response) => {
+  const userId = req.userSession!.userId;
+  const locations = parseJsonSetting<Record<string, string>>("weatherLocations", {});
+  const saved = typeof locations[userId] === "string" && locations[userId] ? normalizeWeatherLocationCode(locations[userId]) : null;
+  res.json({ code: saved || DEFAULT_WEATHER_LOCATION_CODE, saved: Boolean(saved) });
+});
+
+app.put("/api/settings/weather-location", requireAuth, (req: AuthRequest, res: Response) => {
+  const userId = req.userSession!.userId;
+  const locations = parseJsonSetting<Record<string, string>>("weatherLocations", {});
+  const code = normalizeWeatherLocationCode(req.body?.code);
+  locations[userId] = code;
+  setAppSetting("weatherLocations", JSON.stringify(locations));
+  res.json({ code, saved: true });
+});
+
 app.get("/api/settings/dashboard", requireAuth, (_req: AuthRequest, res: Response) => {
   res.json(parseJsonSetting("dashboardPrefs", {}));
 });
@@ -981,7 +1012,14 @@ const VN_RSS: Record<string, string> = {
   thanhnien: "https://thanhnien.vn/rss/home.rss",
   vietnamnet: "https://vietnamnet.vn/rss/tin-noi-bat.rss",
   baochinhphu: "https://baochinhphu.vn/rss/home.rss",
-  vtv: "https://vtv.vn/rss/tin-moi-nhat.rss"
+  vtv: "https://vtv.vn/rss/tin-moi-nhat.rss",
+  dantri: "https://dantri.com.vn/rss/home.rss",
+  laodong: "https://laodong.vn/rss/home.rss",
+  nhandan: "https://nhandan.vn/rss/home.rss",
+  qdnd: "https://www.qdnd.vn/rss/home.rss",
+  cafef: "https://cafef.vn/thi-truong-chung-khoan.rss",
+  genk: "https://genk.vn/technology.rss",
+  suckhoedoisong: "https://suckhoedoisong.vn/rss/home.rss"
 };
 
 function parseRssItems(xml: string, source: string, limit: number): any[] {
@@ -1012,11 +1050,17 @@ function parseRssItems(xml: string, source: string, limit: number): any[] {
 app.get("/api/widgets/news", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const prefs = parseJsonSetting("dashboardPrefs", { newsFeeds: ["vnexpress", "tuoitre"], newsLimit: 8 }) as any;
+    const hasExplicitFeeds = req.query.feeds !== undefined;
     const feedIds: string[] = Array.isArray(req.query.feeds)
       ? (req.query.feeds as string[])
       : typeof req.query.feeds === "string"
         ? String(req.query.feeds).split(",").map(s => s.trim()).filter(Boolean)
         : (prefs.newsFeeds || ["vnexpress", "tuoitre"]);
+    // An explicit empty list means the user intentionally disabled all RSS sources.
+    if (hasExplicitFeeds && feedIds.length === 0) {
+      res.json({ items: [], cached: false, feeds: [] });
+      return;
+    }
     const limit = Math.min(20, Math.max(3, Number(req.query.limit) || prefs.newsLimit || 8));
     const cacheKey = feedIds.join(",") + ":" + limit;
     if (newsCache.at && Date.now() - newsCache.at < 15 * 60 * 1000 && (newsCache as any).key === cacheKey) {
