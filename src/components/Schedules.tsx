@@ -88,8 +88,9 @@ export function Schedules({
   const [newStartDate, setNewStartDate] = useState("");
   const [newEndDate, setNewEndDate] = useState("");
   const [newIsRecurring, setNewIsRecurring] = useState(false);
-  const [newRecurrenceType, setNewRecurrenceType] = useState<"none" | "daily" | "weekly" | "monthly">("none");
+  const [newRecurrenceType, setNewRecurrenceType] = useState<"none" | "daily" | "weekly" | "monthly" | "yearly">("none");
   const [newRecurrenceWeekdays, setNewRecurrenceWeekdays] = useState<number[]>([]);
+  const [newRecurrenceUntil, setNewRecurrenceUntil] = useState("");
   const [newIsShared, setNewIsShared] = useState(true);
   const [newColor, setNewColor] = useState("sky");
 
@@ -106,6 +107,7 @@ export function Schedules({
     setNewIsRecurring(false);
     setNewRecurrenceType("none");
     setNewRecurrenceWeekdays([]);
+    setNewRecurrenceUntil("");
     setNewIsShared(true);
     setNewColor("sky");
   };
@@ -137,6 +139,14 @@ export function Schedules({
       lines.push(`DTEND:${dt(p.endDate || p.startDate) || start}`);
       lines.push(`SUMMARY:${esc(p.title)}`);
       if (p.description) lines.push(`DESCRIPTION:${esc(p.description)}`);
+      const freq = p.recurrenceType === "daily" ? "DAILY" : p.recurrenceType === "weekly" ? "WEEKLY" : p.recurrenceType === "monthly" ? "MONTHLY" : p.recurrenceType === "yearly" ? "YEARLY" : "";
+      if (p.isRecurring && freq) {
+        const byDay = p.recurrenceType === "weekly" && p.recurrenceWeekdays?.length
+          ? `;BYDAY=${p.recurrenceWeekdays.map(d => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][d]).join(",")}`
+          : "";
+        const until = p.recurrenceUntil ? `;UNTIL=${p.recurrenceUntil.replace(/-/g, "")}T235959` : "";
+        lines.push(`RRULE:FREQ=${freq}${byDay}${until}`);
+      }
       lines.push("END:VEVENT");
     });
     lines.push("END:VCALENDAR");
@@ -166,6 +176,7 @@ export function Schedules({
     setNewIsRecurring(plan.isRecurring);
     setNewRecurrenceType(plan.recurrenceType || "none");
     setNewRecurrenceWeekdays(plan.recurrenceWeekdays || []);
+    setNewRecurrenceUntil(plan.recurrenceUntil || "");
     setNewIsShared(plan.isShared);
     setNewColor(plan.color || "sky");
     setEditingPlan(plan);
@@ -356,6 +367,8 @@ export function Schedules({
       recurrenceWeekdays: newIsRecurring && newRecurrenceType === "weekly"
         ? (newRecurrenceWeekdays.length > 0 ? newRecurrenceWeekdays : [new Date(`${newStartDate.slice(0, 10)}T00:00:00`).getDay()])
         : undefined,
+      // Chuỗi rỗng biểu thị lặp vô thời hạn; tách biệt với Kết thúc của một lần diễn ra.
+      recurrenceUntil: newIsRecurring ? newRecurrenceUntil.trim() : "",
       isShared: newIsShared,
       color: newColor
     };
@@ -448,11 +461,12 @@ export function Schedules({
     lines.push(`SUMMARY:${escapeICS(plan.title)}`);
     if (plan.description) lines.push(`DESCRIPTION:${escapeICS(plan.description)}`);
     if (plan.isRecurring && plan.recurrenceType && plan.recurrenceType !== "none") {
-      const freq = plan.recurrenceType === "daily" ? "DAILY" : plan.recurrenceType === "weekly" ? "WEEKLY" : "MONTHLY";
+      const freq = plan.recurrenceType === "daily" ? "DAILY" : plan.recurrenceType === "weekly" ? "WEEKLY" : plan.recurrenceType === "monthly" ? "MONTHLY" : "YEARLY";
       const byDay = plan.recurrenceType === "weekly" && plan.recurrenceWeekdays?.length
         ? `;BYDAY=${plan.recurrenceWeekdays.map(d => ["SU", "MO", "TU", "WE", "TH", "FR", "SA"][d]).join(",")}`
         : "";
-      lines.push(`RRULE:FREQ=${freq}${byDay}`);
+      const until = plan.recurrenceUntil ? `;UNTIL=${plan.recurrenceUntil.replace(/-/g, "")}T235959` : "";
+      lines.push(`RRULE:FREQ=${freq}${byDay}${until}`);
     }
     lines.push("END:VEVENT", "END:VCALENDAR");
     return lines.join("\r\n");
@@ -551,6 +565,7 @@ export function Schedules({
       const days = (plan.recurrenceWeekdays || []).map(d => WEEKDAY_OPTIONS.find(o => o.value === d)?.label).filter(Boolean);
       return days.length ? `Hằng tuần: ${days.join(", ")}` : "Hằng tuần";
     }
+    if (plan.recurrenceType === "yearly") return "Hằng năm";
     return "Hằng tháng";
   };
 
@@ -1317,9 +1332,28 @@ export function Schedules({
                       options={[
                         { value: "daily", label: "Hằng ngày" },
                         { value: "weekly", label: "Hằng tuần" },
-                        { value: "monthly", label: "Hằng tháng" }
+                        { value: "monthly", label: "Hằng tháng" },
+                        { value: "yearly", label: "Hằng năm (sinh nhật, kỷ niệm)" }
                       ]}
                     />
+                  </div>
+                )}
+                {newIsRecurring && newRecurrenceType === "yearly" && (
+                  <p className="sm:col-span-2 text-[11px] leading-relaxed text-sky-300/90 bg-sky-500/10 border border-sky-500/20 rounded-lg px-2.5 py-2">
+                    Sự kiện sẽ lặp đúng ngày và tháng bắt đầu mỗi năm. Ngày 29/02 chỉ hiện ở năm nhuận.
+                  </p>
+                )}
+                {newIsRecurring && (
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-slate-400 block font-semibold">Lặp đến (tùy chọn)</label>
+                    <input
+                      type="date"
+                      value={newRecurrenceUntil}
+                      min={newStartDate.slice(0, 10) || undefined}
+                      onChange={(e) => setNewRecurrenceUntil(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-sky-500"
+                    />
+                    <p className="text-[10px] text-slate-500">Để trống để lặp vô thời hạn. Trường “Kết thúc” phía trên chỉ là thời lượng của mỗi lần diễn ra.</p>
                   </div>
                 )}
                 {newIsRecurring && newRecurrenceType === "weekly" && (

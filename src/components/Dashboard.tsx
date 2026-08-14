@@ -32,7 +32,7 @@ import { ShimmerLine, IconChip } from "./Lively.js";
 import { getVietnamHolidaysForMonth } from "../utils/vietnamHolidays.js";
 import { expandRecurringOccurrences } from "../utils/recurrence.js";
 
-import { DashboardPrefs, DEFAULT_DASHBOARD_PREFS, mergeDashboardPrefs } from "../utils/dashboardPrefs.js";
+import { DashboardPrefs, DEFAULT_DASHBOARD_PREFS, mergeDashboardPrefs, MarketCardId } from "../utils/dashboardPrefs.js";
 
 interface DashboardProps {
   currentUser: User;
@@ -72,6 +72,21 @@ const WEATHER_CODES: Record<number, { label: string; icon: string }> = {
   99: { label: "Dông mạnh", icon: "⛈️" }
 };
 const describeWeather = (code: number) => WEATHER_CODES[code] || { label: "—", icon: "🌡️" };
+
+const EXTRA_FX_CARDS: Array<{ id: Exclude<MarketCardId, "btc" | "eth" | "gold" | "usdVnd">; label: string; icon: string; tone: string }> = [
+  { id: "eurVnd", label: "EUR/VND", icon: "💶", tone: "text-blue-400" },
+  { id: "cnyVnd", label: "CNY/VND", icon: "¥", tone: "text-red-400" },
+  { id: "jpyVnd", label: "JPY/VND", icon: "¥", tone: "text-pink-400" },
+  { id: "gbpVnd", label: "GBP/VND", icon: "💷", tone: "text-indigo-400" },
+  { id: "krwVnd", label: "KRW/VND", icon: "₩", tone: "text-violet-400" },
+  { id: "sgdVnd", label: "SGD/VND", icon: "S$", tone: "text-emerald-400" },
+  { id: "thbVnd", label: "THB/VND", icon: "฿", tone: "text-amber-400" },
+  { id: "audVnd", label: "AUD/VND", icon: "A$", tone: "text-cyan-400" },
+  { id: "cadVnd", label: "CAD/VND", icon: "C$", tone: "text-rose-400" },
+  { id: "chfVnd", label: "CHF/VND", icon: "₣", tone: "text-slate-300" },
+  { id: "hkdVnd", label: "HKD/VND", icon: "HK$", tone: "text-orange-400" },
+  { id: "twdVnd", label: "TWD/VND", icon: "NT$", tone: "text-teal-400" }
+];
 
 // "cách đây" gọn gàng cho mốc thời gian động đất (nhận epoch ms từ USGS).
 const timeAgoVi = (ms: number | null | undefined): string => {
@@ -765,24 +780,15 @@ export function Dashboard({
             </div>
           </div>
           )}
-          {prefs.markets.eurVnd && widgets?.fx?.eurVnd != null && (
-            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[92px]">
-              <span className="text-xs font-bold text-blue-400">💶 EUR/VND</span>
-              <p className="text-lg font-extrabold text-slate-100 mt-2"><AnimatedNumber value={widgets.fx.eurVnd} format={fmtVnd} /></p>
-            </div>
-          )}
-          {prefs.markets.cnyVnd && widgets?.fx?.cnyVnd != null && (
-            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[92px]">
-              <span className="text-xs font-bold text-red-400">¥ CNY/VND</span>
-              <p className="text-lg font-extrabold text-slate-100 mt-2"><AnimatedNumber value={widgets.fx.cnyVnd} format={fmtVnd} /></p>
-            </div>
-          )}
-          {prefs.markets.jpyVnd && widgets?.fx?.jpyVnd != null && (
-            <div className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[92px]">
-              <span className="text-xs font-bold text-pink-400">¥ JPY/VND</span>
-              <p className="text-lg font-extrabold text-slate-100 mt-2"><AnimatedNumber value={widgets.fx.jpyVnd} format={fmtVnd} /></p>
-            </div>
-          )}
+          {EXTRA_FX_CARDS.map(({ id, label, icon, tone }) => (
+            prefs.markets[id] && widgets?.fx?.[id] != null ? (
+              <div key={id} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 min-h-[92px]">
+                <span className={`text-xs font-bold ${tone}`}>{icon} {label}</span>
+                <p className="text-lg font-extrabold text-slate-100 mt-2"><AnimatedNumber value={widgets.fx[id]} format={fmtVnd} /></p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Tỷ giá 1 {label.slice(0, 3)}</p>
+              </div>
+            ) : null
+          ))}
         </div>
         )}
       </motion.div>

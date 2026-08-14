@@ -22,6 +22,7 @@ import { telegramBackupStatus, sendBackupToTelegram, runTelegramBackupTick } fro
 import { sendWeeklyDigest, runWeeklyDigestTick } from "./server/weeklyDigest.js";
 import { icsFeedToken, isValidIcsToken, buildIcsFeed } from "./server/icsFeed.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
+import { previewFinanceImport } from "./server/financeImport.js";
 import {
   getAiConfig, aiStatusPublic, saveAiConfig, testAiConfig, aiGenerateText, aiErrorMessage, AI_PROVIDERS
 } from "./server/ai.js";
@@ -1529,6 +1530,44 @@ app.post("/api/finance", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMB
   }
 });
 
+app.post("/api/finance/import", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const existingIds = new Set(FamilyDB.getTransactions().map(tx => tx.id));
+  const preview = previewFinanceImport(body, existingIds);
+  const isPreview = body.preview === true || String(req.query.preview || "") === "1";
+
+  if (isPreview) {
+    res.json({
+      sourceCount: preview.sourceCount,
+      validCount: preview.validRows.length,
+      issueCount: preview.issues.length,
+      skippedExisting: preview.skippedExisting,
+      duplicateIds: preview.duplicateIds.slice(0, 50),
+      issues: preview.issues.slice(0, 100),
+      sample: preview.validRows.slice(0, 30).map(({ id, type, amount, category, account, description, date, receiptImage }) => ({ id, type, amount, category, account, description, date, hasReceipt: Boolean(receiptImage) }))
+    });
+    return;
+  }
+
+  if (body.confirm !== true) {
+    res.status(400).json({ error: "Cần xem trước và xác nhận trước khi nhập dữ liệu.", previewRequired: true });
+    return;
+  }
+  if (preview.validRows.length === 0) {
+    res.status(400).json({ error: preview.sourceCount > 0 ? "Không có giao dịch mới hợp lệ để nhập." : "File không có mảng transactions hợp lệ.", issues: preview.issues.slice(0, 100) });
+    return;
+  }
+
+  try {
+    const imported = FamilyDB.importTransactions(preview.validRows, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { imported: imported.length });
+    res.json({ importedCount: imported.length, skippedExisting: preview.skippedExisting, issueCount: preview.issues.length, issues: preview.issues.slice(0, 100) });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Không thể nhập dữ liệu thu chi." });
+  }
+});
+
 app.delete("/api/finance/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   const { id } = req.params;
@@ -2917,23 +2956,37 @@ async function fetchCrypto() {
 }
 
 async function fetchFx() {
-  // Primary: full USD base rates (need VND + cross for EUR/CNY/JPY via USD)
+  // Một lượt lấy USD-base, sau đó quy đổi chéo toàn bộ tiền tệ sang VND.
+  // Giữ một nguồn dữ liệu chung giúp Dashboard không tạo thêm request cho mỗi loại tiền.
+  const toVnd = (rates: Record<string, unknown> | undefined, usdVnd: number, code: string) => {
+    const rate = Number(rates?.[code]);
+    return Number.isFinite(rate) && rate > 0 ? usdVnd / rate : null;
+  };
+  const buildFx = (rates: Record<string, unknown> | undefined, usdVnd: number, updated: string | null) => ({
+    usdVnd,
+    eurVnd: toVnd(rates, usdVnd, "EUR"),
+    cnyVnd: toVnd(rates, usdVnd, "CNY"),
+    jpyVnd: toVnd(rates, usdVnd, "JPY"),
+    gbpVnd: toVnd(rates, usdVnd, "GBP"),
+    krwVnd: toVnd(rates, usdVnd, "KRW"),
+    sgdVnd: toVnd(rates, usdVnd, "SGD"),
+    thbVnd: toVnd(rates, usdVnd, "THB"),
+    audVnd: toVnd(rates, usdVnd, "AUD"),
+    cadVnd: toVnd(rates, usdVnd, "CAD"),
+    chfVnd: toVnd(rates, usdVnd, "CHF"),
+    hkdVnd: toVnd(rates, usdVnd, "HKD"),
+    twdVnd: toVnd(rates, usdVnd, "TWD"),
+    updated
+  });
+
+  // Primary: full USD base rates (need VND + cross rates via USD)
   try {
     const r = await fetchOutbound("https://open.er-api.com/v6/latest/USD", {}, 10_000);
     if (r.ok) {
       const j: any = await r.json();
       const usdVnd = j.rates?.VND ?? null;
       if (usdVnd) {
-        const eurUsd = j.rates?.EUR ? 1 / j.rates.EUR : null;
-        const cnyUsd = j.rates?.CNY ? 1 / j.rates.CNY : null;
-        const jpyUsd = j.rates?.JPY ? 1 / j.rates.JPY : null;
-        return {
-          usdVnd,
-          eurVnd: eurUsd ? eurUsd * usdVnd : null,
-          cnyVnd: cnyUsd ? cnyUsd * usdVnd : null,
-          jpyVnd: jpyUsd ? jpyUsd * usdVnd : null,
-          updated: j.time_last_update_utc ?? null
-        };
+        return buildFx(j.rates, usdVnd, j.time_last_update_utc ?? null);
       }
     }
   } catch (e) {
@@ -2941,35 +2994,23 @@ async function fetchFx() {
   }
   // Fallback: Frankfurter USD→VND
   try {
-    const r = await fetchOutbound("https://api.frankfurter.app/latest?from=USD&to=VND,EUR,CNY,JPY", {}, 10_000);
+    const r = await fetchOutbound("https://api.frankfurter.app/latest?from=USD&to=VND,EUR,CNY,JPY,GBP,KRW,SGD,THB,AUD,CAD,CHF,HKD,TWD", {}, 10_000);
     if (r.ok) {
       const j: any = await r.json();
       const usdVnd = j.rates?.VND ?? null;
       if (usdVnd) {
-        return {
-          usdVnd,
-          eurVnd: j.rates?.EUR ? (usdVnd / j.rates.EUR) : null,
-          cnyVnd: j.rates?.CNY ? (usdVnd / j.rates.CNY) : null,
-          jpyVnd: j.rates?.JPY ? (usdVnd / j.rates.JPY) : null,
-          updated: j.date ?? null
-        };
+        return buildFx(j.rates, usdVnd, j.date ?? null);
       }
     }
   } catch (e) {
     console.warn("[fx] frankfurter failed:", (e as Error).message);
   }
-  const r = await fetchOutbound("https://api.exchangerate.host/latest?base=USD&symbols=VND,EUR,CNY,JPY", {}, 10_000);
+  const r = await fetchOutbound("https://api.exchangerate.host/latest?base=USD&symbols=VND,EUR,CNY,JPY,GBP,KRW,SGD,THB,AUD,CAD,CHF,HKD,TWD", {}, 10_000);
   if (!r.ok) throw new Error(`fx HTTP ${r.status}`);
   const j: any = await r.json();
   const usdVnd = j.rates?.VND ?? j.result ?? null;
   if (!usdVnd) throw new Error("fx: no VND rate from any source");
-  return {
-    usdVnd,
-    eurVnd: j.rates?.EUR ? usdVnd / j.rates.EUR : null,
-    cnyVnd: j.rates?.CNY ? usdVnd / j.rates.CNY : null,
-    jpyVnd: j.rates?.JPY ? usdVnd / j.rates.JPY : null,
-    updated: j.date ?? null
-  };
+  return buildFx(j.rates, usdVnd, j.date ?? null);
 }
 
 const VANG_TODAY_HEADERS = {

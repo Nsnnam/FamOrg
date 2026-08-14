@@ -20,7 +20,7 @@ Một số task có thể lặp lại theo ngày/tuần/tháng và xoay vòng ng
 
 ### Lịch gia đình
 
-Module lịch dùng để lưu sự kiện một ngày hoặc nhiều ngày, lịch lặp, lịch riêng hoặc lịch chia sẻ. App có nhắc sự kiện sắp diễn ra, hiển thị sinh nhật thành viên và các ngày lễ Việt Nam. Khi cần đưa sự kiện sang điện thoại, app có xuất file `.ics` để thêm vào lịch iOS/Android/Google Calendar.
+Module lịch dùng để lưu sự kiện một ngày hoặc nhiều ngày, lịch lặp, lịch riêng hoặc lịch chia sẻ. App hỗ trợ lặp **hằng ngày, hằng tuần, hằng tháng và hằng năm**; chu kỳ hằng năm phù hợp để ghi sinh nhật, ngày cưới và ngày kỷ niệm. Có thể để lặp vô thời hạn hoặc đặt ngày dừng lặp riêng; ngày 29/02 chỉ xuất hiện trong năm nhuận. Khi cần đưa sự kiện sang điện thoại, app có xuất file `.ics` với quy tắc lặp tương thích iOS/Android/Google Calendar.
 
 ### Ghi chú Markdown
 
@@ -34,9 +34,9 @@ Danh sách đi chợ là danh sách chung, ai mua xong có thể đánh dấu đ
 
 ### Thu chi, ngân sách và tài sản
 
-Module tài chính dành cho Admin/Member, ẩn với Child/Guest. App hỗ trợ ghi thu/chi, tài khoản tiền mặt/ngân hàng/ví điện tử, hạng mục chi tiêu, ảnh hóa đơn, biểu đồ, ngân sách theo tháng/kỳ, hóa đơn định kỳ, mục tiêu tiết kiệm và theo dõi nợ vay/cho mượn.
+Module tài chính dành cho Admin/Member, ẩn với Child/Guest. App hỗ trợ ghi thu/chi, tài khoản tiền mặt/ngân hàng/ví điện tử, hạng mục chi tiêu, ảnh hóa đơn, biểu đồ, ngân sách theo tháng/kỳ, hóa đơn định kỳ, mục tiêu tiết kiệm và theo dõi nợ vay/cho mượn. Trong phần Thu chi, nút **Nhập thu chi JSON** cho phép chọn backup FamOrg hoặc file có mảng `transactions`; hệ thống sẽ xem trước số dòng hợp lệ, cảnh báo và ID trùng trước khi ghi. Dữ liệu đã có ID được bỏ qua để có thể chạy lại cùng một file an toàn.
 
-Phần tài sản gia đình hỗ trợ nhiều loại: crypto, vàng, đất/BĐS, xe, cổ phiếu và tài sản khác. App có widget giá thị trường như BTC, ETH, vàng SJC và USD/VND; có tính giá trị ước tính, giá mua ban đầu, lãi/lỗ và ảnh tài sản.
+Phần tài sản gia đình hỗ trợ nhiều loại: crypto, vàng, đất/BĐS, xe, cổ phiếu và tài sản khác. App có widget giá thị trường như BTC, ETH, vàng SJC và nhiều tỷ giá USD, EUR, CNY, JPY, GBP, KRW, SGD, THB, AUD, CAD, CHF, HKD, TWD so với VND; các mã mở rộng có thể bật/tắt trong Thiết lập để giữ Dashboard gọn trên điện thoại. App cũng có tính giá trị ước tính, giá mua ban đầu, lãi/lỗ và ảnh tài sản.
 
 ### Giấy tờ gia đình
 

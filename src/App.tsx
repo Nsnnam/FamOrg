@@ -2140,6 +2140,7 @@ export default function App() {
                   onSaveRecurringBill={handleSaveRecurringBill}
                   onPayRecurringBill={handlePayRecurringBill}
                   onDeleteRecurringBill={handleDeleteRecurringBill}
+                  onRefreshData={fetchAllData}
                   onSaveAsset={handleSaveAsset}
                   onDeleteAsset={handleDeleteAsset}
                 />

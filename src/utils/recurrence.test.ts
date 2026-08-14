@@ -123,3 +123,38 @@ describe("expandRecurringOccurrences — biên & dữ liệu xấu", () => {
     expect(out).toEqual([]);
   });
 });
+
+
+describe("expandRecurringOccurrences — hằng năm", () => {
+  it("lặp đúng ngày/tháng qua nhiều năm khi recurrenceUntil để trống", () => {
+    const out = expand(
+      { startDate: "1990-08-14", endDate: "1990-08-14", recurrenceUntil: "", recurrenceType: "yearly" },
+      "2026-01-01", "2029-12-31"
+    );
+    expect(out).toEqual(["2026-08-14", "2027-08-14", "2028-08-14", "2029-08-14"]);
+  });
+
+  it("tôn trọng recurrenceUntil cho dữ liệu mới", () => {
+    const out = expand(
+      { startDate: "1990-08-14", recurrenceUntil: "2028-08-14", recurrenceType: "yearly" },
+      "2026-01-01", "2030-12-31"
+    );
+    expect(out).toEqual(["2026-08-14", "2027-08-14", "2028-08-14"]);
+  });
+
+  it("29/02 chỉ xảy ra vào năm nhuận", () => {
+    const out = expand(
+      { startDate: "2024-02-29", recurrenceUntil: "", recurrenceType: "yearly" },
+      "2025-01-01", "2030-12-31"
+    );
+    expect(out).toEqual(["2028-02-29"]);
+  });
+
+  it("bản ghi cũ không có recurrenceUntil vẫn dùng endDate làm giới hạn", () => {
+    const out = expand(
+      { startDate: "2026-08-14", endDate: "2028-12-31", recurrenceType: "yearly" },
+      "2026-01-01", "2030-12-31"
+    );
+    expect(out).toEqual(["2026-08-14", "2027-08-14", "2028-08-14"]);
+  });
+});

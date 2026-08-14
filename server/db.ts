@@ -999,6 +999,8 @@ export class FamilyDB {
         endDate: planData.endDate || new Date(Date.now() + 3600000).toISOString().slice(0, 16).replace("T", " "),
         isRecurring: planData.isRecurring || false,
         recurrenceType: planData.recurrenceType || "none",
+        recurrenceWeekdays: planData.recurrenceWeekdays,
+        recurrenceUntil: planData.recurrenceUntil || "",
         creatorId: userId,
         isShared: planData.isShared !== undefined ? planData.isShared : true,
         color: planData.color || "sky",
@@ -1173,6 +1175,36 @@ export class FamilyDB {
 
     this.writeRaw(db);
     return newTx;
+  }
+
+  public static importTransactions(txData: Partial<FinancialTransaction>[], userId: string, username: string): FinancialTransaction[] {
+    const db = this.readRaw();
+    const existingIds = new Set(db.transactions.map(t => t.id));
+    const imported: FinancialTransaction[] = [];
+    for (const item of txData) {
+      if (!item.id || existingIds.has(item.id)) continue;
+      const newTx: FinancialTransaction = {
+        id: item.id,
+        type: item.type || ("expense" as any),
+        amount: item.amount || 0,
+        category: item.category || "other",
+        account: item.account || ("bank" as any),
+        description: item.description || "Giao dịch nhập khẩu",
+        date: item.date || new Date().toISOString().slice(0, 10),
+        creatorId: userId,
+        receiptImage: item.receiptImage,
+        createdAt: item.createdAt || new Date().toISOString()
+      };
+      db.transactions.push(newTx);
+      existingIds.add(newTx.id);
+      imported.push(newTx);
+    }
+    if (imported.length > 0) {
+      this.writeRaw(db);
+      const total = imported.reduce((sum, tx) => sum + tx.amount, 0);
+      this.logActivity(userId, username, "Nhập giao dịch tài chính", `Đã nhập ${imported.length} giao dịch (${total.toLocaleString()} VNĐ) từ file ngoài.`);
+    }
+    return imported;
   }
 
   public static deleteTransaction(txId: string, userId: string, username: string): void {

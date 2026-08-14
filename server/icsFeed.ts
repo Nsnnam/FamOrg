@@ -40,11 +40,15 @@ const WEEKDAY_ICS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]; // index khớp 
 
 function planRrule(p: FamilyPlan): string | null {
   if (!p.isRecurring || p.recurrenceType === "none") return null;
-  if (p.recurrenceType === "daily") return "FREQ=DAILY";
-  if (p.recurrenceType === "monthly") return "FREQ=MONTHLY";
+  const until = /^\d{4}-\d{2}-\d{2}$/.test(p.recurrenceUntil || "")
+    ? `;UNTIL=${p.recurrenceUntil!.replace(/-/g, "")}T235959`
+    : "";
+  if (p.recurrenceType === "daily") return `FREQ=DAILY${until}`;
+  if (p.recurrenceType === "monthly") return `FREQ=MONTHLY${until}`;
+  if (p.recurrenceType === "yearly") return `FREQ=YEARLY${until}`;
   if (p.recurrenceType === "weekly") {
     const days = (p.recurrenceWeekdays || []).map(d => WEEKDAY_ICS[d]).filter(Boolean);
-    return days.length > 0 ? `FREQ=WEEKLY;BYDAY=${days.join(",")}` : "FREQ=WEEKLY";
+    return `${days.length > 0 ? `FREQ=WEEKLY;BYDAY=${days.join(",")}` : "FREQ=WEEKLY"}${until}`;
   }
   return null;
 }

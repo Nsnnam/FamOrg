@@ -39,7 +39,8 @@ import {
   Phone,
   Shield,
   Flower2,
-  Gift
+  Gift,
+  Upload
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, SavingsGoal, Debt, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -157,7 +158,18 @@ interface FinanceProps {
   onRemoveDebtPayment: (debtId: string, paymentId: string) => Promise<any>;
   onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
   onDeleteAsset: (id: string) => Promise<any>;
+  onRefreshData?: () => void | Promise<void>;
 }
+
+type FinanceImportPreview = {
+  sourceCount: number;
+  validCount: number;
+  issueCount: number;
+  skippedExisting: number;
+  duplicateIds: string[];
+  issues: Array<{ row: number; message: string }>;
+  sample: Array<{ id: string; type: string; amount: number; category: string; account: string; description: string; date: string; hasReceipt: boolean }>;
+};
 
 const BILL_CATEGORIES = [
   { value: "rent",       label: "Thuê nhà" },
@@ -412,7 +424,8 @@ export function Finance({
   onAddDebtPayment,
   onRemoveDebtPayment,
   onSaveAsset,
-  onDeleteAsset
+  onDeleteAsset,
+  onRefreshData
 }: FinanceProps) {
   const [financeView, setFinanceView] = useState<"cashflow" | "assets">("cashflow");
   // Kỳ xem (Tháng/Quý/Năm) + mốc ngày trong kỳ + bật bảng so sánh 2 cột
@@ -468,6 +481,14 @@ export function Finance({
   const [editingTx, setEditingTx] = useState<FinancialTransaction | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
+  const importFileRef = useRef<HTMLInputElement>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFileName, setImportFileName] = useState("");
+  const [importPayload, setImportPayload] = useState<Record<string, unknown> | null>(null);
+  const [importPreview, setImportPreview] = useState<FinanceImportPreview | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importMessage, setImportMessage] = useState("");
 
   // In-app confirmation dialog (replaces native browser confirm)
   const { confirm, ConfirmDialog } = useConfirm();
@@ -691,6 +712,80 @@ export function Finance({
     } finally {
       setExportingPdf(false);
     }
+  };
+
+  const financeAuthHeaders = () => {
+    const token = localStorage.getItem("family_token");
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    };
+  };
+
+  const handleImportFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImportOpen(true);
+    setImportFileName(file.name);
+    setImportPayload(null);
+    setImportPreview(null);
+    setImportError("");
+    setImportMessage("");
+    setImportBusy(true);
+    try {
+      if (!file.name.toLowerCase().endsWith(".json")) throw new Error("Chỉ hỗ trợ file JSON.");
+      const parsed = JSON.parse(await file.text());
+      const payload = Array.isArray(parsed) ? { transactions: parsed } : parsed;
+      if (!payload || typeof payload !== "object" || !Array.isArray((payload as any).transactions)) {
+        throw new Error("File phải chứa mảng transactions hoặc là một mảng giao dịch JSON.");
+      }
+      setImportPayload(payload as Record<string, unknown>);
+      const response = await fetch("/api/finance/import?preview=1", {
+        method: "POST",
+        headers: financeAuthHeaders(),
+        body: JSON.stringify({ ...payload, preview: true })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Không thể phân tích file import.");
+      setImportPreview(data as FinanceImportPreview);
+    } catch (err: any) {
+      setImportError(err?.message || "File JSON không hợp lệ.");
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const handleConfirmFinanceImport = async () => {
+    if (!importPayload || !importPreview || importPreview.validCount <= 0 || importBusy) return;
+    setImportBusy(true);
+    setImportError("");
+    try {
+      const response = await fetch("/api/finance/import", {
+        method: "POST",
+        headers: financeAuthHeaders(),
+        body: JSON.stringify({ ...importPayload, confirm: true })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Không thể nhập giao dịch.");
+      setImportMessage(`Đã nhập ${Number(data.importedCount || 0).toLocaleString("vi-VN")} giao dịch mới.`);
+      await Promise.resolve(onRefreshData?.());
+      setImportPreview(prev => prev ? { ...prev, validCount: 0 } : prev);
+    } catch (err: any) {
+      setImportError(err?.message || "Không thể nhập giao dịch.");
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const closeFinanceImport = () => {
+    if (importBusy) return;
+    setImportOpen(false);
+    setImportFileName("");
+    setImportPayload(null);
+    setImportPreview(null);
+    setImportError("");
+    setImportMessage("");
   };
 
   // Khóa tháng của mốc đang xem (ngân sách vốn đặt theo tháng)
@@ -1041,6 +1136,20 @@ export function Finance({
         />
       ) : (
         <>
+      <div className="flex flex-wrap items-center justify-between gap-2 -mb-1">
+        <div className="text-[11px] text-slate-500">Có thể nhập backup JSON từ FamOrg hoặc file có mảng <code className="text-slate-300">transactions</code>.</div>
+        <div>
+          <input ref={importFileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleImportFileChange} />
+          <button
+            type="button"
+            onClick={() => importFileRef.current?.click()}
+            className="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-sky-300 rounded-lg px-3 py-2 text-[11px] font-bold cursor-pointer"
+          >
+            <Upload className="w-3.5 h-3.5" /> Nhập thu chi JSON
+          </button>
+        </div>
+      </div>
+
       {/* Period control: chọn chế độ kỳ + điều hướng kỳ + bật so sánh */}
       <Reveal delay={0.06} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-xl space-y-3" id="finance-period">
         <ShimmerLine accent="sky" />
@@ -1993,6 +2102,65 @@ export function Finance({
       )}
 
       </>
+      )}
+
+      {/* Finance JSON import preview modal */}
+      {importOpen && (
+        <div onClick={closeFinanceImport} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="finance-import-title"
+            className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl"
+          >
+            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-800 shrink-0">
+              <div>
+                <h3 id="finance-import-title" className="text-sm font-bold text-slate-100 flex items-center gap-2"><Upload className="w-4 h-4 text-sky-400" /> Nhập thu chi từ JSON</h3>
+                <p className="text-[10px] text-slate-500 mt-1 truncate max-w-[min(70vw,28rem)]">{importFileName || "Đang phân tích file..."}</p>
+              </div>
+              <button type="button" onClick={closeFinanceImport} disabled={importBusy} className="text-slate-400 hover:text-slate-200 bg-slate-800 p-1.5 rounded-lg cursor-pointer disabled:opacity-50" aria-label="Đóng cửa sổ nhập dữ liệu"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 space-y-4 text-xs">
+              {importBusy && <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-sky-300">Đang kiểm tra dữ liệu, vui lòng chờ...</div>}
+              {importError && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-rose-300">{importError}</div>}
+              {importMessage && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-emerald-300">{importMessage}</div>}
+              {importPreview && (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      ["Trong file", importPreview.sourceCount],
+                      ["Sẽ nhập", importPreview.validCount],
+                      ["Bỏ qua trùng", importPreview.skippedExisting],
+                      ["Cảnh báo", importPreview.issueCount]
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="rounded-xl bg-slate-950 border border-slate-800 px-3 py-2"><div className="text-[10px] text-slate-500">{label}</div><div className="text-base font-bold text-slate-200 mt-0.5">{Number(value).toLocaleString("vi-VN")}</div></div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-400">Các giao dịch hợp lệ sẽ được nhập với tài khoản mặc định <b className="text-slate-200">Ngân hàng</b>. Ảnh biên lai chỉ giữ lại nếu là URL hợp lệ hoặc tệp nội bộ của FamOrg.</p>
+                  {importPreview.sample.length > 0 && (
+                    <div className="rounded-xl border border-slate-800 overflow-hidden">
+                      <div className="px-3 py-2 bg-slate-950 text-[10px] font-bold uppercase tracking-wider text-slate-500">Xem trước tối đa 30 dòng đầu</div>
+                      <div className="max-h-56 overflow-auto">
+                        <table className="w-full text-[11px]">
+                          <thead className="sticky top-0 bg-slate-900 text-slate-500"><tr><th className="text-left px-3 py-2">Ngày</th><th className="text-left px-2 py-2">Loại</th><th className="text-right px-2 py-2">Số tiền</th><th className="text-left px-2 py-2">Nội dung</th></tr></thead>
+                          <tbody>{importPreview.sample.map(row => <tr key={row.id} className="border-t border-slate-800/80"><td className="px-3 py-1.5 font-mono text-slate-400 whitespace-nowrap">{row.date}</td><td className={`px-2 py-1.5 ${row.type === "income" ? "text-emerald-400" : "text-rose-400"}`}>{row.type === "income" ? "Thu" : "Chi"}</td><td className="px-2 py-1.5 text-right text-slate-300 whitespace-nowrap">{row.amount.toLocaleString("vi-VN")}</td><td className="px-2 py-1.5 text-slate-300 truncate max-w-[16rem]">{row.description}</td></tr>)}</tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {importPreview.issues.length > 0 && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-amber-300"><b>{importPreview.issueCount} cảnh báo.</b> Các dòng không hợp lệ sẽ không được nhập. {importPreview.issues.slice(0, 3).map(issue => `Dòng ${issue.row}: ${issue.message}`).join(" · ")}</div>}
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 px-5 py-4 border-t border-slate-800 shrink-0">
+              <button type="button" onClick={closeFinanceImport} disabled={importBusy} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold cursor-pointer disabled:opacity-50">Đóng</button>
+              <button type="button" onClick={handleConfirmFinanceImport} disabled={importBusy || !importPreview || importPreview.validCount <= 0 || Boolean(importMessage)} className="px-3 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold cursor-pointer disabled:opacity-50">{importBusy ? "Đang nhập..." : "Xác nhận nhập giao dịch"}</button>
+            </div>
+          </motion.div>
+        </div>
       )}
 
       {/* Edit recurring bill modal */}

@@ -151,8 +151,10 @@ export interface FamilyPlan {
   startDate: string; // YYYY-MM-DD HH:mm
   endDate: string; // YYYY-MM-DD HH:mm
   isRecurring: boolean;
-  recurrenceType: "none" | "daily" | "weekly" | "monthly";
+  recurrenceType: "none" | "daily" | "weekly" | "monthly" | "yearly";
   recurrenceWeekdays?: number[]; // 0=Chủ nhật, 1=Thứ hai...
+  /** Ngày cuối áp dụng chu kỳ lặp (YYYY-MM-DD); để trống = lặp vô thời hạn. */
+  recurrenceUntil?: string;
   creatorId: string;
   isShared: boolean;
   color: string; // e.g. 'emerald', 'sky', 'amber', 'rose'

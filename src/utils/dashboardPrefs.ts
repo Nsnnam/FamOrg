@@ -18,7 +18,9 @@ export type DashboardWidgetId =
   | "nudge"
   | "notes";
 
-export type MarketCardId = "btc" | "eth" | "gold" | "usdVnd" | "eurVnd" | "cnyVnd" | "jpyVnd";
+export type MarketCardId =
+  | "btc" | "eth" | "gold" | "usdVnd" | "eurVnd" | "cnyVnd" | "jpyVnd"
+  | "gbpVnd" | "krwVnd" | "sgdVnd" | "thbVnd" | "audVnd" | "cadVnd" | "chfVnd" | "hkdVnd" | "twdVnd";
 
 export type NewsColumns = "auto" | 1 | 2 | 3 | 4;
 
@@ -94,7 +96,16 @@ export const DEFAULT_DASHBOARD_PREFS: DashboardPrefs = {
     usdVnd: true,
     eurVnd: false,
     cnyVnd: false,
-    jpyVnd: false
+    jpyVnd: false,
+    gbpVnd: false,
+    krwVnd: false,
+    sgdVnd: false,
+    thbVnd: false,
+    audVnd: false,
+    cadVnd: false,
+    chfVnd: false,
+    hkdVnd: false,
+    twdVnd: false
   },
   newsFeeds: ["vnexpress", "tuoitre", "thanhnien", "baochinhphu"],
   newsLimit: 12,
@@ -154,5 +165,14 @@ export const MARKET_LABELS: Record<MarketCardId, string> = {
   usdVnd: "USD/VND",
   eurVnd: "EUR/VND",
   cnyVnd: "CNY/VND",
-  jpyVnd: "JPY/VND"
+  jpyVnd: "JPY/VND",
+  gbpVnd: "GBP/VND",
+  krwVnd: "KRW/VND",
+  sgdVnd: "SGD/VND",
+  thbVnd: "THB/VND",
+  audVnd: "AUD/VND",
+  cadVnd: "CAD/VND",
+  chfVnd: "CHF/VND",
+  hkdVnd: "HKD/VND",
+  twdVnd: "TWD/VND"
 };
