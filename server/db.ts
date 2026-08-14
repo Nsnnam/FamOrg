@@ -20,6 +20,7 @@ import {
   BudgetLimit,
   RecurringBill,
   FamilyAsset,
+  AssetPriceLog,
   MedicationReminder,
   MedicationLog,
   FamilyDocument,
@@ -186,6 +187,7 @@ const initialDBState = (): FamilyOrganizerDB => {
     savingsGoals: [],
     debts: [],
     assets: [],
+    assetPriceLogs: [],
     medications: [],
     medicationLogs: [],
     vaccinations: [],
@@ -217,6 +219,7 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.savingsGoals = db.savingsGoals || [];
   db.debts = db.debts || [];
   db.assets = db.assets || [];
+  db.assetPriceLogs = db.assetPriceLogs || [];
   db.medications = db.medications || [];
   db.medicationLogs = db.medicationLogs || [];
   db.vaccinations = db.vaccinations || [];
@@ -519,6 +522,11 @@ export class FamilyDB {
 
   public static getAssets() {
     return this.readRaw().assets;
+  }
+
+  public static getAssetPriceLogs(assetId?: string) {
+    const logs = this.readRaw().assetPriceLogs;
+    return assetId ? logs.filter(log => log.assetId === assetId).sort((a, b) => b.recordedAt.localeCompare(a.recordedAt)) : logs;
   }
 
   public static getMedications() {
@@ -1933,6 +1941,7 @@ export class FamilyDB {
         estimatedValue: safeEstimatedValue,
         purchaseValue: safePurchaseValue,
         currency: data.currency || existing.currency || "VND",
+        goldSource: data.goldSource !== undefined ? String(data.goldSource).trim() : existing.goldSource || "",
         photos: Array.isArray(data.photos) ? data.photos : existing.photos || [],
         createdById: existing.createdById,
         createdAt: existing.createdAt,
@@ -1970,6 +1979,7 @@ export class FamilyDB {
       certificateNo: data.certificateNo?.trim() || "",
       parcelNo: data.parcelNo?.trim() || "",
       goldPurity: data.goldPurity?.trim() || "",
+      goldSource: data.goldSource?.trim() || "",
       weight: data.weight !== undefined && Number.isFinite(Number(data.weight)) ? Number(data.weight) : undefined,
       weightUnit: data.weightUnit?.trim() || "",
       brand: data.brand?.trim() || "",
@@ -1984,12 +1994,62 @@ export class FamilyDB {
     return asset;
   }
 
+  public static saveAssetPriceLog(data: Partial<AssetPriceLog>, assetId: string, userId: string, username: string): AssetPriceLog {
+    const db = this.readRaw();
+    const asset = db.assets.find(a => a.id === assetId);
+    if (!asset) throw new Error("Không tìm thấy tài sản");
+
+    const price = Number(data.price);
+    if (!Number.isFinite(price) || price <= 0) throw new Error("Giá hiện tại phải lớn hơn 0.");
+    const currency = data.currency === "USD" || data.currency === "VND" ? data.currency : asset.currency;
+    const purchaseValue = Number(asset.purchaseValue || 0);
+    const comparablePurchase = purchaseValue > 0 && currency === asset.currency ? purchaseValue : undefined;
+    const profitLoss = comparablePurchase !== undefined ? price - comparablePurchase : undefined;
+    const profitLossPct = comparablePurchase && comparablePurchase > 0
+      ? (profitLoss! / comparablePurchase) * 100
+      : undefined;
+    const now = new Date().toISOString();
+    const unitPrice = data.unitPrice !== undefined && Number.isFinite(Number(data.unitPrice)) && Number(data.unitPrice) > 0
+      ? Number(data.unitPrice)
+      : undefined;
+    const quantity = data.quantity !== undefined && Number.isFinite(Number(data.quantity)) && Number(data.quantity) > 0
+      ? Number(data.quantity)
+      : undefined;
+    const log: AssetPriceLog = {
+      id: `asset_price_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      assetId,
+      price: Math.round(price),
+      currency,
+      unitPrice,
+      quantity,
+      unit: data.unit?.trim() || undefined,
+      note: data.note?.trim() || undefined,
+      recordedAt: now,
+      recordedBy: userId,
+      recordedByName: username,
+      purchaseValueAtRecord: comparablePurchase,
+      profitLoss: profitLoss !== undefined ? Math.round(profitLoss) : undefined,
+      profitLossPct
+    };
+
+    // The newest manual quote becomes the current reference value shown on the asset card.
+    if (currency === asset.currency) {
+      asset.estimatedValue = log.price;
+      asset.updatedAt = now;
+    }
+    db.assetPriceLogs.unshift(log);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Cập nhật giá tài sản", `Đã ghi giá thủ công cho "${asset.name}" (${log.price.toLocaleString()} ${log.currency}).`);
+    return log;
+  }
+
   public static deleteAsset(id: string, userId: string, username: string): void {
     const db = this.readRaw();
     const idx = db.assets.findIndex(a => a.id === id);
     if (idx === -1) return;
     const asset = db.assets[idx];
     db.assets.splice(idx, 1);
+    db.assetPriceLogs = db.assetPriceLogs.filter(log => log.assetId !== id);
     this.writeRaw(db);
     // Remove all stored photo files for this asset.
     assetPhotoUrls(asset).forEach(deleteMediaByUrl);

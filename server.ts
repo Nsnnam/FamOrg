@@ -1886,6 +1886,36 @@ app.post("/api/finance/assets", requireAuth, requireRole([UserRole.ADMIN, UserRo
   }
 });
 
+app.get("/api/finance/assets/:id/price-logs", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const asset = FamilyDB.getAssets().find(a => a.id === req.params.id);
+  if (!asset) {
+    res.status(404).json({ error: "Không tìm thấy tài sản." });
+    return;
+  }
+  res.json({ logs: FamilyDB.getAssetPriceLogs(asset.id) });
+});
+
+app.post("/api/finance/assets/:id/price-log", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const asset = FamilyDB.getAssets().find(a => a.id === req.params.id);
+  if (!asset) {
+    res.status(404).json({ error: "Không tìm thấy tài sản." });
+    return;
+  }
+  if (asset.createdById !== session.userId && session.role !== UserRole.ADMIN) {
+    res.status(403).json({ error: "Bạn chỉ có thể cập nhật giá tài sản do mình tạo. Admin có toàn quyền quản lý." });
+    return;
+  }
+  try {
+    // A log is always recorded in the asset's own currency so P&L remains comparable.
+    const log = FamilyDB.saveAssetPriceLog({ ...(req.body || {}), currency: asset.currency }, asset.id, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { assetId: asset.id, assetPriceLogId: log.id });
+    res.json({ log, asset: FamilyDB.getAssets().find(a => a.id === asset.id) });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.delete("/api/finance/assets/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   const existing = FamilyDB.getAssets().find(a => a.id === req.params.id);

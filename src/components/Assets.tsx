@@ -32,6 +32,7 @@ import { motion } from "motion/react";
 import {
   AccountType,
   AssetPhoto,
+  AssetPriceLog,
   AssetType,
   FamilyAsset,
   FinancialTransaction,
@@ -55,7 +56,8 @@ import {
   goldPurityFactor,
   goldPurityLabel,
   isGoldType,
-  normalizeGoldPurity
+  normalizeGoldPurity,
+  calculateProfitLoss
 } from "../utils/assetValue.js";
 
 interface AssetsProps {
@@ -65,6 +67,9 @@ interface AssetsProps {
   widgets?: any;
   onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
   onDeleteAsset: (id: string) => Promise<any>;
+  onSaveAssetPriceLog?: (assetId: string, log: Partial<AssetPriceLog>) => Promise<any>;
+  onGetAssetPriceLogs?: (assetId: string) => Promise<AssetPriceLog[]>;
+  onRefreshData?: () => void | Promise<void>;
   onSaveTransaction?: (tx: Partial<FinancialTransaction>) => Promise<any>;
 }
 
@@ -90,6 +95,31 @@ const ASSET_TYPES: { value: AssetType; label: string; short: string }[] = [
 ];
 
 const MAX_ASSET_PHOTOS = 8;
+const GOLD_SOURCE_OPTIONS = [
+  { value: "SJC", label: "Hãng SJC" },
+  { value: "DOJI", label: "Hãng DOJI" },
+  { value: "PNJ", label: "Hãng PNJ" },
+  { value: "BTMC", label: "Bảo Tín Minh Châu" },
+  { value: "Vàng tư nhân", label: "Vàng tư nhân / tiệm riêng" },
+  { value: "Khác", label: "Hãng khác" }
+];
+
+function supportsManualPrice(_asset: FamilyAsset) {
+  return true;
+}
+
+function isUnitPricedAsset(asset: FamilyAsset) {
+  return isGoldType(asset.type) || asset.type === "crypto" || asset.type === "stock";
+}
+
+function assetPriceQuantity(asset: FamilyAsset) {
+  if (isGoldType(asset.type)) return effectiveGoldWeight(asset);
+  return Number(asset.quantity || 0);
+}
+
+function assetPriceUnit(asset: FamilyAsset) {
+  return isGoldType(asset.type) ? (asset.weightUnit || asset.unit || "chỉ") : (asset.unit || "món");
+}
 
 function assetTypeLabel(type: AssetType) {
   return ASSET_TYPES.find(t => t.value === type)?.short || "Khác";
@@ -134,6 +164,9 @@ export function Assets({
   widgets,
   onSaveAsset,
   onDeleteAsset,
+  onSaveAssetPriceLog,
+  onGetAssetPriceLogs,
+  onRefreshData,
   onSaveTransaction
 }: AssetsProps) {
   const { confirm, ConfirmDialog } = useConfirm();
@@ -146,6 +179,16 @@ export function Assets({
   const [formError, setFormError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
   const [showGoldPurityInfo, setShowGoldPurityInfo] = useState(false);
+
+  // Cập nhật giá thủ công và xem lịch sử lời/lỗ.
+  const [priceLogAsset, setPriceLogAsset] = useState<FamilyAsset | null>(null);
+  const [priceLogs, setPriceLogs] = useState<AssetPriceLog[]>([]);
+  const [priceInput, setPriceInput] = useState<number>(0);
+  const [priceInputMode, setPriceInputMode] = useState<"unit" | "total">("total");
+  const [priceNote, setPriceNote] = useState("");
+  const [priceLogError, setPriceLogError] = useState("");
+  const [priceLogLoading, setPriceLogLoading] = useState(false);
+  const [priceLogSaving, setPriceLogSaving] = useState(false);
 
   // Bán tài sản — popup ghi nhận tiền bán vào sổ thu chi rồi xóa tài sản.
   const [sellingAsset, setSellingAsset] = useState<FamilyAsset | null>(null);
@@ -179,6 +222,7 @@ export function Assets({
   const [formCertificateNo, setFormCertificateNo] = useState("");
   const [formParcelNo, setFormParcelNo] = useState("");
   const [formGoldPurity, setFormGoldPurity] = useState("");
+  const [formGoldSource, setFormGoldSource] = useState("");
   const [formBrand, setFormBrand] = useState("");
   const [formSerialNo, setFormSerialNo] = useState("");
 
@@ -304,6 +348,7 @@ export function Assets({
     setFormCertificateNo("");
     setFormParcelNo("");
     setFormGoldPurity("");
+    setFormGoldSource("");
     setFormBrand("");
     setFormSerialNo("");
   };
@@ -344,6 +389,7 @@ export function Assets({
     setFormCertificateNo(asset.certificateNo || "");
     setFormParcelNo(asset.parcelNo || "");
     setFormGoldPurity(asset.goldPurity || "");
+    setFormGoldSource(asset.goldSource || "");
     setFormBrand(asset.brand || "");
     setFormSerialNo(asset.serialNo || "");
     setFormError("");
@@ -362,8 +408,15 @@ export function Assets({
   const photoRef = useRef<HTMLDivElement | null>(null);
   const goldInfoRef = useRef<HTMLDivElement | null>(null);
   const sellRef = useRef<HTMLDivElement | null>(null);
+  const priceLogRef = useRef<HTMLDivElement | null>(null);
   const closePhoto = useCallback(() => setSelectedPhoto(null), []);
   const closeGoldInfo = useCallback(() => setShowGoldPurityInfo(false), []);
+  const closePriceLog = useCallback(() => {
+    if (priceLogSaving) return;
+    setPriceLogAsset(null);
+    setPriceLogs([]);
+    setPriceLogError("");
+  }, [priceLogSaving]);
   const closeSell = useCallback(() => {
     if (selling) return;
     setSellingAsset(null);
@@ -372,17 +425,82 @@ export function Assets({
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!selectedPhoto, closePhoto, photoRef);
   useModalA11y(showGoldPurityInfo, closeGoldInfo, goldInfoRef);
+  useModalA11y(!!priceLogAsset, closePriceLog, priceLogRef);
   useModalA11y(!!sellingAsset, closeSell, sellRef);
 
   // Nút nổi thêm tài sản — icon trùng tab con "Tài sản gia đình", ẩn khi đang mở modal
   useTabFab(
-    !isFormOpen && !selectedPhoto && !showGoldPurityInfo && !sellingAsset
+    !isFormOpen && !selectedPhoto && !showGoldPurityInfo && !priceLogAsset && !sellingAsset
       ? { id: "assets", color: "emerald", title: "Thêm tài sản gia đình", icon: FileText, onClick: openCreateForm }
       : null
   );
 
   const canManageAsset = (asset: FamilyAsset) => {
     return currentUser.role === UserRole.ADMIN || asset.createdById === currentUser.id;
+  };
+
+  const openPriceLogForm = async (asset: FamilyAsset) => {
+    const quantity = assetPriceQuantity(asset);
+    const effective = getEffectiveValue(asset, marketPrices).value;
+    const unitMode = isUnitPricedAsset(asset) && quantity > 0;
+    setPriceLogAsset(asset);
+    setPriceInputMode(unitMode ? "unit" : "total");
+    setPriceInput(unitMode ? Math.round(effective / quantity) : effective);
+    setPriceNote("");
+    setPriceLogError("");
+    setPriceLogs([]);
+    if (!onGetAssetPriceLogs) return;
+    setPriceLogLoading(true);
+    try {
+      setPriceLogs(await onGetAssetPriceLogs(asset.id));
+    } catch (err: any) {
+      setPriceLogError(err.message || "Không tải được lịch sử giá.");
+    } finally {
+      setPriceLogLoading(false);
+    }
+  };
+
+  const priceLogTotal = useMemo(() => {
+    if (!priceLogAsset) return 0;
+    const quantity = assetPriceQuantity(priceLogAsset);
+    return priceInputMode === "unit" && quantity > 0
+      ? Math.round(priceInput * quantity)
+      : Math.round(priceInput);
+  }, [priceLogAsset, priceInput, priceInputMode]);
+
+  const pricePreview = useMemo(() => {
+    if (!priceLogAsset) return { profitLoss: null, profitLossPct: null };
+    return calculateProfitLoss(priceLogTotal, Number(priceLogAsset.purchaseValue || 0));
+  }, [priceLogAsset, priceLogTotal]);
+
+  const handleSavePriceLog = async () => {
+    if (!priceLogAsset || !onSaveAssetPriceLog) return;
+    if (priceLogTotal <= 0) {
+      setPriceLogError("Vui lòng nhập giá hiện tại lớn hơn 0.");
+      return;
+    }
+    setPriceLogError("");
+    setPriceLogSaving(true);
+    try {
+      const quantity = assetPriceQuantity(priceLogAsset);
+      const result = await onSaveAssetPriceLog(priceLogAsset.id, {
+        price: priceLogTotal,
+        currency: priceLogAsset.currency,
+        unitPrice: priceInputMode === "unit" ? Math.round(priceInput) : undefined,
+        quantity: quantity > 0 ? quantity : undefined,
+        unit: assetPriceUnit(priceLogAsset),
+        note: priceNote.trim() || undefined
+      });
+      const savedLog = result?.log as AssetPriceLog | undefined;
+      if (savedLog) setPriceLogs(prev => [savedLog, ...prev.filter(log => log.id !== savedLog.id)]);
+      if (result?.asset) setPriceLogAsset(result.asset as FamilyAsset);
+      await onRefreshData?.();
+      setPriceNote("");
+    } catch (err: any) {
+      setPriceLogError(err.message || "Không lưu được giá thủ công.");
+    } finally {
+      setPriceLogSaving(false);
+    }
   };
 
   const handleTypeChange = (type: AssetType) => {
@@ -496,6 +614,7 @@ export function Assets({
         certificateNo: formCertificateNo.trim(),
         parcelNo: formParcelNo.trim(),
         goldPurity: formGoldPurity.trim(),
+        goldSource: isGoldType(formType) ? formGoldSource.trim() : "",
         // Vàng: trọng lượng lưu từ Số lượng/Đơn vị (gộp, tránh nhập 2 lần).
         weight: isGoldType(formType) ? (Number(formQuantity) || undefined) : undefined,
         weightUnit: isGoldType(formType) ? formUnit.trim() : "",
@@ -789,6 +908,11 @@ export function Assets({
                       </div>
                       {canManageAsset(asset) && (
                         <div className="flex items-center gap-1 shrink-0">
+                          {supportsManualPrice(asset) && onSaveAssetPriceLog && (
+                            <button type="button" onClick={() => void openPriceLogForm(asset)} aria-label={`Cập nhật giá ${asset.name}`} title="Cập nhật giá thủ công và xem lịch sử" className="size-8 rounded-lg bg-slate-950 border border-slate-800 text-slate-500 hover:text-sky-400 flex items-center justify-center cursor-pointer">
+                              <RefreshCw className="size-3.5" />
+                            </button>
+                          )}
                           {onSaveTransaction && (
                             <button type="button" onClick={() => openSellForm(asset)} aria-label={`Bán tài sản ${asset.name}`} title="Bán tài sản" className="size-8 rounded-lg bg-slate-950 border border-slate-800 text-slate-500 hover:text-emerald-400 flex items-center justify-center cursor-pointer">
                               <HandCoins className="size-3.5" />
@@ -874,6 +998,7 @@ export function Assets({
                     <>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Trọng lượng: <span className="text-amber-400 font-bold tabular-nums">{asset.weight ? `${asset.weight} ${asset.weightUnit || asset.unit}` : "—"}</span></p>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Tuổi vàng: <span className="text-slate-200">{goldPurityLabel(asset.goldPurity)}</span></p>
+                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Nguồn: <span className="text-amber-300 font-semibold">{asset.goldSource || "Chưa phân loại"}</span></p>
                     </>
                   )}
                   {asset.type === "vehicle" && (
@@ -1076,7 +1201,7 @@ export function Assets({
                 )}
 
                 {isGoldType(formType) && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
                     <div className="flex items-center gap-1.5">
                       <FancySelect
                         value={normalizeGoldPurity(formGoldPurity)}
@@ -1093,10 +1218,23 @@ export function Assets({
                         <Info className="size-4" />
                       </button>
                     </div>
-                    <input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="SJC/PNJ/DOJI" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                    <FancySelect
+                      value={formGoldSource}
+                      onChange={setFormGoldSource}
+                      ariaLabel="Nguồn vàng"
+                      placeholder="— Mua tại hãng / tư nhân —"
+                      options={[
+                        { value: "", label: "— Nguồn vàng —" },
+                        ...GOLD_SOURCE_OPTIONS,
+                        ...(formGoldSource && !GOLD_SOURCE_OPTIONS.some(o => o.value === formGoldSource)
+                          ? [{ value: formGoldSource, label: formGoldSource }]
+                          : [])
+                      ]}
+                    />
+                    <input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="Nhãn hiệu/dòng sản phẩm" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
                     <input value={formSerialNo} onChange={(e) => setFormSerialNo(e.target.value)} placeholder="Số seri nếu có" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
                     {marketPrices?.gold && (
-                      <div className="md:col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-amber-400/80">
+                      <div className="md:col-span-2 xl:col-span-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-amber-400/80">
                         <span className="flex items-center gap-1"><TrendingUp className="size-3" /> Giá vàng 9999 tham chiếu:</span>
                         <span className="font-bold">{formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ</span>
                         <span className="text-amber-400/50">· {formatMoney(Math.round(marketPrices.gold.pricePerLuongVnd))}/lượng</span>
@@ -1161,6 +1299,127 @@ export function Assets({
                 </button>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {priceLogAsset && (
+        <div onClick={closePriceLog} className="fixed inset-0 bg-slate-950/85 flex items-center justify-center z-50 p-4" id="asset-price-log-modal">
+          <motion.div
+            ref={priceLogRef}
+            tabIndex={-1}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="asset-price-log-title"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden outline-none"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
+              <div className="min-w-0">
+                <h3 id="asset-price-log-title" className="text-md font-bold text-slate-100 flex items-center gap-1.5"><LineChart className="size-5 text-sky-400" /> Cập nhật giá tài sản</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5 truncate">{priceLogAsset.name} · {assetTypeLabel(priceLogAsset.type)} · Giá mua {priceLogAsset.purchaseValue ? formatMoney(priceLogAsset.purchaseValue, priceLogAsset.currency) : "chưa nhập"}</p>
+              </div>
+              <button type="button" onClick={closePriceLog} disabled={priceLogSaving} aria-label="Đóng cập nhật giá" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center shrink-0 disabled:opacity-50">
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4 space-y-4 flex-1 min-h-0">
+              {priceLogError && <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl text-xs">{priceLogError}</div>}
+
+              <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-bold text-slate-200">Giá thủ công tại thời điểm ghi</p>
+                    <p className="text-[10px] text-slate-500">Nhập giá tại cửa hàng đã mua trực tiếp hoặc giá tham khảo của bạn.</p>
+                  </div>
+                  <div className="flex rounded-lg border border-slate-800 overflow-hidden text-[10px] font-semibold">
+                    {isUnitPricedAsset(priceLogAsset) && assetPriceQuantity(priceLogAsset) > 0 && (
+                      <button type="button" onClick={() => setPriceInputMode("unit")} className={`px-2.5 py-1.5 ${priceInputMode === "unit" ? "bg-sky-500 text-slate-950" : "bg-slate-900 text-slate-400 hover:text-slate-200"}`}>Theo {assetPriceUnit(priceLogAsset)}</button>
+                    )}
+                    <button type="button" onClick={() => setPriceInputMode("total")} className={`px-2.5 py-1.5 ${priceInputMode === "total" ? "bg-sky-500 text-slate-950" : "bg-slate-900 text-slate-400 hover:text-slate-200"}`}>Tổng giá trị</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={priceInput || ""}
+                    onChange={(e) => setPriceInput(Number(e.target.value))}
+                    placeholder="0"
+                    className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-100 outline-none font-mono text-right"
+                    aria-label="Giá thủ công"
+                  />
+                  <span className="text-xs text-slate-400 font-semibold">{priceLogAsset.currency}</span>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <span className="text-slate-500">Tổng ghi nhận</span>
+                  <span className="text-sky-300 font-bold tabular-nums">{formatMoney(priceLogTotal, priceLogAsset.currency)}</span>
+                </div>
+                {pricePreview.profitLoss !== null ? (
+                  <div className={`rounded-lg border px-3 py-2 text-xs ${pricePreview.profitLoss >= 0 ? "bg-emerald-500/10 border-emerald-500/20" : "bg-rose-500/10 border-rose-500/20"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-slate-400">Ước tính tại thời điểm này</span>
+                      <span className={`font-bold tabular-nums ${pricePreview.profitLoss >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                        {pricePreview.profitLoss >= 0 ? "Lời " : "Lỗ "}{formatMoney(Math.abs(pricePreview.profitLoss), priceLogAsset.currency)} ({pricePreview.profitLossPct!.toFixed(1)}%)
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-600">Nhập giá mua ban đầu để tính lời/lỗ. Nếu chưa có giá mua, nhật ký vẫn lưu giá tham khảo.</p>
+                )}
+                <textarea value={priceNote} onChange={(e) => setPriceNote(e.target.value)} rows={2} placeholder="Ghi chú: giá mua lại tại cửa hàng, tình trạng, nguồn báo giá..." className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none text-xs" />
+                <p className="text-[10px] text-slate-600 leading-relaxed">Đây là công cụ theo dõi/tham khảo, không phải khuyến nghị đầu tư. Giá thực tế có thể khác theo thời điểm, cửa hàng, phí và điều kiện giao dịch.</p>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h4 className="text-xs font-bold text-slate-200 flex items-center gap-1.5"><RefreshCw className="size-3.5 text-sky-400" /> Lịch sử giá</h4>
+                  <span className="text-[10px] text-slate-600">{priceLogs.length} lần ghi</span>
+                </div>
+                {priceLogLoading ? (
+                  <p className="text-xs text-slate-500 py-4 text-center">Đang tải lịch sử...</p>
+                ) : priceLogs.length === 0 ? (
+                  <p className="text-xs text-slate-500 border border-dashed border-slate-800 rounded-xl p-4 text-center">Chưa có log giá thủ công. Hãy lưu lần đầu ở phía trên.</p>
+                ) : (
+                  <div className="border border-slate-800 rounded-xl overflow-x-auto">
+                    <table className="w-full text-[11px] tabular-nums min-w-[560px]">
+                      <thead className="bg-slate-950/60 text-slate-500">
+                        <tr>
+                          <th className="text-left font-semibold px-3 py-2">Thời điểm</th>
+                          <th className="text-right font-semibold px-3 py-2">Giá ghi nhận</th>
+                          <th className="text-right font-semibold px-3 py-2">Lời/lỗ</th>
+                          <th className="text-left font-semibold px-3 py-2">Ghi chú</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {priceLogs.map(log => (
+                          <tr key={log.id} className="border-t border-slate-800/70">
+                            <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{new Date(log.recordedAt).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}</td>
+                            <td className="px-3 py-2 text-right text-slate-200 font-semibold whitespace-nowrap">{formatMoney(log.price, log.currency)}{log.unitPrice ? <span className="block text-[10px] text-slate-600">{formatMoney(log.unitPrice, log.currency)}/{log.unit || "đơn vị"}</span> : null}</td>
+                            <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${log.profitLoss === undefined ? "text-slate-600" : log.profitLoss >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                              {log.profitLoss === undefined ? "—" : `${log.profitLoss >= 0 ? "+" : "−"}${formatMoney(Math.abs(log.profitLoss), log.currency)}${log.profitLossPct !== undefined ? ` (${log.profitLossPct.toFixed(1)}%)` : ""}`}
+                            </td>
+                            <td className="px-3 py-2 text-slate-500 max-w-[190px] truncate" title={log.note || ""}>{log.note || "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-slate-800 shrink-0">
+              <button type="button" onClick={closePriceLog} disabled={priceLogSaving} className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl font-bold disabled:opacity-50">Đóng lại</button>
+              <button type="button" onClick={() => void handleSavePriceLog()} disabled={priceLogSaving || priceLogLoading || !onSaveAssetPriceLog} className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-xl font-bold disabled:opacity-50 flex items-center gap-1.5">
+                <RefreshCw className={`size-3.5 ${priceLogSaving ? "animate-spin" : ""}`} /> {priceLogSaving ? "Đang lưu..." : "Lưu giá & nhật ký"}
+              </button>
+            </div>
           </motion.div>
         </div>
       )}

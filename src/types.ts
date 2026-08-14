@@ -355,6 +355,8 @@ export interface FamilyAsset {
   certificateNo?: string;
   parcelNo?: string;
   goldPurity?: string;
+  /** Nguồn vàng: thương hiệu/hãng (SJC, DOJI, PNJ...) hoặc vàng tư nhân. */
+  goldSource?: string;
   weight?: number;
   weightUnit?: string;
   brand?: string;
@@ -362,6 +364,27 @@ export interface FamilyAsset {
   createdById: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Một lần ghi nhận giá thủ công của tài sản biến động.
+ * `price` là tổng giá trị hiện tại theo tiền tệ của tài sản; `unitPrice` là giá/đơn vị nếu người dùng nhập theo đơn vị.
+ */
+export interface AssetPriceLog {
+  id: string;
+  assetId: string;
+  price: number;
+  currency: "VND" | "USD";
+  unitPrice?: number;
+  quantity?: number;
+  unit?: string;
+  note?: string;
+  recordedAt: string;
+  recordedBy: string;
+  recordedByName?: string;
+  purchaseValueAtRecord?: number;
+  profitLoss?: number;
+  profitLossPct?: number;
 }
 
 export interface MedicationReminder {
@@ -577,6 +600,7 @@ export interface FamilyOrganizerDB {
   savingsGoals: SavingsGoal[];
   debts: Debt[];
   assets: FamilyAsset[];
+  assetPriceLogs: AssetPriceLog[];
   medications: MedicationReminder[];
   medicationLogs: MedicationLog[];
   vaccinations: VaccinationRecord[];

@@ -103,6 +103,22 @@ export interface EffectiveValue {
   source: "manual" | "live" | "purchase" | "none";
 }
 
+export interface ProfitLossResult {
+  profitLoss: number | null;
+  profitLossPct: number | null;
+}
+
+/** Tính chênh lệch tuyệt đối và phần trăm; trả null khi chưa có giá mua hợp lệ. */
+export function calculateProfitLoss(currentValue: number, purchaseValue: number): ProfitLossResult {
+  const current = Number(currentValue);
+  const purchase = Number(purchaseValue);
+  if (!Number.isFinite(current) || !Number.isFinite(purchase) || purchase <= 0) {
+    return { profitLoss: null, profitLossPct: null };
+  }
+  const profitLoss = current - purchase;
+  return { profitLoss, profitLossPct: (profitLoss / purchase) * 100 };
+}
+
 /**
  * Giá trị hiệu dụng của tài sản theo thứ tự ưu tiên:
  * 1) estimatedValue nhập tay  2) giá thị trường live (vàng/crypto)

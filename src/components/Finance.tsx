@@ -158,6 +158,8 @@ interface FinanceProps {
   onRemoveDebtPayment: (debtId: string, paymentId: string) => Promise<any>;
   onSaveAsset: (asset: Partial<FamilyAsset>) => Promise<any>;
   onDeleteAsset: (id: string) => Promise<any>;
+  onSaveAssetPriceLog?: (assetId: string, log: any) => Promise<any>;
+  onGetAssetPriceLogs?: (assetId: string) => Promise<any[]>;
   onRefreshData?: () => void | Promise<void>;
 }
 
@@ -425,6 +427,8 @@ export function Finance({
   onRemoveDebtPayment,
   onSaveAsset,
   onDeleteAsset,
+  onSaveAssetPriceLog,
+  onGetAssetPriceLogs,
   onRefreshData
 }: FinanceProps) {
   const [financeView, setFinanceView] = useState<"cashflow" | "assets">("cashflow");
@@ -1132,6 +1136,9 @@ export function Finance({
           widgets={widgets}
           onSaveAsset={onSaveAsset}
           onDeleteAsset={onDeleteAsset}
+          onSaveAssetPriceLog={onSaveAssetPriceLog}
+          onGetAssetPriceLogs={onGetAssetPriceLogs}
+          onRefreshData={onRefreshData}
           onSaveTransaction={onSaveTransaction}
         />
       ) : (

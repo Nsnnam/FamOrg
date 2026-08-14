@@ -37,6 +37,7 @@ import {
   Note,
   FinancialTransaction,
   FamilyAsset,
+  AssetPriceLog,
   Notification,
   RewardPointEntry,
   RewardItem,
@@ -1428,6 +1429,29 @@ export default function App() {
     return res.json();
   };
 
+  const handleSaveAssetPriceLog = async (assetId: string, payload: Partial<AssetPriceLog>) => {
+    const res = await fetch(`/api/finance/assets/${assetId}/price-log`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...getAuthHeader() },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    return res.json();
+  };
+
+  const handleGetAssetPriceLogs = async (assetId: string): Promise<AssetPriceLog[]> => {
+    const res = await fetch(`/api/finance/assets/${assetId}/price-logs`, { headers: getAuthHeader() });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error);
+    }
+    const data = await res.json();
+    return data.logs || [];
+  };
+
   const handleSaveMedication = async (payload: Partial<MedicationReminder>) => {
     const res = await fetch("/api/medications", {
       method: "POST",
@@ -2143,6 +2167,8 @@ export default function App() {
                   onRefreshData={fetchAllData}
                   onSaveAsset={handleSaveAsset}
                   onDeleteAsset={handleDeleteAsset}
+                  onSaveAssetPriceLog={handleSaveAssetPriceLog}
+                  onGetAssetPriceLogs={handleGetAssetPriceLogs}
                 />
               )}
 

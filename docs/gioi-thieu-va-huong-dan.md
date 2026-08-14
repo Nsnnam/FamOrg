@@ -38,6 +38,10 @@ Module tài chính dành cho Admin/Member, ẩn với Child/Guest. App hỗ tr�
 
 Phần tài sản gia đình hỗ trợ nhiều loại: crypto, vàng, đất/BĐS, xe, cổ phiếu và tài sản khác. App có widget giá thị trường như BTC, ETH, vàng SJC và nhiều tỷ giá USD, EUR, CNY, JPY, GBP, KRW, SGD, THB, AUD, CAD, CHF, HKD, TWD so với VND; các mã mở rộng có thể bật/tắt trong Thiết lập để giữ Dashboard gọn trên điện thoại. App cũng có tính giá trị ước tính, giá mua ban đầu, lãi/lỗ và ảnh tài sản.
 
+Với các loại vàng, trường **Nguồn vàng** cho phép phân loại vàng mua tại SJC, DOJI, PNJ, Bảo Tín Minh Châu, vàng tư nhân/tiệm riêng hoặc hãng khác. Trên thẻ tài sản có nút **Cập nhật giá** cho vàng, crypto, cổ phiếu và các tài sản khác có biến động. Có thể nhập giá theo đơn vị (chỉ, lượng, gram, coin, cổ phiếu...) hoặc nhập tổng giá trị, kèm ghi chú về cửa hàng và điều kiện báo giá.
+
+Mỗi lần lưu sẽ tạo một **nhật ký giá** gồm thời điểm, giá ghi nhận, người ghi, ghi chú và lời/lỗ so với giá mua bằng cùng loại tiền tệ. Giá trị mới nhất cũng trở thành giá trị tham khảo hiện tại trên thẻ tài sản để các thiết bị khác thấy sau khi đồng bộ. Lịch sử này phục vụ theo dõi tài sản trong gia đình; **không phải khuyến nghị đầu tư** và không thay thế giá mua lại thực tế, phí giao dịch hoặc tư vấn chuyên môn.
+
 ### Giấy tờ gia đình
 
 Kho giấy tờ giúp lưu CCCD/CMND, hộ chiếu, bằng lái, đăng ký xe, đăng kiểm, bảo hiểm, bảo hành, hợp đồng, giấy khai sinh/kết hôn và các tài liệu khác. Mỗi giấy tờ có thể có chủ sở hữu, số giấy tờ, nơi cấp, ngày cấp, ngày hết hạn và file scan/ảnh đính kèm. App có nhắc giấy tờ sắp hết hạn.
@@ -83,7 +87,8 @@ App dùng phân quyền theo vai trò:
 12. (Admin) Cấu hình **Gemini** và **Telegram**; thử tin nhắn Telegram trước khi gửi backup.
 13. **Chi tiêu**: thêm nhóm/danh mục; khi gõ số tiền dùng gợi ý mệnh giá / thêm số 0.
 14. **Ghi chú**: toolbar Markdown + chèn ảnh; **Giấy tờ**: upload zip/Office/PDF.
-15. Nếu widget lỗi mạng: Thiết lập → **Kiểm tra kết nối mạng** — [NAS-DEPLOY.md](./NAS-DEPLOY.md) §8.
+15. **Tài sản**: nhập giá mua ban đầu, chọn nguồn vàng nếu là vàng, sau đó dùng nút **Cập nhật giá** để lưu các mốc giá và xem lời/lỗ.
+16. Nếu widget lỗi mạng: Thiết lập → **Kiểm tra kết nối mạng** — [NAS-DEPLOY.md](./NAS-DEPLOY.md) §8.
 
 ## Cài đặt Docker trên NAS (tóm tắt)
 

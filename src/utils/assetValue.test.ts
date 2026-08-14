@@ -8,6 +8,7 @@ import { AssetType, FamilyAsset } from "../types.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
+  calculateProfitLoss,
   effectiveGoldWeight,
   getEffectiveValue,
   goldPurityFactor,
@@ -226,6 +227,29 @@ describe("getEffectiveValue", () => {
       null
     );
     expect(r).toEqual({ value: 100_000_000, source: "purchase" });
+  });
+});
+
+// ---- calculateProfitLoss --------------------------------------------------
+
+describe("calculateProfitLoss", () => {
+  it("tính đúng lời tuyệt đối và phần trăm", () => {
+    expect(calculateProfitLoss(120_000_000, 100_000_000)).toEqual({
+      profitLoss: 20_000_000,
+      profitLossPct: 20
+    });
+  });
+
+  it("tính đúng khoản lỗ", () => {
+    expect(calculateProfitLoss(75_000_000, 100_000_000)).toEqual({
+      profitLoss: -25_000_000,
+      profitLossPct: -25
+    });
+  });
+
+  it("trả null khi chưa có giá mua hợp lệ", () => {
+    expect(calculateProfitLoss(10_000_000, 0)).toEqual({ profitLoss: null, profitLossPct: null });
+    expect(calculateProfitLoss(10_000_000, Number.NaN)).toEqual({ profitLoss: null, profitLossPct: null });
   });
 });
 
