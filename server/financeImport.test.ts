@@ -76,4 +76,19 @@ describe("previewFinanceImport", () => {
     });
     expect(result.validRows[0].receiptImage).toBeUndefined();
   });
+
+  it("chấp nhận ngày backup khi runtime chạy ở múi giờ UTC+7", () => {
+    const previousTz = process.env.TZ;
+    process.env.TZ = "Asia/Ho_Chi_Minh";
+    try {
+      const result = previewFinanceImport({
+        transactions: [{ id: "tz-date", type: "expense", amount: 1000, category: "Khác", date: "2026-08-14" }]
+      });
+      expect(result.validRows).toHaveLength(1);
+      expect(result.issues).toHaveLength(0);
+    } finally {
+      if (previousTz === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTz;
+    }
+  });
 });

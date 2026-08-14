@@ -51,7 +51,11 @@ function normalizeText(value: unknown): string {
 
 function validDate(value: unknown): value is string {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const d = new Date(`${value}T00:00:00`);
+  // Parse at UTC midnight so validation is independent of the NAS/container TZ.
+  // Parsing local midnight and comparing toISOString() rejects every date in
+  // positive offsets (for example Asia/Ho_Chi_Minh), because it serializes to
+  // the previous UTC calendar day.
+  const d = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
 }
 
