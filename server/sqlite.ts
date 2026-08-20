@@ -29,6 +29,7 @@ const COLLECTIONS: { key: keyof FamilyOrganizerDB; table: string }[] = [
   { key: "debts", table: "debts" },
   { key: "assets", table: "assets" },
   { key: "assetPriceLogs", table: "asset_price_logs" },
+  { key: "goldPriceImports", table: "gold_price_imports" },
   { key: "medications", table: "medications" },
   { key: "medicationLogs", table: "medication_logs" },
   { key: "vaccinations", table: "vaccinations" },

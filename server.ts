@@ -12,7 +12,7 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { FamilyDB, verifyPassword, getSessionSecret, getAppSettings, setAppSetting } from "./server/db.js";
 import { sqliteAppendServerMetric, sqliteGetServerMetrics } from "./server/sqlite.js";
-import { UserRole, isLimitedViewer, DishSlot, MealIngredient, DOCUMENT_TYPE_LABELS } from "./src/types.js";
+import { UserRole, isLimitedViewer, DishSlot, MealIngredient, DOCUMENT_TYPE_LABELS, GoldPriceImport } from "./src/types.js";
 import { buildPlanFromLibrary, dedupeAndAnnotateGroceries } from "./src/utils/mealPlan.js";
 import { normalizeSearchText, matchesQuery, excerptAround } from "./src/utils/searchText.js";
 import { VN_LOCATIONS, DEFAULT_VN_LOCATION } from "./src/utils/vnLocations.js";
@@ -23,6 +23,7 @@ import { sendWeeklyDigest, runWeeklyDigestTick } from "./server/weeklyDigest.js"
 import { icsFeedToken, isValidIcsToken, buildIcsFeed } from "./server/icsFeed.js";
 import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push.js";
 import { previewFinanceImport } from "./server/financeImport.js";
+import { recognizeGoldPriceImage } from "./server/goldPriceOcr.js";
 import {
   getAiConfig, aiStatusPublic, saveAiConfig, testAiConfig, aiGenerateText, aiErrorMessage, AI_PROVIDERS
 } from "./server/ai.js";
@@ -336,7 +337,7 @@ const canManageDocument = (
 // --- MEDIA UPLOAD ---
 // Accepts a base64 data URL (images, PDF, Office, zip/rar/7z) under category.
 const UPLOAD_CATEGORIES = new Set([
-  "avatars", "assets", "receipts", "documents", "notes", "branding", "backgrounds", "debts"
+  "avatars", "assets", "receipts", "documents", "notes", "branding", "backgrounds", "debts", "gold_prices"
 ]);
 
 app.post("/api/uploads", requireAuth, (req: AuthRequest, res: Response) => {
@@ -1914,6 +1915,72 @@ app.post("/api/finance/assets/:id/price-log", requireAuth, requireRole([UserRole
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
+});
+
+app.post("/api/finance/gold-price-imports/preview", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), async (req: AuthRequest, res: Response) => {
+  const dataUrl = req.body?.dataUrl;
+  if (typeof dataUrl !== "string" || !/^data:image\/(png|jpe?g|webp);base64,/i.test(dataUrl)) {
+    res.status(400).json({ error: "Vui lòng chọn ảnh PNG, JPG hoặc WebP hợp lệ." });
+    return;
+  }
+  if (dataUrl.length > 6_000_000) {
+    res.status(413).json({ error: "Ảnh bảng giá quá lớn. Vui lòng chọn ảnh tối đa 4MB." });
+    return;
+  }
+  try {
+    const media = saveDataUrlToFile(dataUrl, "gold_prices", undefined, req.body?.fileName || "gold-price");
+    const ocr = await recognizeGoldPriceImage(dataUrl);
+    res.json({ imageUrl: media.url, ...ocr });
+  } catch (err: any) {
+    res.status(400).json({ error: `Không đọc được ảnh bảng giá: ${err.message}` });
+  }
+});
+
+app.post("/api/finance/gold-price-imports", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  const body = req.body || {};
+  try {
+    const item = FamilyDB.saveGoldPriceImport({
+      storeName: String(body.storeName || "").slice(0, 120),
+      capturedAt: String(body.capturedAt || ""),
+      imageUrl: String(body.imageUrl || ""),
+      ocrText: String(body.ocrText || ""),
+      rows: Array.isArray(body.rows) ? body.rows : []
+    } as Omit<GoldPriceImport, "id" | "createdAt" | "createdBy" | "createdByName">, session.userId, session.username);
+
+    let linkedLogs = 0;
+    for (const row of item.rows) {
+      if (!row.assetId) continue;
+      const asset = FamilyDB.getAssets().find(candidate => candidate.id === row.assetId);
+      if (!asset || (asset.createdById !== session.userId && session.role !== UserRole.ADMIN)) continue;
+      const unitPrice = Number(row.sellPrice || row.buyPrice || 0);
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue;
+      const sameUnit = String(asset.unit || asset.weightUnit || "").toLowerCase() === String(row.unit).toLowerCase();
+      const totalPrice = sameUnit && Number(asset.quantity) > 0 ? unitPrice * Number(asset.quantity) : unitPrice;
+      FamilyDB.saveAssetPriceLog({
+        price: totalPrice,
+        currency: asset.currency,
+        unitPrice,
+        quantity: Number(asset.quantity) > 0 ? Number(asset.quantity) : undefined,
+        unit: row.unit,
+        note: `Ảnh bảng giá: ${row.label}`,
+        sourceType: "image",
+        sourceName: item.storeName,
+        sourceImageUrl: item.imageUrl,
+        importId: item.id,
+        observedAt: item.capturedAt
+      }, asset.id, session.userId, session.username);
+      linkedLogs += 1;
+    }
+    broadcastSyncEvent("FINANCE_UPDATE", { goldPriceImportId: item.id, linkedLogs });
+    res.json({ import: item, linkedLogs });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/finance/gold-price-imports", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (_req: AuthRequest, res: Response) => {
+  res.json({ imports: FamilyDB.getGoldPriceImports() });
 });
 
 app.delete("/api/finance/assets/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {

@@ -29,6 +29,7 @@
     "react-dom": "^19.0.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "tesseract.js": "^6.0.1",
     "unzipper": "^0.12.5",
     "vite": "^6.2.3",
     "web-push": "^3.6.7"

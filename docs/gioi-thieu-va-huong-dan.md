@@ -40,7 +40,7 @@ Phần tài sản gia đình hỗ trợ nhiều loại: crypto, vàng, đất/B�
 
 Với các loại vàng, trường **Nguồn vàng** cho phép phân loại vàng mua tại SJC, DOJI, PNJ, Bảo Tín Minh Châu, vàng tư nhân/tiệm riêng hoặc hãng khác. Trên thẻ tài sản có nút **Cập nhật giá** cho vàng, crypto, cổ phiếu và các tài sản khác có biến động. Có thể nhập giá theo đơn vị (chỉ, lượng, gram, coin, cổ phiếu...) hoặc nhập tổng giá trị, kèm ghi chú về cửa hàng và điều kiện báo giá.
 
-Mỗi lần lưu sẽ tạo một **nhật ký giá** gồm thời điểm, giá ghi nhận, người ghi, ghi chú và lời/lỗ so với giá mua bằng cùng loại tiền tệ. Giá trị mới nhất cũng trở thành giá trị tham khảo hiện tại trên thẻ tài sản để các thiết bị khác thấy sau khi đồng bộ. Lịch sử này phục vụ theo dõi tài sản trong gia đình; **không phải khuyến nghị đầu tư** và không thay thế giá mua lại thực tế, phí giao dịch hoặc tư vấn chuyên môn.
+Mỗi lần lưu sẽ tạo một **nhật ký giá** gồm thời điểm, giá ghi nhận, người ghi, ghi chú và lời/lỗ so với giá mua bằng cùng loại tiền tệ. Giá trị mới nhất cũng trở thành giá trị tham khảo hiện tại trên thẻ tài sản để các thiết bị khác thấy sau khi đồng bộ. Bạn có thể chọn **Nhập bảng giá từ ảnh**, nhập tên cửa hàng và thời điểm chụp, xem lại kết quả OCR, sửa từng dòng giá mua/giá bán rồi chọn tài sản vàng tương ứng trước khi xác nhận. Ảnh nguồn và các dòng OCR được lưu riêng theo từng cửa hàng/thời kỳ; dòng được gắn tài sản sẽ tạo nhật ký có nguồn **Ảnh OCR**, còn dòng không gắn tài sản chỉ dùng để tra cứu. Nhật ký cũng phân biệt nguồn **Thủ công**, **Ảnh OCR** và nguồn tự động **Needle** trong tương lai. Lịch sử này phục vụ theo dõi tài sản trong gia đình; **không phải khuyến nghị đầu tư** và không thay thế giá mua lại thực tế, phí giao dịch hoặc tư vấn chuyên môn.
 
 ### Giấy tờ gia đình
 
@@ -87,7 +87,7 @@ App dùng phân quyền theo vai trò:
 12. (Admin) Cấu hình **Gemini** và **Telegram**; thử tin nhắn Telegram trước khi gửi backup.
 13. **Chi tiêu**: thêm nhóm/danh mục; khi gõ số tiền dùng gợi ý mệnh giá / thêm số 0.
 14. **Ghi chú**: toolbar Markdown + chèn ảnh; **Giấy tờ**: upload zip/Office/PDF.
-15. **Tài sản**: nhập giá mua ban đầu, chọn nguồn vàng nếu là vàng, sau đó dùng nút **Cập nhật giá** để lưu các mốc giá và xem lời/lỗ.
+15. **Tài sản**: nhập giá mua ban đầu, chọn nguồn vàng nếu là vàng, dùng nút **Cập nhật giá** để lưu mốc thủ công, hoặc **Nhập bảng giá từ ảnh** để OCR bảng giá cửa hàng rồi xem trước và xác nhận.
 16. Nếu widget lỗi mạng: Thiết lập → **Kiểm tra kết nối mạng** — [NAS-DEPLOY.md](./NAS-DEPLOY.md) §8.
 
 ## Cài đặt Docker trên NAS (tóm tắt)

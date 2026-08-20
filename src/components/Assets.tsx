@@ -33,6 +33,7 @@ import {
   AccountType,
   AssetPhoto,
   AssetPriceLog,
+  GoldPriceImportRow,
   AssetType,
   FamilyAsset,
   FinancialTransaction,
@@ -189,6 +190,15 @@ export function Assets({
   const [priceLogError, setPriceLogError] = useState("");
   const [priceLogLoading, setPriceLogLoading] = useState(false);
   const [priceLogSaving, setPriceLogSaving] = useState(false);
+
+  const [goldImportOpen, setGoldImportOpen] = useState(false);
+  const [goldImportFile, setGoldImportFile] = useState<File | null>(null);
+  const [goldImportStore, setGoldImportStore] = useState("");
+  const [goldImportCapturedAt, setGoldImportCapturedAt] = useState(new Date().toISOString().slice(0, 16));
+  const [goldImportPreview, setGoldImportPreview] = useState<{ imageUrl: string; ocrText: string; rows: GoldPriceImportRow[] } | null>(null);
+  const [goldImportLoading, setGoldImportLoading] = useState(false);
+  const [goldImportSaving, setGoldImportSaving] = useState(false);
+  const [goldImportError, setGoldImportError] = useState("");
 
   // Bán tài sản — popup ghi nhận tiền bán vào sổ thu chi rồi xóa tài sản.
   const [sellingAsset, setSellingAsset] = useState<FamilyAsset | null>(null);
@@ -409,6 +419,7 @@ export function Assets({
   const goldInfoRef = useRef<HTMLDivElement | null>(null);
   const sellRef = useRef<HTMLDivElement | null>(null);
   const priceLogRef = useRef<HTMLDivElement | null>(null);
+  const goldImportRef = useRef<HTMLDivElement | null>(null);
   const closePhoto = useCallback(() => setSelectedPhoto(null), []);
   const closeGoldInfo = useCallback(() => setShowGoldPurityInfo(false), []);
   const closePriceLog = useCallback(() => {
@@ -426,11 +437,12 @@ export function Assets({
   useModalA11y(!!selectedPhoto, closePhoto, photoRef);
   useModalA11y(showGoldPurityInfo, closeGoldInfo, goldInfoRef);
   useModalA11y(!!priceLogAsset, closePriceLog, priceLogRef);
+  useModalA11y(goldImportOpen, () => { if (!goldImportLoading && !goldImportSaving) setGoldImportOpen(false); }, goldImportRef);
   useModalA11y(!!sellingAsset, closeSell, sellRef);
 
   // Nút nổi thêm tài sản — icon trùng tab con "Tài sản gia đình", ẩn khi đang mở modal
   useTabFab(
-    !isFormOpen && !selectedPhoto && !showGoldPurityInfo && !priceLogAsset && !sellingAsset
+    !isFormOpen && !selectedPhoto && !showGoldPurityInfo && !priceLogAsset && !goldImportOpen && !sellingAsset
       ? { id: "assets", color: "emerald", title: "Thêm tài sản gia đình", icon: FileText, onClick: openCreateForm }
       : null
   );
@@ -500,6 +512,75 @@ export function Assets({
       setPriceLogError(err.message || "Không lưu được giá thủ công.");
     } finally {
       setPriceLogSaving(false);
+    }
+  };
+
+  const openGoldImport = () => {
+    setGoldImportFile(null);
+    setGoldImportStore("");
+    setGoldImportCapturedAt(new Date().toISOString().slice(0, 16));
+    setGoldImportPreview(null);
+    setGoldImportError("");
+    setGoldImportOpen(true);
+  };
+
+  const handleGoldImportPreview = async () => {
+    if (!goldImportFile) {
+      setGoldImportError("Vui lòng chọn ảnh bảng giá.");
+      return;
+    }
+    setGoldImportError("");
+    setGoldImportLoading(true);
+    try {
+      const optimized = await optimizeImageFile(goldImportFile, { targetBytes: 1_200_000, maxSizes: [1800, 1400, 1024] });
+      const response = await fetch("/api/finance/gold-price-imports/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ dataUrl: optimized.dataUrl, fileName: goldImportFile.name })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Không đọc được bảng giá.");
+      setGoldImportPreview(payload);
+    } catch (err: any) {
+      setGoldImportError(err.message || "Không đọc được ảnh bảng giá.");
+    } finally {
+      setGoldImportLoading(false);
+    }
+  };
+
+  const updateGoldImportRow = (rowId: string, patch: Partial<GoldPriceImportRow>) => {
+    setGoldImportPreview(prev => prev ? { ...prev, rows: prev.rows.map(row => row.id === rowId ? { ...row, ...patch } : row) } : prev);
+  };
+
+  const handleGoldImportSave = async () => {
+    if (!goldImportPreview || !goldImportStore.trim()) {
+      setGoldImportError("Vui lòng nhập tên cửa hàng trước khi lưu.");
+      return;
+    }
+    setGoldImportError("");
+    setGoldImportSaving(true);
+    try {
+      const response = await fetch("/api/finance/gold-price-imports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          storeName: goldImportStore.trim(),
+          capturedAt: new Date(goldImportCapturedAt).toISOString(),
+          imageUrl: goldImportPreview.imageUrl,
+          ocrText: goldImportPreview.ocrText,
+          rows: goldImportPreview.rows
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Không lưu được bảng giá.");
+      setGoldImportOpen(false);
+      await onRefreshData?.();
+    } catch (err: any) {
+      setGoldImportError(err.message || "Không lưu được bảng giá.");
+    } finally {
+      setGoldImportSaving(false);
     }
   };
 
@@ -833,13 +914,22 @@ export function Assets({
               className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 outline-none focus:border-emerald-500"
             />
           </div>
-          <button
-            type="button"
-            onClick={openCreateForm}
-            className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <Plus className="size-4" /> Thêm tài sản
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={openGoldImport}
+              className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Upload className="size-4" /> Nhập bảng giá từ ảnh
+            </button>
+            <button
+              type="button"
+              onClick={openCreateForm}
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Plus className="size-4" /> Thêm tài sản
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
           <div>
@@ -1037,6 +1127,89 @@ export function Assets({
               </Reveal>
             );
           })}
+        </div>
+      )}
+
+      {goldImportOpen && (
+        <div onClick={() => { if (!goldImportLoading && !goldImportSaving) setGoldImportOpen(false); }} className="fixed inset-0 bg-slate-950/85 flex items-center justify-center z-50 p-4" id="gold-price-import-modal">
+          <motion.div
+            ref={goldImportRef}
+            tabIndex={-1}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gold-price-import-title"
+            className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[92vh] shadow-2xl flex flex-col overflow-hidden outline-none"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
+              <div>
+                <h3 id="gold-price-import-title" className="text-md font-bold text-slate-100 flex items-center gap-1.5"><Upload className="size-5 text-amber-400" /> Nhập bảng giá vàng từ ảnh</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">OCR chỉ gợi ý dữ liệu; hãy kiểm tra trước khi lưu.</p>
+              </div>
+              <button type="button" onClick={() => setGoldImportOpen(false)} disabled={goldImportLoading || goldImportSaving} aria-label="Đóng nhập bảng giá" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center disabled:opacity-50"><X className="size-4" /></button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 space-y-4 flex-1 min-h-0">
+              {goldImportError && <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl text-xs">{goldImportError}</div>}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <label className="space-y-1 text-xs text-slate-400 md:col-span-1">
+                  <span className="block font-semibold">Cửa hàng / nguồn giá <span className="text-rose-400">*</span></span>
+                  <input value={goldImportStore} onChange={(e) => setGoldImportStore(e.target.value)} placeholder="VD: SJC Vĩnh Yên" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none focus:border-amber-500" />
+                </label>
+                <label className="space-y-1 text-xs text-slate-400">
+                  <span className="block font-semibold">Thời điểm bảng giá</span>
+                  <input type="datetime-local" value={goldImportCapturedAt} onChange={(e) => setGoldImportCapturedAt(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                </label>
+                <label className="space-y-1 text-xs text-slate-400">
+                  <span className="block font-semibold">Ảnh bảng giá</span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => { setGoldImportFile(e.target.files?.[0] || null); setGoldImportPreview(null); setGoldImportError(""); }} className="block w-full text-[11px] text-slate-400 file:mr-2 file:rounded-lg file:border-0 file:bg-amber-500 file:px-2.5 file:py-2 file:text-xs file:font-bold file:text-slate-950" />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={() => void handleGoldImportPreview()} disabled={!goldImportFile || goldImportLoading || goldImportSaving} className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold disabled:opacity-50 flex items-center gap-1.5">
+                  <RefreshCw className={`size-3.5 ${goldImportLoading ? "animate-spin" : ""}`} /> {goldImportLoading ? "Đang đọc ảnh..." : "Đọc ảnh và xem trước"}
+                </button>
+                {goldImportFile && <span className="text-[11px] text-slate-500 truncate max-w-[280px]">{goldImportFile.name}</span>}
+              </div>
+              {goldImportPreview && (
+                <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4">
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-slate-200">Ảnh nguồn</p>
+                    <img src={goldImportPreview.imageUrl} alt="Ảnh bảng giá vàng đã nhập" className="w-full max-h-64 object-contain rounded-xl border border-slate-800 bg-slate-950" />
+                    <p className="text-[10px] text-slate-600">Ảnh được lưu cùng lần nhập để đối chiếu về sau.</p>
+                  </div>
+                  <div className="space-y-3 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-xs font-bold text-slate-200">Các dòng nhận diện ({goldImportPreview.rows.length})</h4>
+                      <span className="text-[10px] text-slate-500">Có thể sửa trước khi lưu</span>
+                    </div>
+                    {goldImportPreview.rows.length === 0 ? (
+                      <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">Chưa nhận diện được dòng giá. Bạn vẫn có thể lưu ảnh để tra cứu, nhưng nên nhập lại bằng ảnh rõ hơn.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {goldImportPreview.rows.map(row => (
+                          <div key={row.id} className="grid grid-cols-1 sm:grid-cols-[1.2fr_1.2fr_135px_135px_95px] gap-2 items-end bg-slate-950/50 border border-slate-800 rounded-xl p-2.5">
+                            <label className="text-[10px] text-slate-500">Tên / loại<input value={row.label} onChange={(e) => updateGoldImportRow(row.id, { label: e.target.value })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" /></label>
+                            <label className="text-[10px] text-slate-500">Gắn vào tài sản<select value={row.assetId || ""} onChange={(e) => updateGoldImportRow(row.id, { assetId: e.target.value || undefined })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"><option value="">Chỉ lưu bảng giá</option>{assets.filter(asset => isGoldType(asset.type)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
+                            <label className="text-[10px] text-slate-500">Giá mua<input type="number" value={row.buyPrice || ""} onChange={(e) => updateGoldImportRow(row.id, { buyPrice: e.target.value ? Number(e.target.value) : undefined })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 font-mono" /></label>
+                            <label className="text-[10px] text-slate-500">Giá bán<input type="number" value={row.sellPrice || ""} onChange={(e) => updateGoldImportRow(row.id, { sellPrice: e.target.value ? Number(e.target.value) : undefined })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 font-mono" /></label>
+                            <label className="text-[10px] text-slate-500">Đơn vị<select value={row.unit} onChange={(e) => updateGoldImportRow(row.id, { unit: e.target.value as GoldPriceImportRow["unit"] })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"><option value="lượng">lượng</option><option value="chỉ">chỉ</option><option value="gram">gram</option></select></label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <details className="text-[10px] text-slate-500"><summary className="cursor-pointer">Xem text OCR thô</summary><pre className="mt-2 whitespace-pre-wrap bg-slate-950 border border-slate-800 rounded-lg p-2 max-h-32 overflow-auto">{goldImportPreview.ocrText || "(trống)"}</pre></details>
+                  </div>
+                </div>
+              )}
+              <p className="text-[10px] text-slate-600 leading-relaxed">Ảnh và các dòng giá được lưu theo cửa hàng/thời điểm, tách với giá thủ công và giá tự động từ Needle. Đây là công cụ theo dõi/tham khảo, không phải khuyến nghị đầu tư.</p>
+            </div>
+            <div className="flex items-center justify-end gap-2.5 px-5 py-4 border-t border-slate-800 shrink-0">
+              <button type="button" onClick={() => setGoldImportOpen(false)} disabled={goldImportLoading || goldImportSaving} className="px-4 py-2 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-200 rounded-xl font-bold disabled:opacity-50">Đóng lại</button>
+              <button type="button" onClick={() => void handleGoldImportSave()} disabled={!goldImportPreview || goldImportSaving || goldImportLoading} className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold disabled:opacity-50">{goldImportSaving ? "Đang lưu..." : "Lưu bảng giá"}</button>
+            </div>
+          </motion.div>
         </div>
       )}
 

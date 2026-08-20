@@ -367,9 +367,11 @@ export interface FamilyAsset {
 }
 
 /**
- * Một lần ghi nhận giá thủ công của tài sản biến động.
+ * Một lần ghi nhận giá của tài sản biến động; nguồn có thể là thủ công, ảnh OCR hoặc worker tự động.
  * `price` là tổng giá trị hiện tại theo tiền tệ của tài sản; `unitPrice` là giá/đơn vị nếu người dùng nhập theo đơn vị.
  */
+export type AssetPriceSource = "manual" | "image" | "needle";
+
 export interface AssetPriceLog {
   id: string;
   assetId: string;
@@ -385,6 +387,36 @@ export interface AssetPriceLog {
   purchaseValueAtRecord?: number;
   profitLoss?: number;
   profitLossPct?: number;
+  sourceType?: AssetPriceSource;
+  sourceName?: string;
+  sourceImageUrl?: string;
+  importId?: string;
+  observedAt?: string;
+}
+
+export interface GoldPriceImportRow {
+  id: string;
+  importId: string;
+  label: string;
+  purity?: string;
+  buyPrice?: number;
+  sellPrice?: number;
+  unit: "lượng" | "chỉ" | "gram";
+  assetId?: string;
+  confidence?: number;
+  rawText?: string;
+}
+
+export interface GoldPriceImport {
+  id: string;
+  storeName: string;
+  capturedAt: string;
+  imageUrl: string;
+  ocrText: string;
+  rows: GoldPriceImportRow[];
+  createdAt: string;
+  createdBy: string;
+  createdByName?: string;
 }
 
 export interface MedicationReminder {
@@ -601,6 +633,7 @@ export interface FamilyOrganizerDB {
   debts: Debt[];
   assets: FamilyAsset[];
   assetPriceLogs: AssetPriceLog[];
+  goldPriceImports: GoldPriceImport[];
   medications: MedicationReminder[];
   medicationLogs: MedicationLog[];
   vaccinations: VaccinationRecord[];

@@ -15,7 +15,7 @@ export const UPLOADS_URL_PREFIX = "/uploads/";
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-const ALLOWED_CATEGORIES = new Set(["avatars", "assets", "receipts", "documents", "debts", "notes", "branding", "backgrounds"]);
+const ALLOWED_CATEGORIES = new Set(["avatars", "assets", "receipts", "documents", "debts", "notes", "branding", "backgrounds", "gold_prices"]);
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_PDF_BYTES = 10 * 1024 * 1024;

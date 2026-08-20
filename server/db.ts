@@ -21,6 +21,8 @@ import {
   RecurringBill,
   FamilyAsset,
   AssetPriceLog,
+  GoldPriceImport,
+  GoldPriceImportRow,
   MedicationReminder,
   MedicationLog,
   FamilyDocument,
@@ -188,6 +190,7 @@ const initialDBState = (): FamilyOrganizerDB => {
     debts: [],
     assets: [],
     assetPriceLogs: [],
+    goldPriceImports: [],
     medications: [],
     medicationLogs: [],
     vaccinations: [],
@@ -220,6 +223,7 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.debts = db.debts || [];
   db.assets = db.assets || [];
   db.assetPriceLogs = db.assetPriceLogs || [];
+  db.goldPriceImports = db.goldPriceImports || [];
   db.medications = db.medications || [];
   db.medicationLogs = db.medicationLogs || [];
   db.vaccinations = db.vaccinations || [];
@@ -2029,7 +2033,12 @@ export class FamilyDB {
       recordedByName: username,
       purchaseValueAtRecord: comparablePurchase,
       profitLoss: profitLoss !== undefined ? Math.round(profitLoss) : undefined,
-      profitLossPct
+      profitLossPct,
+      sourceType: data.sourceType === "image" || data.sourceType === "needle" ? data.sourceType : "manual",
+      sourceName: data.sourceName?.trim() || undefined,
+      sourceImageUrl: data.sourceImageUrl?.startsWith("/uploads/") ? data.sourceImageUrl : undefined,
+      importId: data.importId?.trim() || undefined,
+      observedAt: data.observedAt || undefined
     };
 
     // The newest manual quote becomes the current reference value shown on the asset card.
@@ -2039,8 +2048,48 @@ export class FamilyDB {
     }
     db.assetPriceLogs.unshift(log);
     this.writeRaw(db);
-    this.logActivity(userId, username, "Cập nhật giá tài sản", `Đã ghi giá thủ công cho "${asset.name}" (${log.price.toLocaleString()} ${log.currency}).`);
+    this.logActivity(userId, username, "Cập nhật giá tài sản", `Đã ghi giá ${log.sourceType === "image" ? "từ ảnh" : log.sourceType === "needle" ? "từ Needle" : "thủ công"} cho "${asset.name}" (${log.price.toLocaleString()} ${log.currency}).`);
     return log;
+  }
+
+  public static saveGoldPriceImport(data: Omit<GoldPriceImport, "id" | "createdAt" | "createdBy" | "createdByName">, userId: string, username: string): GoldPriceImport {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    const importId = `gold_import_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    if (!data.imageUrl?.startsWith("/uploads/gold_prices/")) throw new Error("Ảnh bảng giá không hợp lệ.");
+    if (!data.storeName?.trim()) throw new Error("Vui lòng nhập tên cửa hàng.");
+    if (!data.capturedAt || Number.isNaN(Date.parse(data.capturedAt))) throw new Error("Thời điểm bảng giá không hợp lệ.");
+    const rows: GoldPriceImportRow[] = (Array.isArray(data.rows) ? data.rows : []).slice(0, 100).map((row, index) => ({
+      ...row,
+      id: row.id || `${importId}_row_${index + 1}`,
+      importId,
+      label: String(row.label || `Dòng ${index + 1}`).trim().slice(0, 160),
+      buyPrice: Number.isFinite(Number(row.buyPrice)) && Number(row.buyPrice) > 0 ? Math.round(Number(row.buyPrice)) : undefined,
+      sellPrice: Number.isFinite(Number(row.sellPrice)) && Number(row.sellPrice) > 0 ? Math.round(Number(row.sellPrice)) : undefined,
+      unit: row.unit === "chỉ" || row.unit === "gram" ? row.unit : "lượng",
+      assetId: typeof row.assetId === "string" && row.assetId.length <= 120 ? row.assetId : undefined,
+      rawText: row.rawText?.slice(0, 500)
+    }));
+    const item: GoldPriceImport = {
+      id: importId,
+      storeName: data.storeName.trim().slice(0, 120),
+      capturedAt: data.capturedAt,
+      imageUrl: data.imageUrl,
+      ocrText: String(data.ocrText || "").slice(0, 20_000),
+      rows: rows.map(row => ({ ...row, importId })),
+      createdAt: now,
+      createdBy: userId,
+      createdByName: username
+    };
+    item.rows.forEach(row => { row.importId = item.id; });
+    db.goldPriceImports.unshift(item);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Nhập bảng giá vàng", `Đã lưu bảng giá từ ${item.storeName} (${item.rows.length} dòng).`);
+    return item;
+  }
+
+  public static getGoldPriceImports(limit = 100): GoldPriceImport[] {
+    return this.readRaw().goldPriceImports.slice(0, Math.max(1, Math.min(500, limit)));
   }
 
   public static deleteAsset(id: string, userId: string, username: string): void {
