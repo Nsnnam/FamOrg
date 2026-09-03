@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Plus, Trash2, Pencil, X, Calendar, User as UserIcon, Paperclip, ExternalLink, ShieldAlert, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Plus, Trash2, Pencil, X, Calendar, User as UserIcon, Paperclip, ExternalLink, ShieldAlert, ChevronLeft, ChevronRight, Sparkles, UploadCloud, Loader2 } from "lucide-react";
 import { FamilyDocument, DocumentFile, DocumentType, DOCUMENT_TYPE_LABELS, User, UserRole } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { optimizeAndUpload, uploadDataUrl, uploadBinaryFile } from "../utils/uploadImage.js";
@@ -14,6 +14,7 @@ import { useModalA11y } from "../hooks/useModalA11y.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
+import { normalizeSearchText } from "../utils/searchText.js";
 
 interface DocumentsProps {
   currentUser: User;
@@ -60,6 +61,9 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [aiScanning, setAiScanning] = useState(false);
+  const [aiResultMsg, setAiResultMsg] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   // Trình xem ảnh (lightbox): ảnh của một giấy tờ + vị trí đang xem.
   const [viewer, setViewer] = useState<{ files: DocumentFile[]; index: number; title: string } | null>(null);
@@ -101,6 +105,66 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     return owner ? `${label} của ${owner.fullName}` : label;
   };
 
+  // Khớp tên bóc tách từ AI với danh sách thành viên trong gia đình
+  const matchOwnerId = (name?: string): string => {
+    if (!name) return "";
+    const norm = normalizeSearchText(name);
+    const matched = users.find(u => {
+      const uNorm = normalizeSearchText(u.fullName);
+      return uNorm.includes(norm) || norm.includes(uNorm);
+    });
+    return matched ? matched.id : "";
+  };
+
+  // Kích hoạt AI nhận diện bóc tách thông tin giấy tờ
+  const scanDocumentWithAi = async (params: { fileUrl?: string; dataUrl?: string; textContent?: string }) => {
+    setAiScanning(true);
+    setAiResultMsg("");
+    setError("");
+    try {
+      const token = localStorage.getItem("family_token");
+      const res = await fetch("/api/ai/parse-document", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(params)
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Không nhận diện được giấy tờ.");
+      const d = json.data;
+      if (!d) throw new Error("AI không trả về dữ liệu.");
+
+      if (d.type && DOC_TYPE_ORDER.includes(d.type as DocumentType)) {
+        setType(d.type as DocumentType);
+      }
+      if (d.documentNumber) setDocumentNumber(String(d.documentNumber).trim());
+      if (d.issuer) setIssuer(String(d.issuer).trim());
+      if (d.issueDate) setIssueDate(String(d.issueDate).trim());
+      if (d.expiryDate) setExpiryDate(String(d.expiryDate).trim());
+      if (d.notes) setNotes(prev => prev ? `${prev}\n${d.notes}` : d.notes);
+
+      const matchedOwner = matchOwnerId(d.ownerName);
+      if (matchedOwner) {
+        setOwnerId(matchedOwner);
+      }
+
+      if (d.title && (!titleManual || !title)) {
+        setTitle(d.title);
+        setTitleManual(true);
+      }
+
+      const typeLabel = (d.type && DOCUMENT_TYPE_LABELS[d.type as DocumentType]) || d.type || "Giấy tờ";
+      setAiResultMsg(`✨ AI đã nhận diện: ${typeLabel}${d.documentNumber ? ` (${d.documentNumber})` : ""}${d.ownerName ? ` – ${d.ownerName}` : ""}`);
+    } catch (err: any) {
+      console.warn("AI scan failed:", err);
+      setAiResultMsg(`⚠️ AI nhận diện: ${err.message || "Lỗi khi quét"}`);
+    } finally {
+      setAiScanning(false);
+    }
+  };
+
   // Khi đổi loại/chủ sở hữu mà người dùng chưa tự gõ tên thì cập nhật tên gợi ý.
   useEffect(() => {
     if (!titleManual) setTitle(autoTitle(type, ownerId));
@@ -110,6 +174,7 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     setType("cccd"); setTitle(""); setTitleManual(false); setOwnerId(""); setDocumentNumber("");
     setIssuer(""); setIssueDate(""); setExpiryDate(""); setNotes("");
     setIsShared(false); setFiles([]); setEditingId(null); setEditingBaseUpdatedAt(""); setError("");
+    setAiScanning(false); setAiResultMsg(""); setIsDragging(false);
   };
 
   const startEdit = (doc: FamilyDocument) => {
@@ -128,6 +193,9 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
     setEditingId(doc.id);
     setEditingBaseUpdatedAt(doc.updatedAt || ""); // chống 2 người cùng sửa đè nhau (409)
     setError("");
+    setAiScanning(false);
+    setAiResultMsg("");
+    setIsDragging(false);
     formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -170,6 +238,13 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
         });
       }
       setFiles(prev => [...prev, ...added]);
+      // Tự động quét và nhận diện thông tin giấy tờ bằng AI khi tải tệp lên
+      if (added.length > 0 && (!documentNumber || !editingId)) {
+        const firstCandidate = added.find(f => !/\.(zip|rar|7z)$/i.test(f.fileName));
+        if (firstCandidate) {
+          void scanDocumentWithAi({ fileUrl: firstCandidate.url });
+        }
+      }
     } catch (err: any) {
       setError(err.message || "Không tải được tệp giấy tờ.");
     } finally {
@@ -294,7 +369,38 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} onPaste={handlePaste} className="grid grid-cols-1 md:grid-cols-6 gap-2 text-xs">
+        {/* Banner trạng thái AI quét & bóc tách giấy tờ */}
+        {aiScanning && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-200 text-xs animate-pulse">
+            <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+            <span>✨ <b>AI đang bóc tách giấy tờ:</b> tự động nhận diện loại giấy tờ, số, nơi cấp, ngày cấp & hạn dùng...</span>
+          </div>
+        )}
+
+        {aiResultMsg && !aiScanning && (
+          <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs">
+            <span className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" /> {aiResultMsg}</span>
+            <button type="button" onClick={() => setAiResultMsg("")} className="text-emerald-400 hover:text-emerald-200 cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        <form
+          onSubmit={handleSubmit}
+          onPaste={handlePaste}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+          onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+            const dropped = Array.from(e.dataTransfer.files || []);
+            if (dropped.length > 0) void addPickedFiles(dropped);
+          }}
+          className={`grid grid-cols-1 md:grid-cols-6 gap-2 text-xs transition-colors rounded-xl p-1.5 ${isDragging ? "bg-indigo-950/40 ring-2 ring-indigo-500/50" : ""}`}
+        >
           <div className="md:col-span-2">
             <FancySelect
               value={type}
@@ -359,20 +465,55 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
             />
           </div>
 
-          {/* Đính kèm ảnh/scan/PDF — hỗ trợ dán ảnh từ clipboard (Ctrl+V) vào form */}
-          <div className="md:col-span-6 bg-slate-950/40 border border-slate-800 rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-slate-400 font-semibold flex items-center gap-1.5 min-w-0">
-                <Paperclip className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> Ảnh/PDF đính kèm ({files.length}/{MAX_DOC_FILES})
-                <span className="hidden sm:inline text-[10px] text-slate-600 font-normal">— dán ảnh Ctrl+V được</span>
+          {/* Đính kèm ảnh scan/PDF — hỗ trợ kéo thả tệp và dán từ clipboard (Ctrl+V) */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+            onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setIsDragging(false);
+              const dropped = Array.from(e.dataTransfer.files || []);
+              if (dropped.length > 0) void addPickedFiles(dropped);
+            }}
+            className={`md:col-span-6 border-2 border-dashed rounded-xl p-3.5 space-y-2.5 transition-all ${isDragging ? "border-indigo-400 bg-indigo-950/50 shadow-lg shadow-indigo-500/10" : "border-slate-800 bg-slate-950/40 hover:border-slate-700"}`}
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <label className="text-slate-300 font-semibold flex items-center gap-1.5 min-w-0">
+                <Paperclip className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> Tệp giấy tờ ({files.length}/{MAX_DOC_FILES})
+                <span className="hidden sm:inline text-[10px] text-slate-500 font-normal">— Kéo thả hoặc dán ảnh Ctrl+V</span>
               </label>
-              <label className={`text-[11px] font-bold rounded-lg px-2.5 py-1 cursor-pointer flex items-center gap-1 shrink-0 ${uploading || files.length >= MAX_DOC_FILES ? "bg-slate-800 text-slate-600 cursor-not-allowed" : "bg-slate-800 hover:bg-slate-700 text-indigo-400"}`}>
-                <Plus className="w-3 h-3" /> {uploading ? "Đang tải..." : "Thêm tệp"}
-                <input type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.zip,.rar,.7z,.txt,.csv,.rtf,application/msword,application/vnd.openxmlformats-officedocument.*,application/zip,application/x-rar-compressed,application/x-7z-compressed" multiple disabled={uploading || files.length >= MAX_DOC_FILES} onChange={handleFilePick} className="hidden" />
-              </label>
+              <div className="flex items-center gap-1.5">
+                {files.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={aiScanning}
+                    onClick={() => {
+                      const first = files.find(f => !/\.(zip|rar|7z)$/i.test(f.fileName));
+                      if (first) void scanDocumentWithAi({ fileUrl: first.url });
+                    }}
+                    className="text-[11px] font-bold rounded-lg px-2.5 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/30 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    title="Yêu cầu AI quét lại tài liệu để bóc tách thông tin"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-400" /> {aiScanning ? "Đang quét..." : "Quét AI lại"}
+                  </button>
+                )}
+                <label className={`text-[11px] font-bold rounded-lg px-2.5 py-1 cursor-pointer flex items-center gap-1 shrink-0 ${uploading || files.length >= MAX_DOC_FILES ? "bg-slate-800 text-slate-600 cursor-not-allowed" : "bg-slate-800 hover:bg-slate-700 text-indigo-400"}`}>
+                  <Plus className="w-3 h-3" /> {uploading ? "Đang tải..." : "Thêm tệp"}
+                  <input type="file" accept="image/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.zip,.rar,.7z,.txt,.csv,.rtf,application/msword,application/vnd.openxmlformats-officedocument.*,application/zip,application/x-rar-compressed,application/x-7z-compressed" multiple disabled={uploading || files.length >= MAX_DOC_FILES} onChange={handleFilePick} className="hidden" />
+                </label>
+              </div>
             </div>
-            {files.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+
+            {files.length === 0 ? (
+              <div className="py-4 text-center border border-dashed border-slate-800/80 rounded-lg bg-slate-950/20">
+                <UploadCloud className="w-6 h-6 text-indigo-400/60 mx-auto mb-1.5" />
+                <p className="text-[11px] text-slate-300 font-medium">Kéo thả ảnh scan CCCD, bằng lái, đăng kiểm, BHYT hoặc PDF vào đây</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">AI sẽ tự động nhận diện loại giấy tờ, số, nơi cấp, ngày cấp và hạn dùng</p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 pt-1">
                 {files.map(f => (
                   <div key={f.id} className="relative group">
                     {isPdfFile(f) ? (
@@ -383,9 +524,19 @@ export function Documents({ currentUser, users, documents, onSaveDocument, onDel
                     ) : (
                       <img src={f.url} alt={f.fileName} className="w-16 h-16 object-cover rounded-lg border border-slate-700" />
                     )}
-                    <button type="button" onClick={() => removeFile(f.id)} className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-0.5 cursor-pointer" title="Gỡ tệp">
+                    <button type="button" onClick={() => removeFile(f.id)} className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-0.5 cursor-pointer shadow" title="Gỡ tệp">
                       <X className="w-3 h-3" />
                     </button>
+                    {!/\.(zip|rar|7z)$/i.test(f.fileName) && (
+                      <button
+                        type="button"
+                        onClick={() => scanDocumentWithAi({ fileUrl: f.url })}
+                        className="absolute bottom-0.5 left-0.5 bg-slate-900/90 hover:bg-indigo-600 text-amber-300 hover:text-white rounded p-1 cursor-pointer transition-colors shadow"
+                        title="Quét tệp này bằng AI"
+                      >
+                        <Sparkles className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

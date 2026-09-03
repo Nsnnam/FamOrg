@@ -32,7 +32,8 @@ import {
   Send,
   Calendar,
   Copy,
-  Wifi
+  Wifi,
+  BarChart3
 } from "lucide-react";
 import { User, UserRole, FamilyRelation, FAMILY_RELATION_LABELS, ROLE_LABELS } from "../types.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -496,6 +497,28 @@ export function Settings({
       setTgDigestMsg("Lỗi: " + friendlyNetErr(err, "gửi bản tin tuần"));
     } finally {
       setTgDigestBusy(false);
+    }
+  };
+
+  const [tgReportBusy, setTgReportBusy] = useState<string>("");
+  const [tgReportMsg, setTgReportMsg] = useState<string>("");
+
+  const sendTgFinanceReport = async (period: "day" | "week" | "month" | "quarter") => {
+    setTgReportBusy(period);
+    setTgReportMsg("");
+    try {
+      const res = await fetch("/api/reports/send-telegram", {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ period })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Gửi báo cáo thất bại.");
+      setTgReportMsg(data.message || `Đã gửi báo cáo ${period} qua Telegram.`);
+    } catch (err: any) {
+      setTgReportMsg("Lỗi: " + friendlyNetErr(err, "gửi báo cáo"));
+    } finally {
+      setTgReportBusy("");
     }
   };
 
@@ -2349,6 +2372,66 @@ export function Settings({
                 <p className={`text-[11px] flex items-center gap-1.5 ${tgDigestMsg.startsWith("Lỗi") ? "text-rose-400" : "text-emerald-400"}`}>
                   {tgDigestMsg.startsWith("Lỗi") ? <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> : <CheckCircle className="w-3.5 h-3.5 shrink-0" />}
                   {tgDigestMsg}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Gửi báo cáo thu chi & chỉ tiêu chi tiêu qua Telegram theo yêu cầu */}
+          {tgStatus.configured && (
+            <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3.5 space-y-2.5">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                  <BarChart3 className="w-4 h-4 text-emerald-400" /> Báo cáo thu chi & chỉ tiêu qua Telegram
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  Gửi số liệu thu, chi, số dư và tiến độ chỉ tiêu ngân sách chi tiết (chuẩn xác 100%) trực tiếp vào Telegram của gia đình.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap pt-1">
+                <button
+                  type="button"
+                  onClick={() => sendTgFinanceReport("day")}
+                  disabled={tgReportBusy !== ""}
+                  className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {tgReportBusy === "day" ? "Đang gửi..." : "Báo cáo hôm nay"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendTgFinanceReport("week")}
+                  disabled={tgReportBusy !== ""}
+                  className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {tgReportBusy === "week" ? "Đang gửi..." : "Báo cáo tuần này"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendTgFinanceReport("month")}
+                  disabled={tgReportBusy !== ""}
+                  className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {tgReportBusy === "month" ? "Đang gửi..." : "Báo cáo tháng này"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => sendTgFinanceReport("quarter")}
+                  disabled={tgReportBusy !== ""}
+                  className="bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  {tgReportBusy === "quarter" ? "Đang gửi..." : "Báo cáo quý này"}
+                </button>
+              </div>
+
+              {tgReportMsg && (
+                <p className={`text-[11px] flex items-center gap-1.5 ${tgReportMsg.startsWith("Lỗi") ? "text-rose-400" : "text-emerald-400"}`}>
+                  {tgReportMsg.startsWith("Lỗi") ? <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> : <CheckCircle className="w-3.5 h-3.5 shrink-0" />}
+                  {tgReportMsg}
                 </p>
               )}
             </div>

@@ -194,14 +194,22 @@ export function aiErrorMessage(err: any): string {
   return msg || "AI đang gặp lỗi, vui lòng thử lại.";
 }
 
-/** Unified text generation used by all AI features. */
-export async function aiGenerateText(opts: {
+export interface AiFileAttachment {
+  mimeType: string;
+  dataBase64: string; // raw base64 string
+}
+
+export interface AiGenerateOptions {
   prompt: string;
   system?: string;
   json?: boolean;
   maxTokens?: number;
   timeoutMs?: number;
-}): Promise<string> {
+  files?: AiFileAttachment[];
+}
+
+/** Unified text generation used by all AI features. */
+export async function aiGenerateText(opts: AiGenerateOptions): Promise<string> {
   const cfg = getAiConfig();
   if (!cfg.apiKey) throw new Error("Chưa cấu hình API key AI. Vào Thiết lập → Trí tuệ AI.");
 
@@ -231,7 +239,7 @@ export async function aiGenerateText(opts: {
 
 async function generateGemini(
   cfg: AiConfig,
-  opts: { prompt: string; system?: string; json?: boolean; maxTokens?: number }
+  opts: AiGenerateOptions
 ): Promise<string> {
   const { GoogleGenAI } = await import("@google/genai");
   const ai = new GoogleGenAI({ apiKey: cfg.apiKey });
@@ -245,12 +253,26 @@ async function generateGemini(
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite"
   ]);
+
+  const parts: any[] = [];
+  if (opts.files && opts.files.length > 0) {
+    for (const f of opts.files) {
+      parts.push({
+        inlineData: {
+          mimeType: f.mimeType,
+          data: f.dataBase64
+        }
+      });
+    }
+  }
+  parts.push({ text: opts.prompt });
+
   let lastErr: any;
   for (const model of candidates) {
     try {
       const res = await ai.models.generateContent({
         model,
-        contents: opts.prompt,
+        contents: parts.length === 1 && !opts.files?.length ? opts.prompt : parts,
         config: {
           ...(opts.system ? { systemInstruction: opts.system } : {}),
           ...(opts.json ? { responseMimeType: "application/json" } : { responseMimeType: "text/plain" }),
@@ -278,13 +300,28 @@ async function generateGemini(
 
 async function generateOpenAiCompat(
   cfg: AiConfig,
-  opts: { prompt: string; system?: string; json?: boolean; maxTokens?: number }
+  opts: AiGenerateOptions
 ): Promise<string> {
   const meta = AI_PROVIDERS.find(p => p.id === cfg.provider);
   const base = (cfg.baseUrl || meta?.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
-  const messages: { role: string; content: string }[] = [];
+  const messages: { role: string; content: any }[] = [];
   if (opts.system) messages.push({ role: "system", content: opts.system });
-  messages.push({ role: "user", content: opts.prompt });
+
+  let userContent: any = opts.prompt;
+  if (opts.files && opts.files.length > 0) {
+    const parts: any[] = [];
+    for (const f of opts.files) {
+      if (f.mimeType.startsWith("image/")) {
+        parts.push({
+          type: "image_url",
+          image_url: { url: `data:${f.mimeType};base64,${f.dataBase64}` }
+        });
+      }
+    }
+    parts.push({ type: "text", text: opts.prompt });
+    userContent = parts;
+  }
+  messages.push({ role: "user", content: userContent });
 
   const body: any = {
     model: cfg.model,
@@ -299,15 +336,15 @@ async function generateOpenAiCompat(
     Authorization: `Bearer ${cfg.apiKey}`
   };
   if (cfg.provider === "openrouter") {
-    headers["HTTP-Referer"] = process.env.APP_URL || "https://example.invalid/famorg";
-    headers["X-Title"] = "FamOrg";
+    headers["HTTP-Referer"] = process.env.APP_URL || "https://github.com/Nsnnam/FamOrg";
+    headers["X-Title"] = "Namdumimo Family";
   }
 
   const res = await fetch(`${base}/chat/completions`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(40_000)
+    signal: AbortSignal.timeout(50_000)
   });
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -317,6 +354,84 @@ async function generateOpenAiCompat(
   const text = data?.choices?.[0]?.message?.content;
   if (!text || !String(text).trim()) throw new Error("Model trả về rỗng.");
   return String(text).trim();
+}
+
+export interface ParsedDocumentData {
+  type?: string;
+  title?: string;
+  documentNumber?: string;
+  issuer?: string;
+  issueDate?: string;
+  expiryDate?: string;
+  ownerName?: string;
+  notes?: string;
+}
+
+/** Nhận diện loại giấy tờ, số, nơi cấp, ngày cấp, hạn dùng bằng AI Vision */
+export async function aiParseDocument(input: {
+  dataUrl?: string;
+  fileBase64?: string;
+  mimeType?: string;
+  textContent?: string;
+}): Promise<ParsedDocumentData> {
+  let file: AiFileAttachment | undefined;
+  if (input.dataUrl) {
+    const m = input.dataUrl.match(/^data:([^;]+);base64,(.+)$/i);
+    if (m) {
+      file = { mimeType: m[1], dataBase64: m[2] };
+    }
+  } else if (input.fileBase64 && input.mimeType) {
+    file = { mimeType: input.mimeType, dataBase64: input.fileBase64 };
+  }
+
+  const prompt = [
+    "Bạn là chuyên gia phân tích và bóc tách thông tin từ các loại giấy tờ tùy thân, tài liệu pháp lý và hồ sơ gia đình Việt Nam.",
+    "Nhiệm vụ của bạn là nhận diện chính xác các thông tin trên tài liệu đính kèm (hoặc văn bản) và trích xuất thành DUY NHẤT một JSON object hợp lệ theo schema sau:",
+    "{",
+    '  "type": "cccd" | "passport" | "driver_license" | "vehicle_registration" | "vehicle_inspection" | "insurance" | "health_insurance" | "warranty" | "contract" | "certificate" | "other",',
+    '  "title": "Tên ngắn gọn, rõ ràng của giấy tờ (vd: \'CCCD Nguyễn Văn A\', \'Bằng lái xe B2 - Trần Văn B\', \'Đăng kiểm xe 51K-123.45\', \'BHYT bé Nguyễn Văn C\')",',
+    '  "documentNumber": "Số giấy tờ (Số CCCD 12 số, số CMND 9 số, số GPLX, số hộ chiếu, mã số thẻ BHYT, biển kiểm soát/số đăng ký xe, số hợp đồng bảo hiểm...)",',
+    '  "issuer": "Nơi cấp / Đơn vị cấp (vd: \'Cục Cảnh sát QLHC về TTXH\', \'Công an TP. Hà Nội\', \'Sở GTVT TP.HCM\', \'Bảo hiểm Xã hội Việt Nam\', \'Công ty Bảo hiểm Bảo Việt\'...)",',
+    '  "issueDate": "Ngày cấp theo định dạng YYYY-MM-DD nếu tìm thấy (vd \'2022-08-15\'), nếu không có hãy để chuỗi rỗng",',
+    '  "expiryDate": "Ngày hết hạn / có giá trị đến ngày theo định dạng YYYY-MM-DD nếu có (vd \'2032-08-15\', cực kỳ quan trọng đối với CCCD, GPLX, Đăng kiểm, Bảo hiểm để nhắc hạn). Với CCCD không thời hạn thì để chuỗi rỗng",',
+    '  "ownerName": "Họ và tên của chủ sở hữu / người được cấp ghi trên giấy tờ (vd \'Nguyễn Văn A\')",',
+    '  "notes": "Các chi tiết hữu ích khác bóc tách được (vd: ngày sinh, địa chỉ thường trú, quê quán, hạng lái xe, biển số, loại xe, nhãn hiệu, số khung, số máy, cơ sở KCB ban đầu...)"',
+    "}",
+    "Yêu cầu:",
+    "- Nhận diện đúng loại giấy tờ thuộc danh sách type ở trên.",
+    "- Với CCCD/CMND: trích xuất số CCCD (12 chữ số), họ tên, ngày cấp, ngày hết hạn.",
+    "- Với Bằng lái xe (GPLX): trích xuất số GPLX, hạng lái xe, ngày trúng tuyển/ngày cấp, ngày hết hạn.",
+    "- Với Đăng ký xe (Cà vẹt) / Đăng kiểm: trích xuất biển kiểm soát, số đăng ký, ngày hết hạn kiểm định.",
+    "- Với Bảo hiểm / BHYT: trích xuất mã thẻ, đơn vị cấp, giá trị sử dụng đến ngày.",
+    "- Bắt buộc trả về đúng định dạng JSON, không bọc ```json, không thêm bất kỳ văn bản nào ngoài JSON.",
+    input.textContent ? `Nội dung văn bản giấy tờ: \n${input.textContent}` : ""
+  ].filter(Boolean).join("\n\n");
+
+  const rawJson = await aiGenerateText({
+    prompt,
+    json: true,
+    maxTokens: 2048,
+    timeoutMs: 60_000,
+    files: file ? [file] : undefined
+  });
+
+  try {
+    const cleaned = rawJson.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      type: parsed.type,
+      title: parsed.title,
+      documentNumber: parsed.documentNumber,
+      issuer: parsed.issuer,
+      issueDate: parsed.issueDate,
+      expiryDate: parsed.expiryDate,
+      ownerName: parsed.ownerName,
+      notes: parsed.notes
+    };
+  } catch (err) {
+    console.error("aiParseDocument JSON parse error:", rawJson, err);
+    throw new Error("AI không thể bóc tách thông tin giấy tờ thành JSON hợp lệ.");
+  }
 }
 
 function uniqueModels(list: string[]): string[] {

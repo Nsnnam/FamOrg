@@ -25,8 +25,11 @@ import { getVapidPublicKey, isPushConfigured, sendTestPush } from "./server/push
 import { previewFinanceImport } from "./server/financeImport.js";
 import { recognizeGoldPriceImage } from "./server/goldPriceOcr.js";
 import {
-  getAiConfig, aiStatusPublic, saveAiConfig, testAiConfig, aiGenerateText, aiErrorMessage, AI_PROVIDERS
+  getAiConfig, aiStatusPublic, saveAiConfig, testAiConfig, aiGenerateText, aiParseDocument, aiErrorMessage, AI_PROVIDERS
 } from "./server/ai.js";
+import {
+  getFinancialReport, sendFinancialReportTelegram, getComprehensiveFinancialContextForAI, ReportPeriod
+} from "./server/financeReport.js";
 
 // Accepted permission roles for write validation
 const VALID_ROLES = new Set<string>([UserRole.ADMIN, UserRole.MEMBER, UserRole.CHILD, UserRole.GUEST]);
@@ -113,7 +116,7 @@ function outboundErrorMessage(err: any, label = "Kết nối ngoài"): string {
   return msg || `${label} thất bại.`;
 }
 
-async function fetchOutbound(url: string, init: RequestInit = {}, timeoutMs = OUTBOUND_DEFAULT_MS): Promise<Response> {
+async function fetchOutbound(url: string, init: RequestInit = {}, timeoutMs = OUTBOUND_DEFAULT_MS): Promise<globalThis.Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -2200,6 +2203,70 @@ app.delete("/api/documents/:id", requireAuth, requireRole([UserRole.ADMIN, UserR
   }
 });
 
+// AI nhận diện loại giấy tờ, số, nơi cấp, ngày cấp, hạn sử dụng
+app.post("/api/ai/parse-document", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), async (req: AuthRequest, res: Response) => {
+  const { dataUrl, fileUrl, textContent } = req.body || {};
+  if (!dataUrl && !fileUrl && !textContent) {
+    res.status(400).json({ error: "Cần cung cấp dataUrl, fileUrl hoặc textContent để nhận diện." });
+    return;
+  }
+  if (!getAiConfig().apiKey) {
+    res.status(400).json({ error: "Chưa cấu hình API key AI. Vào Thiết lập → Trí tuệ AI." });
+    return;
+  }
+
+  try {
+    let finalDataUrl = dataUrl;
+    if (!finalDataUrl && fileUrl && typeof fileUrl === "string") {
+      const cleanPath = fileUrl.replace(/^\/uploads\//, "");
+      const fullPath = path.join(UPLOADS_DIR, cleanPath);
+      const stat = await fsp.stat(fullPath).catch(() => null);
+      if (stat && stat.isFile()) {
+        const buf = await fsp.readFile(fullPath);
+        const ext = path.extname(fullPath).toLowerCase().slice(1);
+        let mime = "application/octet-stream";
+        if (["jpg", "jpeg"].includes(ext)) mime = "image/jpeg";
+        else if (ext === "png") mime = "image/png";
+        else if (ext === "webp") mime = "image/webp";
+        else if (ext === "pdf") mime = "application/pdf";
+        finalDataUrl = `data:${mime};base64,${buf.toString("base64")}`;
+      }
+    }
+
+    const data = await aiParseDocument({ dataUrl: finalDataUrl, textContent });
+    res.json({ success: true, data });
+  } catch (err: any) {
+    console.error("aiParseDocument error:", err);
+    res.status(500).json({ error: geminiErrorMessage(err) || "Không thể nhận diện giấy tờ." });
+  }
+});
+
+// --- BÁO CÁO THU CHI & CHỈ TIÊU (NGÀY, TUẦN, THÁNG, QUÝ, NĂM) ---
+
+app.get("/api/reports/finance", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const period = (typeof req.query.period === "string" && ["day", "week", "month", "quarter", "year"].includes(req.query.period)
+    ? req.query.period
+    : "month") as ReportPeriod;
+  const dateStr = typeof req.query.date === "string" ? req.query.date : undefined;
+  const anchor = dateStr ? new Date(dateStr) : new Date();
+  const report = getFinancialReport(period, isNaN(anchor.getTime()) ? new Date() : anchor);
+  res.json({ report });
+});
+
+app.post("/api/reports/send-telegram", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), async (req: AuthRequest, res: Response) => {
+  const period = (req.body?.period && ["day", "week", "month", "quarter", "year"].includes(req.body.period)
+    ? req.body.period
+    : "week") as ReportPeriod;
+  const dateStr = typeof req.body?.date === "string" ? req.body.date : undefined;
+  const anchor = dateStr ? new Date(dateStr) : new Date();
+  try {
+    const result = await sendFinancialReportTelegram(period, isNaN(anchor.getTime()) ? new Date() : anchor);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Gửi báo cáo qua Telegram thất bại." });
+  }
+});
+
 // --- SỨC KHỎE TRẺ: TIÊM CHỦNG & TĂNG TRƯỞNG (chỉ Admin/Member) ---
 // Sổ sức khỏe cả nhà đều xem được; thêm/sửa/xóa vẫn giới hạn Admin/Member ở các route ghi bên dưới.
 app.get("/api/child-health", requireAuth, (_req: AuthRequest, res: Response) => {
@@ -2279,32 +2346,73 @@ function normalizeAssistantActions(actions: any[]): any[] {
 
   return actions
     .map((action, actionIndex) => {
-      if (!action || action.type !== "create_shopping_items") return null;
-      const rawItems = Array.isArray(action.items) ? action.items : [];
-      const seen = new Set<string>();
-      const items = rawItems
-        .map((item: any) => {
-          const name = cleanAssistantText(typeof item === "string" ? item : item?.name, 80);
-          if (!name) return null;
-          const key = name.toLowerCase();
-          if (seen.has(key)) return null;
-          seen.add(key);
-          return {
-            name,
-            quantity: cleanAssistantText(item?.quantity, 40),
-            note: cleanAssistantText(item?.note, 120)
-          };
-        })
-        .filter(Boolean)
-        .slice(0, 20);
+      if (!action || typeof action !== "object") return null;
 
-      if (items.length === 0) return null;
-      return {
-        id: `assistant_action_${Date.now()}_${actionIndex}_${Math.random().toString(36).slice(2, 6)}`,
-        type: "create_shopping_items",
-        title: cleanAssistantText(action.title, 100) || "Thêm nguyên liệu vào danh sách đi chợ",
-        items
-      };
+      if (action.type === "create_shopping_items") {
+        const rawItems = Array.isArray(action.items) ? action.items : [];
+        const seen = new Set<string>();
+        const items = rawItems
+          .map((item: any) => {
+            const name = cleanAssistantText(typeof item === "string" ? item : item?.name, 80);
+            if (!name) return null;
+            const key = name.toLowerCase();
+            if (seen.has(key)) return null;
+            seen.add(key);
+            return {
+              name,
+              quantity: cleanAssistantText(item?.quantity, 40),
+              note: cleanAssistantText(item?.note, 120)
+            };
+          })
+          .filter(Boolean)
+          .slice(0, 20);
+
+        if (items.length === 0) return null;
+        return {
+          id: `assistant_action_${Date.now()}_${actionIndex}_${Math.random().toString(36).slice(2, 6)}`,
+          type: "create_shopping_items",
+          title: cleanAssistantText(action.title, 100) || "Thêm nguyên liệu vào danh sách đi chợ",
+          items
+        };
+      }
+
+      if (action.type === "download_files") {
+        const rawFiles = Array.isArray(action.files) ? action.files : [];
+        const files = rawFiles
+          .map((f: any) => {
+            const name = cleanAssistantText(f?.name || f?.fileName, 100);
+            const url = String(f?.url || "").trim();
+            if (!name || !url) return null;
+            return {
+              name,
+              url,
+              docTitle: cleanAssistantText(f?.docTitle, 100) || undefined
+            };
+          })
+          .filter(Boolean)
+          .slice(0, 10);
+
+        if (files.length === 0) return null;
+        return {
+          id: `assistant_action_${Date.now()}_${actionIndex}_${Math.random().toString(36).slice(2, 6)}`,
+          type: "download_files",
+          title: cleanAssistantText(action.title, 100) || "Tài liệu đính kèm",
+          files
+        };
+      }
+
+      if (action.type === "send_telegram_report") {
+        const p = String(action.period || "week").toLowerCase();
+        const period = ["day", "week", "month", "quarter", "year"].includes(p) ? p : "week";
+        return {
+          id: `assistant_action_${Date.now()}_${actionIndex}_${Math.random().toString(36).slice(2, 6)}`,
+          type: "send_telegram_report",
+          title: cleanAssistantText(action.title, 100) || `Báo cáo tài chính (${period})`,
+          period
+        };
+      }
+
+      return null;
     })
     .filter(Boolean);
 }
@@ -2321,13 +2429,50 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
   }
 
   try {
+    const session = req.userSession!;
+    const isAdult = session.role === UserRole.ADMIN || session.role === UserRole.MEMBER;
+    const userMap: Record<string, string> = {};
+    for (const u of FamilyDB.getUsers()) userMap[u.id] = u.fullName;
+
+    // 1. Dữ liệu tài chính chuẩn xác 100% (chỉ người lớn)
+    const financialOverview = isAdult ? getComprehensiveFinancialContextForAI() : null;
+
+    // 2. Kho giấy tờ gia đình (lọc theo quyền)
+    const documents = isAdult
+      ? FamilyDB.getDocuments().filter(doc => canViewDocument(doc, session)).map(d => ({
+          id: d.id,
+          type: d.type,
+          typeLabel: DOCUMENT_TYPE_LABELS[d.type] || d.type,
+          title: d.title,
+          owner: d.ownerId ? (userMap[d.ownerId] || "Không rõ") : "Chung gia đình",
+          documentNumber: d.documentNumber || "",
+          issuer: d.issuer || "",
+          issueDate: d.issueDate || "",
+          expiryDate: d.expiryDate || "",
+          notes: d.notes || "",
+          files: (d.files || []).map(f => ({ fileName: f.fileName, url: f.url, sizeKb: f.sizeKb }))
+        }))
+      : [];
+
+    // 3. Ghi chú gia đình (lọc theo quyền)
+    const notes = FamilyDB.getNotes()
+      .filter(n => n.isShared || n.creatorId === session.userId)
+      .map(n => ({
+        id: n.id,
+        title: n.title,
+        tags: n.tags,
+        content: (n.content || "").slice(0, 800),
+        updatedAt: n.updatedAt
+      }));
+
+    // 4. Tasks, Plans, Medications, Shopping
     const tasks = FamilyDB.getTasks().slice(-30).map(t => ({
       id: t.id,
       title: t.title,
       status: t.status,
       priority: t.priority,
       dueDate: t.dueDate,
-      assigneeId: t.assigneeId,
+      assignee: t.assigneeId ? (userMap[t.assigneeId] || "Chung") : "Chung",
       rewardPoints: t.rewardPoints
     }));
     const plans = FamilyDB.getPlans().slice(-30).map(p => ({
@@ -2337,12 +2482,11 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
       endDate: p.endDate,
       isShared: p.isShared
     }));
-    const transactions = FamilyDB.getTransactions().slice(-30).map(({ receiptImage, ...tx }) => tx);
     const medications = FamilyDB.getMedications().map(m => ({
       id: m.id,
       name: m.name,
       dosage: m.dosage,
-      patientId: m.patientId,
+      patient: userMap[m.patientId] || m.patientId,
       times: m.times,
       isActive: m.isActive
     }));
@@ -2350,28 +2494,76 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
       .filter(item => !item.isPurchased)
       .slice(0, 80)
       .map(item => ({ name: item.name, quantity: item.quantity, note: item.note }));
+
+    // Kiểm tra xem người dùng có yêu cầu gửi báo cáo qua Telegram không
+    let telegramSentNotice = "";
+    if (isAdult && /(gửi|gui|send).*(báo cáo|bao cao|report).*(telegram|tg)/i.test(message)) {
+      let period: ReportPeriod = "week";
+      if (/hôm nay|hom nay|ngày|ngay|day/i.test(message)) period = "day";
+      else if (/tháng|thang|month/i.test(message)) period = "month";
+      else if (/quý|quy|quarter/i.test(message)) period = "quarter";
+      else if (/năm|nam|year/i.test(message)) period = "year";
+
+      try {
+        await sendFinancialReportTelegram(period);
+        telegramSentNotice = `\n\n✅ **Đã gửi báo cáo ${period === "day" ? "hôm nay" : period === "week" ? "tuần này" : period === "month" ? "tháng này" : "quý này"} qua Telegram** cho bạn kiểm tra.`;
+      } catch (tgErr: any) {
+        console.warn("[Assistant] Không gửi được telegram:", tgErr);
+        telegramSentNotice = `\n\n⚠️ *Chưa thể gửi Telegram: ${tgErr.message || "Kiểm tra cấu hình bot token"}*`;
+      }
+    }
+
     const prompt = [
-      "Bạn là trợ lý gia đình trong app FamOrg. Trả lời ngắn gọn bằng tiếng Việt, ưu tiên việc có thể làm ngay.",
-      "Bạn PHẢI trả về duy nhất một JSON object hợp lệ, không bọc markdown, không thêm chữ ngoài JSON.",
-      "Schema: {\"reply\":\"câu trả lời cho người dùng\",\"actions\":[{\"type\":\"create_shopping_items\",\"title\":\"tiêu đề hành động\",\"items\":[{\"name\":\"tên món cần mua\",\"quantity\":\"số lượng nếu biết\",\"note\":\"ghi chú nếu cần\"}]}]}",
-      "Chỉ tạo action create_shopping_items khi người dùng yêu cầu thêm/tạo/lập danh sách đi chợ, mua sắm, hoặc hỏi menu và nhờ thêm nguyên liệu vào danh sách đi chợ. Nếu chỉ hỏi gợi ý hoặc hỏi thông tin, actions phải là [].",
-      "Không tạo quá 20 món. Gộp món trùng nhau. Không tự ý tạo task, giao dịch, thuốc hoặc lịch vì app hiện chỉ cho phép action đi chợ.",
-      `Nguoi hoi: ${req.userSession?.fullName}`,
+      "Bạn là trợ lý AI thông minh, chu đáo và tận tâm của ứng dụng FamOrg (Gia đình Namdumimo).",
+      "Nhiệm vụ của bạn là hỗ trợ gia đình trong các việc: tài chính & chỉ tiêu thu chi, rà soát/tìm kiếm giấy tờ và ghi chú, quản lý công việc, lịch trình, thuốc men và thực đơn đi chợ.",
+      "Trả lời tự nhiên, rõ ràng, hữu ích bằng tiếng Việt.",
+      "",
+      "QUY TẮC QUAN TRỌNG VỀ TÀI CHÍNH & CHỈ TIÊU:",
+      "- Phần 'Tong quan tai chinh chinh xac' cung cấp số liệu thu chi & chỉ tiêu thực tế ĐÃ ĐƯỢC HỆ THỐNG TÍNH TOÁN CHÍNH XÁC 100% cho Hôm nay, Tuần này, Tháng này, Quý này.",
+      "- Khi người dùng hỏi về thu chi, ngân sách, chỉ tiêu (tiết kiệm, ăn uống, học tập, điện nước...) của ngày/tuần/tháng/quý: BẮT BUỘC sử dụng các con số chính xác này, KHÔNG ĐƯỢC TỰ BỊA ĐẶT hay tính lại sai lệch.",
+      "- Nêu rõ số tiền thu, chi, số tiền còn lại của chỉ tiêu, phần trăm đã dùng, và cảnh báo các mục đã chi vượt hạn mức nếu có.",
+      "",
+      "QUY TẮC VỀ GIẤY TỜ & GHI CHÚ:",
+      "- Bạn có toàn quyền tra cứu 'Kho giay to' và 'Ghi chu gia dinh' dưới đây.",
+      "- Khi người dùng hỏi/tìm kiếm thông tin giấy tờ (CCCD, Bằng lái, Đăng kiểm, Bảo hiểm, BHYT...) hoặc ghi chú:",
+      "  + Trích xuất số giấy tờ, ngày cấp, nơi cấp, hạn sử dụng, chủ sở hữu, hoặc nội dung ghi chú.",
+      "  + Nếu giấy tờ có tệp đính kèm (ảnh/pdf), hãy cung cấp link tải trực tiếp trong câu trả lời theo cú pháp markdown: `[Tải xuống <tên file>](<url>)`.",
+      "  + ĐỒNG THỜI tạo action `download_files` chứa các tệp để người dùng có nút bấm tải một chạm.",
+      "- Khi người dùng nhờ rà soát giấy tờ: kiểm tra xem giấy tờ nào sắp hết hạn (trong 30–60 ngày), giấy tờ nào đã hết hạn, và các giấy tờ quan trọng còn thiếu của các thành viên.",
+      "",
+      "QUY TẮC VỀ ACTIONS:",
+      "- BẮT BUỘC trả về DUY NHẤT một JSON object hợp lệ, không bọc markdown (không dùng ```json), không có chữ ngoài JSON.",
+      "- Schema: {\"reply\":\"nội dung trả lời cho người dùng\",\"actions\":[...]}",
+      "- Các loại action được hỗ trợ:",
+      "  1. `create_shopping_items`: {\"type\":\"create_shopping_items\",\"title\":\"...\",\"items\":[{\"name\":\"...\",\"quantity\":\"...\",\"note\":\"...\"}]}",
+      "  2. `download_files`: {\"type\":\"download_files\",\"title\":\"Tài liệu tải xuống\",\"files\":[{\"name\":\"...\",\"url\":\"...\",\"docTitle\":\"...\"}]}",
+      "  3. `send_telegram_report`: {\"type\":\"send_telegram_report\",\"title\":\"Gửi báo cáo qua Telegram\",\"period\":\"day|week|month|quarter\"}",
+      "- Nếu không có hành động cụ thể, đặt `actions`: [].",
+      "",
+      `Nguoi hoi: ${session.fullName} (${session.role})`,
+      financialOverview ? `Tong quan tai chinh chinh xac: ${JSON.stringify(financialOverview)}` : "Tài chính: Không xem được (tài khoản trẻ em/khách).",
+      `Kho giay to: ${JSON.stringify(documents)}`,
+      `Ghi chu gia dinh: ${JSON.stringify(notes)}`,
       `Tasks gan day: ${JSON.stringify(tasks)}`,
       `Lich gan day: ${JSON.stringify(plans)}`,
-      `Giao dich gan day: ${JSON.stringify(transactions)}`,
       `Lich thuoc: ${JSON.stringify(medications)}`,
       `Danh sach di cho hien tai: ${JSON.stringify(shoppingItems)}`,
-      `Cau hoi: ${message}`
+      `Cau hoi cua nguoi dung: ${message}`
     ].join("\n\n");
+
     const rawText = await aiGenerateText({ prompt, json: true, maxTokens: 4096 });
     const parsed = parseAssistantJson(rawText);
     if (!parsed) {
-      res.json({ answer: rawText || "Mình chưa có câu trả lời phù hợp.", actions: [] });
+      res.json({
+        answer: (rawText || "Mình chưa có câu trả lời phù hợp.") + telegramSentNotice,
+        actions: []
+      });
       return;
     }
+
+    const reply = cleanAssistantText(parsed.reply, 4000) || "Mình đã chuẩn bị thông tin cho bạn.";
     res.json({
-      answer: cleanAssistantText(parsed.reply, 4000) || "Mình đã chuẩn bị gợi ý cho bạn.",
+      answer: reply + telegramSentNotice,
       actions: normalizeAssistantActions(parsed.actions)
     });
   } catch (err: any) {

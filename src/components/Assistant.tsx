@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Bot, CheckCircle2, Loader2, Mic, MicOff, Send, ShoppingCart, X } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, Download, FileText, Loader2, Mic, MicOff, Send, ShoppingCart, Sparkles, X } from "lucide-react";
 import { User } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
 import { useModalA11y } from "../hooks/useModalA11y.js";
@@ -20,14 +20,30 @@ interface AssistantShoppingItem {
   note?: string;
 }
 
+interface AssistantFileItem {
+  name: string;
+  url: string;
+  docTitle?: string;
+}
+
 interface AssistantAction {
   id: string;
-  type: "create_shopping_items";
+  type: "create_shopping_items" | "download_files" | "send_telegram_report";
   title: string;
-  items: AssistantShoppingItem[];
+  items?: AssistantShoppingItem[];
+  files?: AssistantFileItem[];
+  period?: "day" | "week" | "month" | "quarter" | "year";
   status?: "pending" | "running" | "done" | "error";
   error?: string;
 }
+
+const PROMPT_SUGGESTIONS = [
+  { label: "📊 Thu chi tháng này", query: "Báo cáo chi tiết thu chi và các khoản chi lớn nhất trong tháng này" },
+  { label: "🎯 Kiểm tra chỉ tiêu", query: "Kiểm tra tình hình hạn mức và chỉ tiêu ngân sách chi tiêu tháng này, có mục nào vượt không?" },
+  { label: "📄 Rà soát giấy tờ", query: "Rà soát toàn bộ giấy tờ gia đình, giấy tờ nào sắp hết hạn hoặc đã hết hạn cần làm lại?" },
+  { label: "📝 Rà soát ghi chú", query: "Rà soát và tóm tắt các ghi chú quan trọng của gia đình" },
+  { label: "📨 Báo cáo qua Telegram", query: "Gửi báo cáo thu chi và chỉ tiêu tuần này qua Telegram" }
+];
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -153,44 +169,78 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
   const runAction = async (action: AssistantAction) => {
     if (action.status === "running" || action.status === "done") return;
 
-    updateAction(action.id, { status: "running", error: "" });
-
-    try {
-      if (action.type !== "create_shopping_items") {
-        throw new Error("Hành động này chưa được hỗ trợ.");
+    if (action.type === "download_files") {
+      const files = action.files || [];
+      for (const f of files) {
+        const link = document.createElement("a");
+        link.href = f.url;
+        link.download = f.name;
+        link.target = "_blank";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
+      updateAction(action.id, { status: "done" });
+      return;
+    }
 
-      const items = action.items.filter(item => item.name.trim());
-      if (items.length === 0) {
-        throw new Error("Không có món hợp lệ để thêm.");
-      }
-
-      for (const item of items) {
-        const res = await fetch("/api/shopping", {
+    if (action.type === "send_telegram_report") {
+      updateAction(action.id, { status: "running", error: "" });
+      try {
+        const res = await fetch("/api/reports/send-telegram", {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeaders },
-          body: JSON.stringify({
-            name: item.name.trim(),
-            quantity: item.quantity?.trim() || "",
-            note: item.note?.trim() || "Thêm bởi AI assistant"
-          })
+          body: JSON.stringify({ period: action.period || "week" })
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(data.error || `Không thêm được "${item.name}"`);
-        }
+        if (!res.ok) throw new Error(data.error || "Gửi báo cáo qua Telegram thất bại.");
+        updateAction(action.id, { status: "done" });
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `✅ Đã gửi báo cáo tài chính ${action.period === "day" ? "hôm nay" : action.period === "week" ? "tuần này" : action.period === "month" ? "tháng này" : "quý này"} qua Telegram thành công.`
+        }]);
+      } catch (err: any) {
+        updateAction(action.id, { status: "error", error: err.message || "Gửi Telegram thất bại." });
       }
+      return;
+    }
 
-      updateAction(action.id, { status: "done", error: "" });
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: `Xong, mình đã thêm ${items.length} món vào danh sách đi chợ.`
-      }]);
-    } catch (err: any) {
-      updateAction(action.id, {
-        status: "error",
-        error: err.message || "Không thể thực hiện hành động này."
-      });
+    if (action.type === "create_shopping_items") {
+      updateAction(action.id, { status: "running", error: "" });
+      try {
+        const items = (action.items || []).filter(item => item.name.trim());
+        if (items.length === 0) {
+          throw new Error("Không có món hợp lệ để thêm.");
+        }
+
+        for (const item of items) {
+          const res = await fetch("/api/shopping", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders },
+            body: JSON.stringify({
+              name: item.name.trim(),
+              quantity: item.quantity?.trim() || "",
+              note: item.note?.trim() || "Thêm bởi AI assistant"
+            })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.error || `Không thêm được "${item.name}"`);
+          }
+        }
+
+        updateAction(action.id, { status: "done", error: "" });
+        setMessages(prev => [...prev, {
+          role: "assistant",
+          content: `Xong, mình đã thêm ${items.length} món vào danh sách đi chợ.`
+        }]);
+      } catch (err: any) {
+        updateAction(action.id, {
+          status: "error",
+          error: err.message || "Không thể thực hiện hành động này."
+        });
+      }
+      return;
     }
   };
 
@@ -198,7 +248,7 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-5 z-30 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-full w-12 h-12 shadow-2xl shadow-sky-500/20 flex items-center justify-center"
+        className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-5 z-30 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-full w-12 h-12 shadow-2xl shadow-sky-500/20 flex items-center justify-center cursor-pointer"
         title="AI assistant"
       >
         <Bot className="w-5 h-5" />
@@ -216,19 +266,19 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
               role="dialog"
               aria-modal="true"
               aria-label="Trợ lý AI"
-              className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden outline-none"
+              className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden outline-none flex flex-col max-h-[85vh]"
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 shrink-0">
                 <div className="flex items-center gap-2">
                   <Bot className="w-4 h-4 text-sky-400" />
-                  <span className="text-sm font-bold text-slate-100">AI assistant</span>
+                  <span className="text-sm font-bold text-slate-100">AI assistant gia đình</span>
                 </div>
-                <button onClick={() => setOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-100 bg-slate-950 rounded-lg">
+                <button onClick={() => setOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-100 bg-slate-950 rounded-lg cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <div className="h-96 overflow-y-auto p-4 space-y-3">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[280px]">
                 {messages.map((msg, idx) => (
                   <div
                     key={idx}
@@ -240,50 +290,120 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
                       <div className="mt-3 space-y-2 whitespace-normal">
                         {msg.actions.map(action => (
                           <div key={action.id} className="border border-slate-800 bg-slate-900/80 rounded-xl p-3 space-y-2">
-                            <div className="flex items-start gap-2">
-                              <ShoppingCart className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-bold text-slate-100">{action.title}</p>
-                                <ul className="mt-1 space-y-0.5 text-[11px] text-slate-400">
-                                  {action.items.map((item, itemIndex) => (
-                                    <li key={`${action.id}_${itemIndex}`} className="flex gap-1.5">
-                                      <span className="text-slate-600">-</span>
-                                      <span>
-                                        {item.name}
-                                        {item.quantity ? <span className="text-slate-500"> ({item.quantity})</span> : null}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
+                            {action.type === "create_shopping_items" && (
+                              <>
+                                <div className="flex items-start gap-2">
+                                  <ShoppingCart className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-bold text-slate-100">{action.title}</p>
+                                    <ul className="mt-1 space-y-0.5 text-[11px] text-slate-400">
+                                      {(action.items || []).map((item, itemIndex) => (
+                                        <li key={`${action.id}_${itemIndex}`} className="flex gap-1.5">
+                                          <span className="text-slate-600">-</span>
+                                          <span>
+                                            {item.name}
+                                            {item.quantity ? <span className="text-slate-500"> ({item.quantity})</span> : null}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                </div>
 
-                            {action.status === "error" && (
-                              <div className="flex items-center gap-1.5 text-[11px] text-rose-400">
-                                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                                <span>{action.error}</span>
-                              </div>
+                                {action.status === "error" && (
+                                  <div className="flex items-center gap-1.5 text-[11px] text-rose-400">
+                                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{action.error}</span>
+                                  </div>
+                                )}
+
+                                {action.status === "done" ? (
+                                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Đã thêm vào Đi chợ</span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => void runAction(action)}
+                                    disabled={action.status === "running"}
+                                    className="w-full flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 rounded-lg px-3 py-2 text-[11px] font-bold transition-all cursor-pointer"
+                                  >
+                                    {action.status === "running" ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <ShoppingCart className="w-3.5 h-3.5" />
+                                    )}
+                                    {action.status === "running" ? "Đang thêm..." : `Thêm ${(action.items || []).length} món vào Đi chợ`}
+                                  </button>
+                                )}
+                              </>
                             )}
 
-                            {action.status === "done" ? (
-                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Đã thêm vào Đi chợ</span>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => void runAction(action)}
-                                disabled={action.status === "running"}
-                                className="w-full flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 rounded-lg px-3 py-2 text-[11px] font-bold transition-all cursor-pointer"
-                              >
-                                {action.status === "running" ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <ShoppingCart className="w-3.5 h-3.5" />
+                            {action.type === "download_files" && (
+                              <>
+                                <div className="flex items-start gap-2">
+                                  <FileText className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-bold text-slate-100">{action.title}</p>
+                                    <div className="mt-2 space-y-1.5">
+                                      {(action.files || []).map((file, fileIdx) => (
+                                        <div key={fileIdx} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-950 border border-slate-800">
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-[11px] font-medium text-slate-200 truncate">{file.name}</p>
+                                            {file.docTitle && <p className="text-[10px] text-slate-400 truncate">{file.docTitle}</p>}
+                                          </div>
+                                          <a
+                                            href={file.url}
+                                            download={file.name}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="shrink-0 flex items-center gap-1 bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 rounded-md px-2 py-1 text-[10px] font-bold cursor-pointer"
+                                          >
+                                            <Download className="w-3 h-3" /> Tải về
+                                          </a>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => void runAction(action)}
+                                  className="w-full flex items-center justify-center gap-1.5 bg-sky-500 hover:bg-sky-400 text-slate-950 rounded-lg px-3 py-1.5 text-[11px] font-bold cursor-pointer mt-1"
+                                >
+                                  <Download className="w-3.5 h-3.5" /> Tải tất cả tệp ({ (action.files || []).length })
+                                </button>
+                              </>
+                            )}
+
+                            {action.type === "send_telegram_report" && (
+                              <>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <Send className="w-4 h-4 text-sky-400 shrink-0" />
+                                    <span className="font-bold text-slate-100 text-[11px]">{action.title}</span>
+                                  </div>
+                                  {action.status === "done" ? (
+                                    <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3.5 h-3.5" /> Đã gửi
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => void runAction(action)}
+                                      disabled={action.status === "running"}
+                                      className="bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-slate-950 rounded-lg px-2.5 py-1 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      {action.status === "running" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                                      Gửi ngay
+                                    </button>
+                                  )}
+                                </div>
+                                {action.status === "error" && (
+                                  <p className="text-[10px] text-rose-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> {action.error}</p>
                                 )}
-                                {action.status === "running" ? "Đang thêm..." : `Thêm ${action.items.length} món vào Đi chợ`}
-                              </button>
+                              </>
                             )}
                           </div>
                         ))}
@@ -291,10 +411,25 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
                     )}
                   </div>
                 ))}
-                {loading && <div className="text-xs text-slate-500">Đang suy nghĩ...</div>}
+                {loading && <div className="text-xs text-slate-500 flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Trợ lý đang kiểm tra số liệu...</div>}
               </div>
 
-              <form onSubmit={ask} className="p-3 border-t border-slate-800 flex gap-2">
+              {/* Gợi ý câu hỏi nhanh (Chỉ tiêu, Thu chi, Giấy tờ, Ghi chú, Telegram) */}
+              <div className="px-3 py-2 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 bg-slate-950/40">
+                {PROMPT_SUGGESTIONS.map((s, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => void sendQuestion(s.query)}
+                    className="shrink-0 text-[11px] font-medium bg-slate-800/90 hover:bg-sky-500/20 hover:text-sky-300 text-slate-300 border border-slate-700/60 rounded-full px-2.5 py-1 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+
+              <form onSubmit={ask} className="p-3 border-t border-slate-800 flex gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={startVoiceInput}
@@ -307,10 +442,10 @@ export function Assistant({ currentUser, authHeaders }: AssistantProps) {
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder={isListening ? "Đang nghe..." : "Hỏi: lên menu trưa và thêm đồ đi chợ"}
+                  placeholder={isListening ? "Đang nghe..." : "Hỏi: thu chi tháng này, giấy tờ xe, chỉ tiêu..."}
                   className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-sky-500 min-w-0"
                 />
-                <button disabled={loading} type="submit" className="bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-slate-950 rounded-xl px-3 py-2">
+                <button disabled={loading} type="submit" className="bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-slate-950 rounded-xl px-3 py-2 cursor-pointer">
                   <Send className="w-4 h-4" />
                 </button>
               </form>

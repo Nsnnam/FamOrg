@@ -16,20 +16,11 @@
 
 import { FamilyDB, getAppSettings, setAppSetting } from "./db.js";
 import { TaskStatus } from "../src/types.js";
+import { getFinancialReport, fmtVND } from "./financeReport.js";
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
-const CATEGORY_LABEL: Record<string, string> = {
-  food: "Ăn uống", education2: "Học tập", utilities: "Điện nước",
-  shopping: "Mua sắm", medical: "Y tế", transport: "Đi lại",
-  debt_bank: "Trả nợ NH", debt_personal: "Trả nợ CN",
-  funeral: "Ma chay", ceremony: "Hiếu hỉ",
-  rent: "Thuê nhà", internet: "Cước Internet", phone: "Điện thoại",
-  insurance: "Bảo hiểm", loan: "Trả nợ", other: "Khác"
-};
-
-const fmt = (n: number) =>
-  n.toLocaleString("vi-VN") + "₫";
+const fmt = (n: number) => fmtVND(n);
 
 const localDateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -63,6 +54,10 @@ interface DigestData {
   income: number;
   expense: number;
   topExpense: Array<{ cat: string; total: number }>;
+  budgetSummary?: {
+    text: string;
+    isOverBudget: boolean;
+  };
   overdue: Array<{ title: string; assignee: string; daysLate: number }>;
   upcoming: Array<{ title: string; assignee: string; daysUntil: number; dateLabel: string }>;
   events: Array<{ title: string; daysUntil: number; dateLabel: string }>;
@@ -74,30 +69,22 @@ function buildDigestData(now: Date): DigestData {
   const db = FamilyDB["readRaw"]();            // truy cập nội bộ
   const todayStr = localDateKey(now);
 
-  // ── Tuần trước (7 ngày qua) ──────────────────────────────────────────────
-  const weekAgo = new Date(now);
-  weekAgo.setDate(now.getDate() - 7);
-  const weekAgoStr = localDateKey(weekAgo);
+  // ── Tài chính tuần qua & chỉ tiêu (chính xác 100%) ────────────────────────
+  const fin = getFinancialReport("week", now);
+  const income = fin.totalIncome;
+  const expense = fin.totalExpense;
+  const topExpense = fin.expenseByCategory.slice(0, 3).map(e => ({ cat: e.categoryLabel, total: e.total }));
 
-  const recentTxs = db.transactions.filter(tx => {
-    const d = (tx.date || tx.createdAt || "").slice(0, 10);
-    return d >= weekAgoStr && d <= todayStr;
-  });
-
-  let income = 0;
-  let expense = 0;
-  const catMap: Record<string, number> = {};
-  for (const tx of recentTxs) {
-    if (tx.type === "income") income += tx.amount;
-    else {
-      expense += tx.amount;
-      catMap[tx.category] = (catMap[tx.category] || 0) + tx.amount;
-    }
+  let budgetSummary: DigestData["budgetSummary"] = undefined;
+  if (fin.budgets.hasBudgets) {
+    const statusNote = fin.budgets.isOverBudget
+      ? `⚠️ VƯỢT CHỈ TIÊU (${fin.budgets.exceededItems.map(x => x.categoryLabel).join(", ")})`
+      : "✅ Trong hạn mức an toàn";
+    budgetSummary = {
+      text: `${fmt(fin.budgets.totalSpentInBudgeted)} / ${fmt(fin.budgets.totalLimit)} (${fin.budgets.overallUsedPercent}%) — ${statusNote}`,
+      isOverBudget: fin.budgets.isOverBudget
+    };
   }
-  const topExpense = Object.entries(catMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([cat, total]) => ({ cat: CATEGORY_LABEL[cat] || cat, total }));
 
   // ── Task quá hạn / sắp hạn ───────────────────────────────────────────────
   const userMap: Record<string, string> = {};
@@ -190,14 +177,14 @@ function buildDigestData(now: Date): DigestData {
 
   // ── Label tuần ───────────────────────────────────────────────────────────
   const weekEnd = new Date(now);
-  weekEnd.setDate(now.getDate() - 1);
-  const weekStart = new Date(weekEnd);
-  weekStart.setDate(weekEnd.getDate() - 6);
+  const [sy, sm, sd] = fin.range.startDate.split("-");
+  const [ey, em, ed] = fin.range.endDate.split("-");
 
   return {
-    weekStartLabel: `${weekStart.getDate()}/${weekStart.getMonth() + 1}`,
-    weekEndLabel: `${weekEnd.getDate()}/${weekEnd.getMonth() + 1}/${weekEnd.getFullYear()}`,
+    weekStartLabel: `${sd}/${sm}`,
+    weekEndLabel: `${ed}/${em}/${ey}`,
     income, expense, topExpense,
+    budgetSummary,
     overdue, upcoming, events, birthdays, expiringDocs
   };
 }
@@ -220,6 +207,9 @@ function buildFallbackText(d: DigestData): string {
   }
   if (d.topExpense.length > 0) {
     lines.push(`  Top chi: ${d.topExpense.map(e => `${e.cat} ${fmt(e.total)}`).join(" · ")}`);
+  }
+  if (d.budgetSummary) {
+    lines.push(`  🎯 <b>Chỉ tiêu:</b> ${d.budgetSummary.text}`);
   }
   lines.push("");
 
@@ -305,6 +295,7 @@ Dữ liệu tuần ${data.weekStartLabel}–${data.weekEndLabel}:
 ${JSON.stringify({
   "Tài chính": {
     "Thu": data.income, "Chi": data.expense,
+    "Chỉ tiêu ngân sách": data.budgetSummary?.text || "Chưa thiết lập",
     "Top chi tiêu": data.topExpense.map(e => `${e.cat}: ${e.total}₫`)
   },
   "Việc quá hạn": data.overdue.map(t => `${t.title} (${t.assignee}, trễ ${t.daysLate} ngày)`),
