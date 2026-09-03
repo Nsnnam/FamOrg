@@ -40,7 +40,8 @@ import {
   Shield,
   Flower2,
   Gift,
-  Upload
+  Upload,
+  Plus
 } from "lucide-react";
 import { FinancialTransaction, TransactionType, ExpenseCategory, AccountType, User, UserRole, BudgetLimit, RecurringBill, FamilyAsset, SavingsGoal, Debt, canAccessFinance } from "../types.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -83,7 +84,7 @@ const niceCeil = (v: number): number => {
 
 // Biểu đồ cột thu/chi 12 tháng — SVG thuần, tự co theo bề rộng thẻ.
 // Cột emerald = thu, cột rose = chi; <title> từng cột hiện số đầy đủ khi chạm/hover.
-function MonthlyTrendChart({ points }: { points: MonthlyPoint[] }) {
+function MonthlyTrendChart({ points, onSelectPoint }: { points: MonthlyPoint[]; onSelectPoint?: (p: MonthlyPoint) => void }) {
   const W = 520, H = 132; // gọn — chart phụ trong nhóm So sánh, không phải khối chính
   const M = { top: 8, right: 6, bottom: 20, left: 40 };
   const iw = W - M.left - M.right;
@@ -108,18 +109,22 @@ function MonthlyTrendChart({ points }: { points: MonthlyPoint[] }) {
       {points.map((p, i) => {
         const cx = M.left + i * group + group / 2;
         return (
-          <g key={p.key}>
+          <g
+            key={p.key}
+            onClick={() => onSelectPoint?.(p)}
+            className="cursor-pointer group/bar transition-transform hover:opacity-80"
+          >
             {p.income > 0 && (
-              <rect x={cx - barW - 1} y={y(p.income)} width={barW} height={Math.max(1.5, M.top + ih - y(p.income))} rx="2" fill="#34d399">
-                <title>{`${p.label}: Thu ${p.income.toLocaleString("vi-VN")} đ`}</title>
+              <rect x={cx - barW - 1} y={y(p.income)} width={barW} height={Math.max(1.5, M.top + ih - y(p.income))} rx="2" fill="#34d399" className="transition-all hover:brightness-125">
+                <title>{`${p.label}: Thu ${p.income.toLocaleString("vi-VN")} đ (Bấm xem chi tiết)`}</title>
               </rect>
             )}
             {p.expense > 0 && (
-              <rect x={cx + 1} y={y(p.expense)} width={barW} height={Math.max(1.5, M.top + ih - y(p.expense))} rx="2" fill="#fb7185">
-                <title>{`${p.label}: Chi ${p.expense.toLocaleString("vi-VN")} đ`}</title>
+              <rect x={cx + 1} y={y(p.expense)} width={barW} height={Math.max(1.5, M.top + ih - y(p.expense))} rx="2" fill="#fb7185" className="transition-all hover:brightness-125">
+                <title>{`${p.label}: Chi ${p.expense.toLocaleString("vi-VN")} đ (Bấm xem chi tiết)`}</title>
               </rect>
             )}
-            <text x={cx} y={H - 7} textAnchor="middle" fontSize="9" className="fill-slate-500 font-mono">
+            <text x={cx} y={H - 7} textAnchor="middle" fontSize="9" className="fill-slate-500 font-mono group-hover/bar:fill-sky-400 font-semibold">
               {p.label}
             </text>
           </g>
@@ -530,19 +535,43 @@ export function Finance({
   const formRef = useRef<HTMLDivElement | null>(null);
   const receiptRef = useRef<HTMLDivElement | null>(null);
   const billEditorRef = useRef<HTMLDivElement | null>(null);
+  const drilldownRef = useRef<HTMLDivElement | null>(null);
+
   const closeForm = useCallback(() => { setIsFormOpen(false); setEditingTx(null); }, []);
   const closeReceipt = useCallback(() => setSelectedReceipt(null), []);
   const closeBillEditor = useCallback(() => setEditingBill(null), []);
+  const closeDrilldown = useCallback(() => { setDrilldown(null); setDrilldownSearch(""); }, []);
+
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!selectedReceipt, closeReceipt, receiptRef);
   useModalA11y(!!editingBill, closeBillEditor, billEditorRef);
 
-  // Mở form ở chế độ TẠO MỚI: reset toàn bộ field (tránh dính dữ liệu từ lần sửa trước)
-  const openCreateForm = () => {
+  // ─── Modal xem chi tiết giao dịch từ các mục tổng hợp (Drill-down) ──────────
+  const [drilldown, setDrilldown] = useState<{
+    title: string;
+    subtitle?: string;
+    badge?: string;
+    icon?: React.ReactNode;
+    type?: "all" | "income" | "expense";
+    category?: string;
+    account?: string;
+    monthKey?: string;
+    periodScoped?: boolean;
+  } | null>(null);
+  const [drilldownSearch, setDrilldownSearch] = useState("");
+  const [drilldownScope, setDrilldownScope] = useState<"period" | "all">("period");
+  useModalA11y(!!drilldown, closeDrilldown, drilldownRef);
+
+  // Mở form ở chế độ TẠO MỚI (có thể kèm giá trị mặc định khi bấm từ mục tổng hợp)
+  const openCreateWithDefaults = (defaults?: {
+    type?: TransactionType;
+    category?: string;
+    account?: AccountType;
+  }) => {
     setEditingTx(null);
-    setFormType(TransactionType.EXPENSE);
-    setFormCategory(ExpenseCategory.FOOD);
-    setFormAccount(AccountType.BANK);
+    setFormType(defaults?.type || TransactionType.EXPENSE);
+    setFormCategory(defaults?.category || (defaults?.type === TransactionType.INCOME ? "Lương" : ExpenseCategory.FOOD));
+    setFormAccount(defaults?.account || AccountType.BANK);
     setFormAmount(0);
     setFormDesc("");
     setFormDate(new Date().toISOString().slice(0, 10));
@@ -550,6 +579,8 @@ export function Finance({
     setFormError("");
     setIsFormOpen(true);
   };
+
+  const openCreateForm = () => openCreateWithDefaults();
 
   // Mở form ở chế độ SỬA: điền sẵn dữ liệu của giao dịch được chọn
   const openEditTransaction = (tx: FinancialTransaction) => {
@@ -1108,6 +1139,80 @@ export function Finance({
     );
   };
 
+  // ─── Danh sách giao dịch chi tiết theo mục tổng hợp đang chọn ────────────
+  const drilldownTransactions = useMemo(() => {
+    if (!drilldown) return [];
+    return transactions.filter(tx => {
+      // Phạm vi thời gian
+      if (drilldownScope === "period") {
+        if (drilldown.monthKey) {
+          if (!tx.date.startsWith(drilldown.monthKey)) return false;
+        } else if (drilldown.periodScoped !== false) {
+          if (tx.date < startStr || tx.date > endStr) return false;
+        }
+      }
+
+      // Loại (Thu / Chi)
+      if (drilldown.type && drilldown.type !== "all" && tx.type !== drilldown.type) return false;
+
+      // Hạng mục
+      if (drilldown.category && drilldown.category !== "all" && tx.category !== drilldown.category) return false;
+
+      // Ví tài khoản
+      if (drilldown.account && drilldown.account !== "all" && tx.account !== drilldown.account) return false;
+
+      // Tìm kiếm nội bộ trong modal
+      if (drilldownSearch.trim()) {
+        const q = drilldownSearch.toLowerCase();
+        const descMatch = (tx.description || "").toLowerCase().includes(q);
+        const catMatch = translateCategory(tx.category).toLowerCase().includes(q);
+        const accMatch = translateAccount(tx.account).toLowerCase().includes(q);
+        const amtMatch = String(tx.amount).includes(q);
+        if (!descMatch && !catMatch && !accMatch && !amtMatch) return false;
+      }
+
+      return true;
+    }).sort((a, b) => b.date.localeCompare(a.date));
+  }, [drilldown, transactions, startStr, endStr, drilldownScope, drilldownSearch]);
+
+  const drilldownStats = useMemo(() => {
+    let income = 0;
+    let expense = 0;
+    for (const tx of drilldownTransactions) {
+      if (tx.type === "income") income += tx.amount;
+      else expense += tx.amount;
+    }
+    return {
+      income,
+      expense,
+      balance: income - expense,
+      count: drilldownTransactions.length
+    };
+  }, [drilldownTransactions]);
+
+  const applyDrilldownToMainFilter = () => {
+    if (!drilldown) return;
+    if (drilldown.type && drilldown.type !== "all") {
+      setTypeFilter(drilldown.type);
+    } else {
+      setTypeFilter("all");
+    }
+    if (drilldown.category) {
+      setCategoryFilter(drilldown.category);
+    } else {
+      setCategoryFilter("all");
+    }
+    if (drilldown.account) {
+      setAccountFilter(drilldown.account);
+    } else {
+      setAccountFilter("all");
+    }
+    setDrilldown(null);
+    setTimeout(() => {
+      document.getElementById("transactions-table")?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+  };
+
   return (
     <div className="space-y-6" id="finance-module">
       <Reveal className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-2 shadow-xl flex flex-col sm:flex-row gap-2 text-xs font-bold">
@@ -1226,11 +1331,21 @@ export function Finance({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4" id="finance-summaries">
 
         {/* Cân đối trong kỳ (Thu − Chi) */}
-        <Reveal delay={0.1} className="relative overflow-hidden bg-radial from-slate-900 to-slate-950 border border-slate-850 p-5 rounded-2xl shadow-xl flex flex-col justify-between">
+        <Reveal
+          delay={0.1}
+          onClick={() => setDrilldown({
+            title: "Toàn bộ thu & chi kỳ này",
+            subtitle: periodLabel(periodMode, anchor),
+            badge: "Cân đối",
+            type: "all",
+            icon: <Wallet className="w-5 h-5 text-sky-400" />
+          })}
+          className="relative overflow-hidden bg-radial from-slate-900 to-slate-950 border border-slate-850 hover:border-sky-500/50 hover:bg-slate-850/60 p-5 rounded-2xl shadow-xl flex flex-col justify-between cursor-pointer transition-all group active:scale-[0.99]"
+        >
           <ShimmerLine via={metrics.balance >= 0 ? "via-emerald-500/50" : "via-rose-500/50"} />
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-semibold">Cân đối kỳ này</span>
-            <div className={`p-2 rounded-xl ${metrics.balance >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
+            <span className="text-slate-400 text-xs font-semibold group-hover:text-slate-200 transition-colors">Cân đối kỳ này</span>
+            <div className={`p-2 rounded-xl transition-transform group-hover:scale-110 ${metrics.balance >= 0 ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
               <Wallet className="w-5 h-5" />
             </div>
           </div>
@@ -1240,39 +1355,71 @@ export function Finance({
             </h3>
             <DeltaBadge cur={metrics.balance} prev={prevMetrics.balance} higherIsGood={true} />
           </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 group-hover:text-sky-300 transition-colors">
+            <span className="flex items-center gap-1 font-medium">Bấm xem chi tiết & sửa/xóa</span>
+            <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+          </div>
         </Reveal>
 
         {/* Thu nhập trong kỳ */}
-        <Reveal delay={0.15} className="relative overflow-hidden bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-md flex flex-col justify-between">
+        <Reveal
+          delay={0.15}
+          onClick={() => setDrilldown({
+            title: "Khoản thu trong kỳ",
+            subtitle: periodLabel(periodMode, anchor),
+            badge: "Thu nhập (+)",
+            type: "income",
+            icon: <TrendingUp className="w-5 h-5 text-emerald-400" />
+          })}
+          className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-850/60 p-5 rounded-2xl shadow-md flex flex-col justify-between cursor-pointer transition-all group active:scale-[0.99]"
+        >
           <ShimmerLine accent="emerald" />
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-semibold">Nguồn thu trong kỳ</span>
-            <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-400">
+            <span className="text-slate-400 text-xs font-semibold group-hover:text-slate-200 transition-colors">Nguồn thu trong kỳ</span>
+            <div className="bg-emerald-500/10 p-2 rounded-xl text-emerald-400 transition-transform group-hover:scale-110">
               <TrendingUp className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-4 space-y-1">
-            <h3 className="text-2xl font-extrabold text-slate-100 font-sans tracking-tight">
+            <h3 className="text-2xl font-extrabold text-slate-100 font-sans tracking-tight group-hover:text-emerald-300 transition-colors">
               +{metrics.totalIncome.toLocaleString()} VNĐ
             </h3>
             <DeltaBadge cur={metrics.totalIncome} prev={prevMetrics.totalIncome} higherIsGood={true} />
           </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 group-hover:text-emerald-300 transition-colors">
+            <span className="flex items-center gap-1 font-medium">Bấm xem chi tiết & sửa/xóa</span>
+            <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+          </div>
         </Reveal>
 
         {/* Chi tiêu trong kỳ */}
-        <Reveal delay={0.2} className="relative overflow-hidden bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-md flex flex-col justify-between">
+        <Reveal
+          delay={0.2}
+          onClick={() => setDrilldown({
+            title: "Chi tiêu trong kỳ",
+            subtitle: periodLabel(periodMode, anchor),
+            badge: "Chi tiêu (-)",
+            type: "expense",
+            icon: <ArrowDownRight className="w-5 h-5 text-rose-400" />
+          })}
+          className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-rose-500/50 hover:bg-slate-850/60 p-5 rounded-2xl shadow-md flex flex-col justify-between cursor-pointer transition-all group active:scale-[0.99]"
+        >
           <ShimmerLine accent="rose" />
           <div className="flex items-center justify-between">
-            <span className="text-slate-400 text-xs font-semibold">Chi tiêu trong kỳ</span>
-            <div className="bg-rose-500/10 p-2 rounded-xl text-rose-400">
+            <span className="text-slate-400 text-xs font-semibold group-hover:text-slate-200 transition-colors">Chi tiêu trong kỳ</span>
+            <div className="bg-rose-500/10 p-2 rounded-xl text-rose-400 transition-transform group-hover:scale-110">
               <ArrowDownRight className="w-5 h-5" />
             </div>
           </div>
           <div className="mt-4 space-y-1">
-            <h3 className="text-2xl font-extrabold text-slate-100 font-sans tracking-tight">
+            <h3 className="text-2xl font-extrabold text-slate-100 font-sans tracking-tight group-hover:text-rose-300 transition-colors">
               -{metrics.totalExpense.toLocaleString()} VNĐ
             </h3>
             <DeltaBadge cur={metrics.totalExpense} prev={prevMetrics.totalExpense} higherIsGood={false} />
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 group-hover:text-rose-300 transition-colors">
+            <span className="flex items-center gap-1 font-medium">Bấm xem chi tiết & sửa/xóa</span>
+            <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
           </div>
         </Reveal>
       </div>
@@ -1286,11 +1433,27 @@ export function Finance({
         ].map(acc => {
           const v = accountBalances[acc.key] || 0;
           return (
-            <div key={acc.key} className="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-md min-w-0">
-              <span className="block text-[10px] text-slate-500 font-semibold truncate">{acc.label}</span>
-              <span className={`block mt-1 text-[13px] sm:text-lg font-extrabold font-sans tabular-nums leading-tight break-words ${v >= 0 ? "text-slate-100" : "text-rose-400"}`}>
+            <div
+              key={acc.key}
+              onClick={() => setDrilldown({
+                title: `Dòng tiền: ${acc.label}`,
+                subtitle: `Các giao dịch qua ${acc.label} trong ${periodLabel(periodMode, anchor)}`,
+                badge: acc.label,
+                account: acc.key,
+                type: "all",
+                icon: <CreditCard className="w-5 h-5 text-cyan-400" />
+              })}
+              className="bg-slate-900 border border-slate-800 hover:border-sky-500/50 hover:bg-slate-850/70 rounded-2xl p-3 sm:p-4 shadow-md min-w-0 cursor-pointer transition-all group active:scale-[0.99]"
+              title={`Bấm xem chi tiết giao dịch qua ${acc.label}, chỉnh sửa hoặc xóa`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="block text-[10px] text-slate-500 group-hover:text-slate-300 font-semibold truncate">{acc.label}</span>
+                <ChevronRight className="w-3 h-3 text-slate-600 group-hover:text-sky-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+              </div>
+              <span className={`block mt-1 text-[13px] sm:text-lg font-extrabold font-sans tabular-nums leading-tight break-words ${v >= 0 ? "text-slate-100 group-hover:text-sky-300" : "text-rose-400"}`}>
                 {v.toLocaleString()} đ
               </span>
+              <span className="block mt-1 text-[10px] text-slate-500 group-hover:text-sky-400/90 transition-colors">Bấm xem chi tiết →</span>
             </div>
           );
         })}
@@ -1314,7 +1477,17 @@ export function Finance({
               </div>
               {/* flex-1 + căn giữa: hai thẻ trong grid cao bằng nhau, chart nằm giữa khoảng trống */}
               <div className="flex-1 flex items-center">
-                <MonthlyTrendChart points={trendPoints} />
+                <MonthlyTrendChart
+                  points={trendPoints}
+                  onSelectPoint={(p) => setDrilldown({
+                    title: `Dòng tiền: ${p.label} (${p.key})`,
+                    subtitle: `Tháng ${p.key}`,
+                    monthKey: p.key,
+                    badge: "12 tháng",
+                    type: "all",
+                    icon: <TrendingUp className="w-5 h-5 text-emerald-400" />
+                  })}
+                />
               </div>
             </div>
           )}
@@ -1338,15 +1511,59 @@ export function Finance({
               </thead>
               <tbody className="font-mono">
                 {([
-                  { label: "Tổng thu", cur: metrics.totalIncome, prev: prevMetrics.totalIncome, higherIsGood: true },
-                  { label: "Tổng chi", cur: metrics.totalExpense, prev: prevMetrics.totalExpense, higherIsGood: false },
-                  { label: "Cân đối", cur: metrics.balance, prev: prevMetrics.balance, higherIsGood: true }
+                  {
+                    label: "Tổng thu",
+                    cur: metrics.totalIncome,
+                    prev: prevMetrics.totalIncome,
+                    higherIsGood: true,
+                    onClick: () => setDrilldown({
+                      title: "Khoản thu trong kỳ",
+                      subtitle: periodLabel(periodMode, anchor),
+                      badge: "Tổng thu",
+                      type: "income",
+                      icon: <TrendingUp className="w-5 h-5 text-emerald-400" />
+                    })
+                  },
+                  {
+                    label: "Tổng chi",
+                    cur: metrics.totalExpense,
+                    prev: prevMetrics.totalExpense,
+                    higherIsGood: false,
+                    onClick: () => setDrilldown({
+                      title: "Chi tiêu trong kỳ",
+                      subtitle: periodLabel(periodMode, anchor),
+                      badge: "Tổng chi",
+                      type: "expense",
+                      icon: <ArrowDownRight className="w-5 h-5 text-rose-400" />
+                    })
+                  },
+                  {
+                    label: "Cân đối",
+                    cur: metrics.balance,
+                    prev: prevMetrics.balance,
+                    higherIsGood: true,
+                    onClick: () => setDrilldown({
+                      title: "Toàn bộ thu & chi kỳ này",
+                      subtitle: periodLabel(periodMode, anchor),
+                      badge: "Cân đối",
+                      type: "all",
+                      icon: <Wallet className="w-5 h-5 text-sky-400" />
+                    })
+                  }
                 ]).map(row => {
                   const diff = row.cur - row.prev;
                   const good = row.higherIsGood ? diff >= 0 : diff <= 0;
                   return (
-                    <tr key={row.label} className="border-b border-slate-850 font-sans">
-                      <td className="py-2 pr-2 font-bold text-slate-200">{row.label}</td>
+                    <tr
+                      key={row.label}
+                      onClick={row.onClick}
+                      className="border-b border-slate-850 font-sans cursor-pointer hover:bg-slate-850/80 transition-colors group"
+                      title="Bấm để xem danh sách chi tiết, chỉnh sửa hoặc xóa"
+                    >
+                      <td className="py-2 pr-2 font-bold text-slate-200 group-hover:text-sky-400 transition-colors flex items-center gap-1.5">
+                        <span>{row.label}</span>
+                        <ChevronRight className="w-3 h-3 text-slate-600 group-hover:text-sky-400 opacity-0 group-hover:opacity-100 transition-all" />
+                      </td>
                       <td className="py-2 px-2 text-right tabular-nums text-slate-200">{row.cur.toLocaleString()}</td>
                       <td className="py-2 px-2 text-right tabular-nums text-slate-400">{row.prev.toLocaleString()}</td>
                       <td className={`py-2 pl-2 text-right tabular-nums font-bold ${diff === 0 ? "text-slate-500" : good ? "text-emerald-400" : "text-rose-400"}`}>
@@ -1357,7 +1574,7 @@ export function Finance({
                 })}
                 {compareCatKeys.length > 0 && (
                   <tr>
-                    <td colSpan={4} className="pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500 font-sans">Chi tiết chi theo hạng mục</td>
+                    <td colSpan={4} className="pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500 font-sans">Chi tiết chi theo hạng mục (bấm xem)</td>
                   </tr>
                 )}
                 {compareCatKeys.map(cat => {
@@ -1365,8 +1582,24 @@ export function Finance({
                   const prev = prevCatMap[cat] || 0;
                   const diff = cur - prev;
                   return (
-                    <tr key={cat} className="border-b border-slate-850 font-sans">
-                      <td className="py-1.5 pr-2 text-slate-300">{translateCategory(cat)}</td>
+                    <tr
+                      key={cat}
+                      onClick={() => setDrilldown({
+                        title: `Hạng mục: ${translateCategory(cat)}`,
+                        subtitle: `Chi tiêu ${translateCategory(cat)} trong ${periodLabel(periodMode, anchor)}`,
+                        badge: "Chi tiêu",
+                        category: cat,
+                        type: "expense",
+                        icon: <span className="p-1 rounded-lg bg-slate-800 text-sky-400">{categoryIcon(cat)}</span>
+                      })}
+                      className="border-b border-slate-850 font-sans cursor-pointer hover:bg-slate-850/80 transition-colors group"
+                      title={`Bấm xem chi tiết các khoản chi ${translateCategory(cat)}, sửa hoặc xóa`}
+                    >
+                      <td className="py-1.5 pr-2 text-slate-300 group-hover:text-sky-300 transition-colors flex items-center gap-1.5">
+                        {categoryIcon(cat)}
+                        <span>{translateCategory(cat)}</span>
+                        <ChevronRight className="w-3 h-3 text-slate-600 group-hover:text-sky-400 opacity-0 group-hover:opacity-100 transition-all" />
+                      </td>
                       <td className="py-1.5 px-2 text-right tabular-nums text-slate-300">{cur.toLocaleString()}</td>
                       <td className="py-1.5 px-2 text-right tabular-nums text-slate-500">{prev.toLocaleString()}</td>
                       <td className={`py-1.5 pl-2 text-right tabular-nums font-semibold ${diff === 0 ? "text-slate-500" : diff <= 0 ? "text-emerald-400" : "text-rose-400"}`}>
@@ -1429,16 +1662,35 @@ export function Finance({
                 const pct = Math.min(100, Math.round((used / b.limit) * 100));
                 const isEditing = editingBudgetId === b.id;
                 return (
-                  <div key={b.id} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+                  <div
+                    key={b.id}
+                    onClick={() => {
+                      if (isEditing) return;
+                      setDrilldown({
+                        title: `Ngân sách: ${translateCategory(b.category)}`,
+                        subtitle: `Tháng ${b.month} • Hạn mức: ${b.limit.toLocaleString()} VNĐ`,
+                        badge: used > b.limit ? "Vượt hạn mức" : "Trong hạn mức",
+                        category: b.category,
+                        monthKey: b.month,
+                        type: "expense",
+                        icon: <BarChart3 className="w-5 h-5 text-indigo-400" />
+                      });
+                    }}
+                    className="bg-slate-950/60 border border-slate-800 hover:border-sky-500/50 hover:bg-slate-900/90 rounded-xl p-3 space-y-2 cursor-pointer transition-all group active:scale-[0.99]"
+                    title="Bấm xem chi tiết các giao dịch chi tiêu, sửa hoặc xóa"
+                  >
                     <div className="flex items-center justify-between text-xs gap-2">
-                      <span className="font-bold text-slate-200">{translateCategory(b.category)}</span>
+                      <span className="font-bold text-slate-200 group-hover:text-sky-300 transition-colors flex items-center gap-1.5">
+                        <span>{translateCategory(b.category)}</span>
+                        <ChevronRight className="w-3 h-3 text-slate-600 group-hover:text-sky-400 opacity-0 group-hover:opacity-100 transition-all" />
+                      </span>
                       {isEditing ? (
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-1.5 shrink-0">
                           <button onClick={() => saveEditBudget(b)} className="text-emerald-400 hover:text-emerald-300 font-bold text-[11px]">Lưu</button>
                           <button onClick={() => setEditingBudgetId(null)} className="text-slate-500 hover:text-slate-300 font-bold text-[11px]">Hủy</button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 shrink-0">
                           <button onClick={() => startEditBudget(b)} className="text-slate-500 hover:text-sky-400" title="Sửa hạn mức">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -1461,7 +1713,10 @@ export function Finance({
                         <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
                           <div className={`h-full ${used > b.limit ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
                         </div>
-                        <p className="text-[10px] text-slate-500 font-mono">{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</p>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                          <span>{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</span>
+                          <span className="text-[9px] text-slate-500 group-hover:text-sky-400 font-sans transition-colors">Chi tiết →</span>
+                        </div>
                       </>
                     )}
                   </div>
@@ -1474,15 +1729,33 @@ export function Finance({
                 const used = budgetUsage[b.category] || 0;
                 const pct = Math.min(100, Math.round((used / b.limit) * 100));
                 return (
-                  <div key={b.category} className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+                  <div
+                    key={b.category}
+                    onClick={() => setDrilldown({
+                      title: `Ngân sách: ${translateCategory(b.category)}`,
+                      subtitle: `Kỳ ${periodLabel(periodMode, anchor)} • Hạn mức gộp: ${b.limit.toLocaleString()} VNĐ`,
+                      badge: used > b.limit ? "Vượt hạn mức" : "Trong hạn mức",
+                      category: b.category,
+                      type: "expense",
+                      icon: <BarChart3 className="w-5 h-5 text-indigo-400" />
+                    })}
+                    className="bg-slate-950/60 border border-slate-800 hover:border-sky-500/50 hover:bg-slate-900/90 rounded-xl p-3 space-y-2 cursor-pointer transition-all group active:scale-[0.99]"
+                    title="Bấm xem chi tiết các giao dịch chi tiêu, sửa hoặc xóa"
+                  >
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-200">{translateCategory(b.category)}</span>
+                      <span className="font-bold text-slate-200 group-hover:text-sky-300 transition-colors flex items-center gap-1.5">
+                        <span>{translateCategory(b.category)}</span>
+                        <ChevronRight className="w-3 h-3 text-slate-600 group-hover:text-sky-400 opacity-0 group-hover:opacity-100 transition-all" />
+                      </span>
                       <span className="text-[10px] text-slate-500 font-mono">gộp {periodMonthsList.length} tháng</span>
                     </div>
                     <div className="h-2 bg-slate-900 rounded-full overflow-hidden">
                       <div className={`h-full ${used > b.limit ? "bg-rose-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
                     </div>
-                    <p className="text-[10px] text-slate-500 font-mono">{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</p>
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                      <span>{used.toLocaleString()} / {b.limit.toLocaleString()} VNĐ</span>
+                      <span className="text-[9px] text-slate-500 group-hover:text-sky-400 font-sans transition-colors">Chi tiết →</span>
+                    </div>
                   </div>
                 );
               })
@@ -1595,22 +1868,41 @@ export function Finance({
           
           {/* Custom animated category distribution list */}
           <div className="space-y-4">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <span>Phân hóa hạng mục tiêu dùng</span>
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                <span>Phân hóa hạng mục tiêu dùng</span>
+              </h4>
+              <span className="text-[10px] text-slate-500 font-medium">Bấm mục để xem & sửa/xóa</span>
+            </div>
             <div className="space-y-3 max-h-[190px] overflow-y-auto pr-1">
               {chartCategoryDistribution.map(({ name, value }) => {
                 const percentage = Math.round((value / metrics.totalExpense) * 100) || 0;
                 return (
-                  <div key={name} className="space-y-1 font-sans text-xs">
-                    <div className="flex justify-between text-slate-300 font-medium pb-0.5">
-                      <span>{translateCategory(name)}</span>
-                      <span className="font-mono text-slate-400">{value.toLocaleString()}đ ({percentage}%)</span>
+                  <div
+                    key={name}
+                    onClick={() => setDrilldown({
+                      title: `Hạng mục: ${translateCategory(name)}`,
+                      subtitle: `Chi tiêu ${translateCategory(name)} trong ${periodLabel(periodMode, anchor)}`,
+                      badge: `${percentage}% tổng chi`,
+                      category: name,
+                      type: "expense",
+                      icon: <span className="p-1 rounded-lg bg-slate-800 text-sky-400">{categoryIcon(name)}</span>
+                    })}
+                    className="space-y-1 font-sans text-xs p-2 -mx-2 rounded-xl hover:bg-slate-800/60 hover:border-sky-500/30 border border-transparent cursor-pointer transition-all group active:scale-[0.99]"
+                    title={`Bấm xem chi tiết các khoản chi ${translateCategory(name)}, sửa hoặc xóa`}
+                  >
+                    <div className="flex justify-between items-center text-slate-300 font-medium pb-0.5">
+                      <span className="flex items-center gap-1.5 group-hover:text-sky-300 transition-colors">
+                        {categoryIcon(name)}
+                        <span>{translateCategory(name)}</span>
+                        <ChevronRight className="w-3 h-3 text-slate-600 group-hover:text-sky-400 opacity-0 group-hover:opacity-100 transition-all" />
+                      </span>
+                      <span className="font-mono text-slate-400 group-hover:text-slate-200">{value.toLocaleString()}đ ({percentage}%)</span>
                     </div>
                     <div className="h-2 w-full bg-slate-950 rounded-full overflow-hidden">
                       <div 
                         style={{ width: `${percentage}%` }}
-                        className="h-full bg-sky-500 rounded-full" 
+                        className="h-full bg-sky-500 group-hover:bg-sky-400 rounded-full transition-colors" 
                       />
                     </div>
                   </div>
@@ -1638,7 +1930,17 @@ export function Finance({
                       stroke="#10b981" 
                       strokeWidth="8" 
                       strokeDasharray={`${(metrics.totalIncome / (metrics.totalIncome + metrics.totalExpense)) * 238.7} 238.7`}
-                    />
+                      onClick={() => setDrilldown({
+                        title: "Khoản thu trong kỳ",
+                        subtitle: periodLabel(periodMode, anchor),
+                        badge: "Thu nhập (+)",
+                        type: "income",
+                        icon: <TrendingUp className="w-5 h-5 text-emerald-400" />
+                      })}
+                      className="cursor-pointer hover:opacity-85 transition-opacity"
+                    >
+                      <title>Khoản thu trong kỳ (Bấm xem chi tiết)</title>
+                    </circle>
                     {/* Expense arc red */}
                     <circle 
                       cx="50" 
@@ -1649,7 +1951,17 @@ export function Finance({
                       strokeWidth="8" 
                       strokeDasharray={`${(metrics.totalExpense / (metrics.totalIncome + metrics.totalExpense)) * 238.7} 238.7`}
                       strokeDashoffset={`-${(metrics.totalIncome / (metrics.totalIncome + metrics.totalExpense)) * 238.7}`}
-                    />
+                      onClick={() => setDrilldown({
+                        title: "Chi tiêu trong kỳ",
+                        subtitle: periodLabel(periodMode, anchor),
+                        badge: "Chi tiêu (-)",
+                        type: "expense",
+                        icon: <ArrowDownRight className="w-5 h-5 text-rose-400" />
+                      })}
+                      className="cursor-pointer hover:opacity-85 transition-opacity"
+                    >
+                      <title>Chi tiêu trong kỳ (Bấm xem chi tiết)</title>
+                    </circle>
                   </>
                 ) : null}
               </svg>
@@ -1658,9 +1970,33 @@ export function Finance({
                 <span className="text-xs font-bold text-slate-200">Gia Đình</span>
               </div>
             </div>
-            <div className="flex gap-4 text-[10px] font-mono">
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Thu</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" /> Chi</span>
+            <div className="flex gap-3 text-[10px] font-mono">
+              <button
+                type="button"
+                onClick={() => setDrilldown({
+                  title: "Khoản thu trong kỳ",
+                  subtitle: periodLabel(periodMode, anchor),
+                  badge: "Thu nhập (+)",
+                  type: "income",
+                  icon: <TrendingUp className="w-5 h-5 text-emerald-400" />
+                })}
+                className="flex items-center gap-1 hover:bg-slate-800/80 px-2 py-0.5 rounded-lg cursor-pointer transition-all"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" /> Thu
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrilldown({
+                  title: "Chi tiêu trong kỳ",
+                  subtitle: periodLabel(periodMode, anchor),
+                  badge: "Chi tiêu (-)",
+                  type: "expense",
+                  icon: <ArrowDownRight className="w-5 h-5 text-rose-400" />
+                })}
+                className="flex items-center gap-1 hover:bg-slate-800/80 px-2 py-0.5 rounded-lg cursor-pointer transition-all"
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" /> Chi
+              </button>
             </div>
           </div>
         </div>
@@ -1740,6 +2076,28 @@ export function Finance({
             />
           </div>
         </div>
+
+        {(categoryFilter !== "all" || accountFilter !== "all" || typeFilter !== "all" || memberFilter !== "all" || searchTerm) && (
+          <div className="flex items-center justify-between bg-sky-500/10 border border-sky-500/20 px-3.5 py-2 rounded-xl text-xs text-sky-300">
+            <span className="flex items-center gap-1.5">
+              <Filter className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+              <span>Đang lọc: <b>{filteredTransactions.length}</b> giao dịch phù hợp</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setCategoryFilter("all");
+                setAccountFilter("all");
+                setTypeFilter("all");
+                setMemberFilter("all");
+                setSearchTerm("");
+              }}
+              className="text-[11px] font-bold text-sky-400 hover:text-sky-200 underline cursor-pointer transition-colors"
+            >
+              Xóa bộ lọc (Hiện tất cả)
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Transactions Details List */}
@@ -1885,6 +2243,282 @@ export function Finance({
           </div>
         </div>
       )}
+
+      {/* ─── Modal xem chi tiết & sửa/xóa giao dịch theo mục tổng hợp (Drilldown) ─── */}
+      <AnimatePresence>
+        {drilldown && (
+          <div
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-40 p-3 sm:p-4"
+            id="finance-drilldown-modal"
+            onClick={() => setDrilldown(null)}
+          >
+            <motion.div
+              ref={drilldownRef}
+              tabIndex={-1}
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col overflow-hidden outline-none"
+            >
+              {/* Modal Header */}
+              <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-slate-800 shrink-0 bg-slate-950/70">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                      {drilldown.icon}
+                      <span>{drilldown.title}</span>
+                    </h3>
+                    {drilldown.badge && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                        {drilldown.badge}
+                      </span>
+                    )}
+                  </div>
+                  {drilldown.subtitle && (
+                    <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      <span>{drilldown.subtitle}</span>
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={applyDrilldownToMainFilter}
+                    className="text-xs text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 px-2.5 py-1.5 rounded-xl font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                    title="Áp dụng bộ lọc này vào bảng danh sách chính bên ngoài"
+                  >
+                    <Filter className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Lọc ở bảng chính</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDrilldown(null)}
+                    className="text-slate-400 hover:text-slate-200 bg-slate-800/80 hover:bg-slate-700 p-1.5 rounded-xl cursor-pointer transition-all"
+                    title="Đóng (Esc)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Scope toggle & KPIs */}
+              <div className="px-5 py-3 bg-slate-950/40 border-b border-slate-800/80 space-y-2.5 shrink-0">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 p-0.5 rounded-lg text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setDrilldownScope("period")}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${drilldownScope === "period" ? "bg-sky-500 text-slate-950 shadow-xs" : "text-slate-400 hover:text-slate-200"}`}
+                    >
+                      Kỳ này ({periodLabel(periodMode, anchor)})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDrilldownScope("all")}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${drilldownScope === "all" ? "bg-sky-500 text-slate-950 shadow-xs" : "text-slate-400 hover:text-slate-200"}`}
+                    >
+                      Toàn bộ thời gian
+                    </button>
+                  </div>
+
+                  {canAccessFinance(currentUser.role) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openCreateWithDefaults({
+                          type: drilldown.type === "income" ? TransactionType.INCOME : TransactionType.EXPENSE,
+                          category: drilldown.category,
+                          account: drilldown.account as AccountType
+                        });
+                      }}
+                      className="bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Ghi khoản mới
+                    </button>
+                  )}
+                </div>
+
+                {/* KPI Chips */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  {drilldown.type === "all" ? (
+                    <>
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Tổng thu</span>
+                        <span className="text-sm font-extrabold font-sans text-emerald-400 tabular-nums">
+                          +{drilldownStats.income.toLocaleString("vi-VN")} đ
+                        </span>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Tổng chi</span>
+                        <span className="text-sm font-extrabold font-sans text-rose-400 tabular-nums">
+                          -{drilldownStats.expense.toLocaleString("vi-VN")} đ
+                        </span>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Cân đối ({drilldownStats.count} bản ghi)</span>
+                        <span className={`text-sm font-extrabold font-sans tabular-nums ${drilldownStats.balance >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                          {drilldownStats.balance >= 0 ? "+" : ""}{drilldownStats.balance.toLocaleString("vi-VN")} đ
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Tổng tiền</span>
+                        <span className={`text-sm sm:text-base font-extrabold font-sans tabular-nums ${drilldown.type === "income" ? "text-emerald-400" : "text-rose-400"}`}>
+                          {drilldown.type === "income" ? "+" : "-"}{(drilldown.type === "income" ? drilldownStats.income : drilldownStats.expense).toLocaleString("vi-VN")} đ
+                        </span>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Số lượng</span>
+                        <span className="text-sm sm:text-base font-extrabold font-sans text-slate-200 tabular-nums">
+                          {drilldownStats.count} <span className="text-xs text-slate-500 font-normal">bản ghi</span>
+                        </span>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-2.5">
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">Bình quân / giao dịch</span>
+                        <span className="text-sm sm:text-base font-extrabold font-sans text-slate-200 tabular-nums">
+                          {drilldownStats.count > 0 ? Math.round((drilldown.type === "income" ? drilldownStats.income : drilldownStats.expense) / drilldownStats.count).toLocaleString("vi-VN") : "0"} đ
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Tìm kiếm nhanh nội bộ */}
+              <div className="px-5 py-2.5 border-b border-slate-800 bg-slate-900 flex items-center gap-2 shrink-0">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
+                  <input
+                    type="text"
+                    placeholder="Lọc nhanh nội dung, số tiền trong mục này..."
+                    value={drilldownSearch}
+                    onChange={(e) => setDrilldownSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-950 border border-slate-800 focus:border-sky-500 rounded-xl text-slate-200 placeholder-slate-500 text-xs outline-none transition-all"
+                  />
+                </div>
+                {drilldownSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setDrilldownSearch("")}
+                    className="text-xs text-slate-400 hover:text-slate-200 bg-slate-800 px-2.5 py-1.5 rounded-xl cursor-pointer"
+                  >
+                    Xóa tìm
+                  </button>
+                )}
+              </div>
+
+              {/* Danh sách giao dịch chi tiết */}
+              <div className="divide-y divide-slate-800/80 overflow-y-auto flex-1 min-h-[220px] p-2 space-y-1">
+                {drilldownTransactions.length === 0 ? (
+                  <div className="py-12 text-center text-slate-500 text-xs space-y-1">
+                    <p>{drilldownSearch ? "Không tìm thấy giao dịch nào khớp từ khóa." : "Không có giao dịch nào trong mục này."}</p>
+                    <p className="text-[11px] text-slate-600">Thử chuyển sang chế độ "Toàn bộ thời gian" hoặc bấm "+ Ghi khoản mới".</p>
+                  </div>
+                ) : (
+                  drilldownTransactions.map(tx => {
+                    const creator = users.find(u => u.id === tx.creatorId);
+                    const isIncome = tx.type === "income";
+                    const canManage = canAccessFinance(currentUser.role) && (currentUser.role === UserRole.ADMIN || tx.creatorId === currentUser.id);
+
+                    return (
+                      <div
+                        key={tx.id}
+                        className="p-3 rounded-xl hover:bg-slate-850/60 transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5"
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`p-2 rounded-xl shrink-0 mt-0.5 ${isIncome ? "text-emerald-400 bg-emerald-500/10" : categoryColorClass(tx.category)}`}>
+                            {isIncome ? <ArrowUpRight className="w-4 h-4" /> : categoryIcon(tx.category)}
+                          </div>
+
+                          <div className="space-y-1 text-xs min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-slate-200 font-semibold leading-snug break-words">{tx.description}</p>
+                              <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md shrink-0 ${isIncome ? "bg-emerald-500/15 text-emerald-400" : "bg-rose-500/15 text-rose-400"}`}>
+                                {isIncome ? "THU" : "CHI"}
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-slate-500 text-[11px]">
+                              <span className="flex items-center gap-1 font-mono text-[10px]">
+                                <Calendar className="w-3 h-3 text-slate-500" /> {formatDateVN(tx.date)}
+                              </span>
+                              <span>{translateAccount(tx.account)}</span>
+                              {!isIncome && (
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${categoryColorClass(tx.category)}`}>
+                                  {translateCategory(tx.category).split(" ")[0]}
+                                </span>
+                              )}
+                              {creator && <span className="text-[10px] text-sky-400">@{creator.username}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-1 sm:pt-0">
+                          {tx.receiptImage && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReceipt(tx.receiptImage!)}
+                              className="flex items-center gap-1 bg-slate-950 hover:bg-slate-850 text-sky-400 border border-slate-800 text-[10px] px-2 py-1 rounded-lg cursor-pointer"
+                              title="Xem ảnh hóa đơn"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5" /> HĐ
+                            </button>
+                          )}
+
+                          <div className="text-right">
+                            <span className={`text-sm font-extrabold font-sans tabular-nums ${isIncome ? "text-emerald-400" : "text-rose-400"}`}>
+                              {isIncome ? "+" : "-"}{tx.amount.toLocaleString()} đ
+                            </span>
+                          </div>
+
+                          {canManage && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEditTransaction(tx)}
+                                className="p-1.5 bg-slate-950 border border-slate-800 hover:text-sky-400 hover:bg-slate-800 rounded-lg text-slate-400 transition-all cursor-pointer"
+                                title="Sửa giao dịch này"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteClick(tx.id)}
+                                className="p-1.5 bg-slate-950 border border-slate-800 hover:text-rose-400 hover:bg-slate-800 rounded-lg text-slate-400 transition-all cursor-pointer"
+                                title="Xóa giao dịch này"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-3 border-t border-slate-800 bg-slate-950/70 text-slate-500 text-[11px] flex items-center justify-between shrink-0">
+                <span>Đang hiển thị {drilldownTransactions.length} giao dịch chi tiết</span>
+                <button
+                  type="button"
+                  onClick={() => setDrilldown(null)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-1.5 rounded-xl font-bold cursor-pointer transition-all"
+                >
+                  Đóng
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Creation Modal Form */}
       {isFormOpen && (
@@ -2088,7 +2722,7 @@ export function Finance({
       {selectedReceipt && (
         <div 
           onClick={() => setSelectedReceipt(null)}
-          className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-center justify-center z-50 p-4 cursor-pointer"
+          className="fixed inset-0 bg-slate-950/90 backdrop-blur-xs flex items-center justify-center z-[55] p-4 cursor-pointer"
           id="receipt-preview-modal"
         >
           <div ref={receiptRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Xem hóa đơn" className="relative max-w-full max-h-[85vh] p-1.5 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl outline-none">
