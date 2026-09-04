@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, RefObject } from "react";
+import { useEffect, useRef, RefObject } from "react";
 
 /**
  * Shared accessibility behaviour for overlay/modal dialogs:
@@ -64,6 +64,9 @@ export function useModalA11y(
   onClose: () => void,
   containerRef?: RefObject<HTMLElement | null>
 ): void {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!active) return;
 
@@ -73,7 +76,7 @@ export function useModalA11y(
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab") return;
@@ -127,5 +130,5 @@ export function useModalA11y(
         previouslyFocused.focus();
       }
     };
-  }, [active, onClose, containerRef]);
+  }, [active, containerRef]);
 }

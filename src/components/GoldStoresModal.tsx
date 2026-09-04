@@ -45,6 +45,11 @@ function parseMoneyInput(value: string) {
   return Number(value.replace(/[^\d]/g, "")) || 0;
 }
 
+function authHeader(): Record<string, string> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("family_token") : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export function GoldStoresModal({
   isOpen,
   onClose,
@@ -120,7 +125,7 @@ export function GoldStoresModal({
     try {
       const res = await fetch(`/api/finance/gold-stores/${storeId}/prices`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({
           prices: {
             ringBlisterBuyPrice: ringBlisterBuyPrice || undefined,
@@ -205,7 +210,7 @@ export function GoldStoresModal({
 
       const res = await fetch("/api/finance/gold-stores", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -236,7 +241,10 @@ export function GoldStoresModal({
     if (!ok) return;
 
     try {
-      const res = await fetch(`/api/finance/gold-stores/${store.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/finance/gold-stores/${store.id}`, {
+        method: "DELETE",
+        headers: authHeader()
+      });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Không thể xóa tiệm vàng.");
@@ -271,13 +279,13 @@ export function GoldStoresModal({
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
           <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center">
+            <div className="size-10 rounded-xl bg-amber-100 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 flex items-center justify-center">
               <Store className="size-5" />
             </div>
             <div>
               <h2 id="gold-stores-title" className="text-base font-bold text-slate-100 flex items-center gap-2">
                 Cửa Hàng Vàng Tư Nhân & Bảng Giá
-                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-normal">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-transparent font-semibold">
                   {goldStores.length} tiệm
                 </span>
               </h2>
@@ -404,12 +412,12 @@ export function GoldStoresModal({
 
                 {!editingStore && (
                   <div className="pt-2 border-t border-slate-800 space-y-3">
-                    <p className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                      <Coins className="size-3.5" /> Bảng giá ban đầu (đ/chỉ)
+                    <p className="text-xs font-bold text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
+                      <Coins className="size-3.5 text-amber-700 dark:text-amber-400" /> Bảng giá ban đầu (đ/chỉ)
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-900/80 p-3 rounded-xl border border-slate-800">
                       <div>
-                        <span className="text-[11px] font-bold text-amber-300 block mb-1">
+                        <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
                           🏷️ Nhẫn 24K Ép vỉ (Thu mua)
                         </span>
                         <input
@@ -433,7 +441,7 @@ export function GoldStoresModal({
                         />
                       </div>
                       <div>
-                        <span className="text-[11px] font-bold text-amber-300 block mb-1">
+                        <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
                           💍 Nhẫn 24K Loại thường (Thu mua)
                         </span>
                         <input
@@ -512,19 +520,19 @@ export function GoldStoresModal({
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-base font-extrabold text-amber-300 flex items-center gap-1.5">
-                              <Store className="size-4.5 text-amber-400" />
+                            <h3 className="text-base font-extrabold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                              <Store className="size-4.5 text-amber-700 dark:text-amber-400" />
                               {store.name}
                             </h3>
                             <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
-                              Đang liên kết: <b className="text-amber-400">{linked.length} tài sản</b> ({totalWeight} chỉ)
+                              Đang liên kết: <b className="text-amber-700 dark:text-amber-400">{linked.length} tài sản</b> ({totalWeight} chỉ)
                             </span>
                           </div>
                           {(store.address || store.phone) && (
                             <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
                               {store.address && (
                                 <span className="flex items-center gap-1">
-                                  <MapPin className="size-3 text-slate-500" /> {store.address}
+                                   <MapPin className="size-3 text-slate-500" /> {store.address}
                                 </span>
                               )}
                               {store.phone && (
@@ -543,10 +551,10 @@ export function GoldStoresModal({
                           <button
                             type="button"
                             onClick={() => openPriceUpdate(store)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 flex items-center gap-1 cursor-pointer transition-colors"
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 hover:bg-amber-200 dark:hover:bg-amber-500/30 flex items-center gap-1 cursor-pointer transition-colors"
                             title="Cập nhật bảng giá và tự động đồng bộ tất cả tài sản"
                           >
-                            <TrendingUp className="size-3.5 text-amber-400" />
+                            <TrendingUp className="size-3.5 text-amber-700 dark:text-amber-400" />
                             {isUpdatingPrice ? "Đóng bảng giá" : "Cập nhật giá"}
                           </button>
                           <button
@@ -560,7 +568,7 @@ export function GoldStoresModal({
                           <button
                             type="button"
                             onClick={() => openEditStore(store)}
-                            className="size-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-400 flex items-center justify-center cursor-pointer transition-colors"
+                            className="size-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-amber-700 dark:hover:text-amber-400 flex items-center justify-center cursor-pointer transition-colors"
                             title="Sửa thông tin tiệm"
                           >
                             <Pencil className="size-3.5" />
@@ -579,13 +587,13 @@ export function GoldStoresModal({
                       {/* CURRENT PRICE CARDS */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                         {/* Nhẫn 24K Ép Vỉ */}
-                        <div className="bg-amber-950/20 border border-amber-500/30 rounded-xl p-3 space-y-1.5 relative overflow-hidden">
+                        <div className="bg-amber-50/80 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-500/30 rounded-xl p-3 space-y-1.5 relative overflow-hidden">
                           <div className="flex items-center justify-between">
-                            <span className="font-extrabold text-amber-300 flex items-center gap-1 text-xs">
-                              <Sparkles className="size-3.5 text-amber-400" />
+                            <span className="font-extrabold text-amber-800 dark:text-amber-300 flex items-center gap-1 text-xs">
+                              <Sparkles className="size-3.5 text-amber-700 dark:text-amber-400" />
                               Nhẫn 24K Ép Vỉ
                             </span>
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-400 border border-amber-300 dark:border-transparent">
                               Thanh khoản cao
                             </span>
                           </div>
@@ -664,8 +672,8 @@ export function GoldStoresModal({
                             className="bg-slate-900 border border-amber-500/40 rounded-xl p-4 space-y-3 mt-3 overflow-hidden"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                                <TrendingUp className="size-4 text-amber-400" />
+                              <span className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                                <TrendingUp className="size-4 text-amber-700 dark:text-amber-400" />
                                 Điều chỉnh bảng giá mới cho {store.name}
                               </span>
                               <button
@@ -680,7 +688,7 @@ export function GoldStoresModal({
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                               {/* Ép vỉ */}
                               <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-amber-500/20">
-                                <p className="font-bold text-amber-300 text-[11px] flex items-center gap-1">
+                                <p className="font-bold text-amber-800 dark:text-amber-300 text-[11px] flex items-center gap-1">
                                   🏷️ Nhẫn 24K Ép Vỉ (đ/chỉ)
                                 </p>
                                 <div className="space-y-1">
@@ -744,14 +752,14 @@ export function GoldStoresModal({
                             </div>
 
                             {/* AUTO CONVERT CHECKBOX */}
-                            <label className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 cursor-pointer">
+                            <label className="flex items-center gap-2 p-2 rounded-lg bg-amber-100/80 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 cursor-pointer">
                               <input
                                 type="checkbox"
                                 checked={autoConvert}
                                 onChange={(e) => setAutoConvert(e.target.checked)}
                                 className="accent-amber-500 size-4 rounded"
                               />
-                              <span className="text-xs text-amber-200 font-semibold">
+                              <span className="text-xs text-amber-900 dark:text-amber-200 font-semibold">
                                 Tự động quy đổi giá trị cho tất cả {linked.length} tài sản vàng tương đương đã mua tại {store.name}
                               </span>
                             </label>

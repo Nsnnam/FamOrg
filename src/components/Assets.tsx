@@ -132,6 +132,11 @@ function assetTypeLabel(type: AssetType) {
   return ASSET_TYPES.find(t => t.value === type)?.short || "Khác";
 }
 
+function authHeader(): Record<string, string> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("family_token") : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 function defaultUnitForType(type: AssetType) {
   if (type === "crypto") return "coin";
   if (type === "land") return "m2";
@@ -144,7 +149,7 @@ function defaultUnitForType(type: AssetType) {
 function typeClass(type: AssetType) {
   if (type === "crypto") return "text-sky-400 bg-sky-500/10 border-sky-500/20";
   if (type === "land") return "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
-  if (isGoldType(type)) return "text-amber-400 bg-amber-500/10 border-amber-500/20";
+  if (isGoldType(type)) return "text-amber-800 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/20 font-semibold";
   if (type === "vehicle") return "text-orange-400 bg-orange-500/10 border-orange-500/20";
   if (type === "stock") return "text-violet-400 bg-violet-500/10 border-violet-500/20";
   return "text-slate-400 bg-slate-800 border-slate-700";
@@ -251,7 +256,9 @@ export function Assets({
 
   const fetchGoldStores = useCallback(async () => {
     try {
-      const res = await fetch("/api/finance/gold-stores");
+      const res = await fetch("/api/finance/gold-stores", {
+        headers: authHeader()
+      });
       if (res.ok) {
         const data = await res.json();
         setGoldStores(data.goldStores || []);
@@ -614,11 +621,19 @@ export function Assets({
     setSellingAsset(null);
     setSellError("");
   }, [selling]);
+  const closeGoldImport = useCallback(() => {
+    if (!goldImportLoading && !goldImportSaving) {
+      setGoldImportOpen(false);
+    }
+  }, [goldImportLoading, goldImportSaving]);
+  const closeGoldStoresModal = useCallback(() => {
+    setGoldStoresModalOpen(false);
+  }, []);
   useModalA11y(isFormOpen, closeForm, formRef);
   useModalA11y(!!selectedPhoto, closePhoto, photoRef);
   useModalA11y(showGoldPurityInfo, closeGoldInfo, goldInfoRef);
   useModalA11y(!!priceLogAsset, closePriceLog, priceLogRef);
-  useModalA11y(goldImportOpen, () => { if (!goldImportLoading && !goldImportSaving) setGoldImportOpen(false); }, goldImportRef);
+  useModalA11y(goldImportOpen, closeGoldImport, goldImportRef);
   useModalA11y(!!sellingAsset, closeSell, sellRef);
 
   // Nút nổi thêm tài sản — icon trùng tab con "Tài sản gia đình", ẩn khi đang mở modal
@@ -716,7 +731,7 @@ export function Assets({
       const optimized = await optimizeImageFile(goldImportFile, { targetBytes: 1_200_000, maxSizes: [1800, 1400, 1024] });
       const response = await fetch("/api/finance/gold-price-imports/preview", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         credentials: "include",
         body: JSON.stringify({ dataUrl: optimized.dataUrl, fileName: goldImportFile.name })
       });
@@ -744,7 +759,7 @@ export function Assets({
     try {
       const response = await fetch("/api/finance/gold-price-imports", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         credentials: "include",
         body: JSON.stringify({
           storeName: goldImportStore.trim(),
@@ -1072,8 +1087,8 @@ export function Assets({
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <p className="text-[11px] text-slate-500">Vàng các loại</p>
-          <p className="mt-1 text-lg font-extrabold text-amber-400 tabular-nums">{formatMoney(stats.goldVnd)}</p>
-          {stats.goldUsd > 0 && <p className="text-xs font-bold text-amber-400/70 tabular-nums">+ {formatMoney(stats.goldUsd, "USD")}</p>}
+          <p className="mt-1 text-lg font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">{formatMoney(stats.goldVnd)}</p>
+          {stats.goldUsd > 0 && <p className="text-xs font-bold text-amber-700/80 dark:text-amber-400/70 tabular-nums">+ {formatMoney(stats.goldUsd, "USD")}</p>}
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <p className="text-[11px] text-slate-500">Crypto</p>
@@ -1103,12 +1118,12 @@ export function Assets({
             <button
               type="button"
               onClick={() => setGoldStoresModalOpen(true)}
-              className="bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              className="bg-amber-100 dark:bg-amber-600/20 hover:bg-amber-200 dark:hover:bg-amber-600/30 border border-amber-300 dark:border-amber-500/40 text-amber-800 dark:text-amber-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
               title="Quản lý tiệm vàng tư nhân và bảng giá thời điểm"
             >
-              <Store className="size-4 text-amber-400" /> Tiệm vàng & Bảng giá
+              <Store className="size-4 text-amber-700 dark:text-amber-400" /> Tiệm vàng & Bảng giá
               {goldStores.length > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/30 text-amber-300 font-bold ml-0.5">
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-200 dark:bg-amber-500/30 text-amber-900 dark:text-amber-300 font-bold ml-0.5">
                   {goldStores.length}
                 </span>
               )}
@@ -1116,9 +1131,9 @@ export function Assets({
             <button
               type="button"
               onClick={openGoldImport}
-              className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+              className="bg-amber-50 dark:bg-amber-500/15 hover:bg-amber-100 dark:hover:bg-amber-500/25 border border-amber-300 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
             >
-              <Upload className="size-4" /> Nhập bảng giá từ ảnh
+              <Upload className="size-4 text-amber-700 dark:text-amber-400" /> Nhập bảng giá từ ảnh
             </button>
             <button
               type="button"
@@ -1197,8 +1212,8 @@ export function Assets({
                             <span
                               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-bold ${
                                 asset.goldPackaging === "blister"
-                                  ? "text-amber-300 bg-amber-500/20 border-amber-500/40 shadow-xs"
-                                  : "text-slate-300 bg-slate-800/80 border-slate-700"
+                                  ? "text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/20 border-amber-300 dark:border-amber-500/40 shadow-xs"
+                                  : "text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 border-slate-300 dark:border-slate-700"
                               }`}
                             >
                               {asset.goldPackaging === "blister" ? "🏷️ Ép vỉ (Thanh khoản cao)" : "💍 Loại thường"}
@@ -1313,10 +1328,10 @@ export function Assets({
                   )}
                   {isGoldType(asset.type) && (
                     <>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Trọng lượng: <span className="text-amber-400 font-bold tabular-nums">{asset.weight ? `${asset.weight} ${asset.weightUnit || asset.unit}` : "—"}</span></p>
+                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Trọng lượng: <span className="text-amber-700 dark:text-amber-400 font-bold tabular-nums">{asset.weight ? `${asset.weight} ${asset.weightUnit || asset.unit}` : "—"}</span></p>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Tuổi vàng: <span className="text-slate-200">{goldPurityLabel(asset.goldPurity)}</span></p>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400 col-span-1 sm:col-span-2 flex items-center justify-between flex-wrap gap-1">
-                        <span>Tiệm / Nguồn: <span className="text-amber-300 font-bold">🏪 {asset.goldSource || "Tiệm vàng tư nhân"}</span></span>
+                        <span>Tiệm / Nguồn: <span className="text-amber-800 dark:text-amber-300 font-bold">🏪 {asset.goldSource || "Tiệm vàng tư nhân"}</span></span>
                         <span className="text-[10px] text-slate-400">
                           {asset.goldPackaging === "blister" ? "🏷️ Nhẫn ép vỉ" : "💍 Nhẫn trơn thường"}
                         </span>
@@ -1377,7 +1392,7 @@ export function Assets({
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
               <div>
-                <h3 id="gold-price-import-title" className="text-md font-bold text-slate-100 flex items-center gap-1.5"><Upload className="size-5 text-amber-400" /> Nhập bảng giá vàng từ ảnh</h3>
+                <h3 id="gold-price-import-title" className="text-md font-bold text-slate-100 flex items-center gap-1.5"><Upload className="size-5 text-amber-700 dark:text-amber-400" /> Nhập bảng giá vàng từ ảnh</h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">OCR chỉ gợi ý dữ liệu; hãy kiểm tra trước khi lưu.</p>
               </div>
               <button type="button" onClick={() => setGoldImportOpen(false)} disabled={goldImportLoading || goldImportSaving} aria-label="Đóng nhập bảng giá" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center disabled:opacity-50"><X className="size-4" /></button>
@@ -1387,7 +1402,7 @@ export function Assets({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <label className="space-y-1 text-xs text-slate-400 md:col-span-1">
                   <span className="block font-semibold">Cửa hàng / nguồn giá <span className="text-rose-400">*</span></span>
-                  <input value={goldImportStore} onChange={(e) => setGoldImportStore(e.target.value)} placeholder="VD: SJC Vĩnh Yên" className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none focus:border-amber-500" />
+                  <input value={goldImportStore} onChange={(e) => setGoldImportStore(e.target.value)} placeholder="VD: Tiệm vàng Gia Bảo, SJC..." className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none focus:border-amber-500" />
                 </label>
                 <label className="space-y-1 text-xs text-slate-400">
                   <span className="block font-semibold">Thời điểm bảng giá</span>
@@ -1399,7 +1414,7 @@ export function Assets({
                 </label>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => void handleGoldImportPreview()} disabled={!goldImportFile || goldImportLoading || goldImportSaving} className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold disabled:opacity-50 flex items-center gap-1.5">
+                <button type="button" onClick={() => void handleGoldImportPreview()} disabled={!goldImportFile || goldImportLoading || goldImportSaving} className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold disabled:opacity-50 flex items-center gap-1.5 cursor-pointer">
                   <RefreshCw className={`size-3.5 ${goldImportLoading ? "animate-spin" : ""}`} /> {goldImportLoading ? "Đang đọc ảnh..." : "Đọc ảnh và xem trước"}
                 </button>
                 {goldImportFile && <span className="text-[11px] text-slate-500 truncate max-w-[280px]">{goldImportFile.name}</span>}
@@ -1417,7 +1432,7 @@ export function Assets({
                       <span className="text-[10px] text-slate-500">Có thể sửa trước khi lưu</span>
                     </div>
                     {goldImportPreview.rows.length === 0 ? (
-                      <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">Chưa nhận diện được dòng giá. Bạn vẫn có thể lưu ảnh để tra cứu, nhưng nên nhập lại bằng ảnh rõ hơn.</p>
+                      <p className="text-xs text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 rounded-xl p-3">Chưa nhận diện được dòng giá. Bạn vẫn có thể lưu ảnh để tra cứu, nhưng nên nhập lại bằng ảnh rõ hơn.</p>
                     ) : (
                       <div className="space-y-2">
                         {goldImportPreview.rows.map(row => (
@@ -1588,12 +1603,12 @@ export function Assets({
                 {/* KHỐI 1: GIÁ MUA BAN ĐẦU (VỐN ĐẦU TƯ) */}
                 <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                      <Wallet className="size-3.5 text-amber-400" />
+                    <span className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                      <Wallet className="size-3.5 text-amber-700 dark:text-amber-400" />
                       Giá mua ban đầu (Vốn đầu tư)
                     </span>
                     {formQuantity > 0 && formPurchaseUnitPrice > 0 && (
-                      <span className="text-[11px] text-amber-400/80 font-mono">
+                      <span className="text-[11px] text-amber-800 dark:text-amber-400/80 font-mono font-medium">
                         {formQuantity} {formUnit} × {formatMoney(formPurchaseUnitPrice, formCurrency)}/{formUnit}
                       </span>
                     )}
@@ -1623,7 +1638,7 @@ export function Assets({
                         <label className="text-slate-400 block font-semibold text-xs">
                           Tổng giá mua ban đầu
                         </label>
-                        <span className="text-[9px] text-amber-400/80 font-mono">Tự tính: SL × Đơn giá</span>
+                        <span className="text-[9px] text-amber-800 dark:text-amber-400/80 font-mono font-medium">Tự tính: SL × Đơn giá</span>
                       </div>
                       <div className="relative">
                         <input
@@ -1835,10 +1850,10 @@ export function Assets({
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                          <Sparkles className="size-3.5 text-amber-400" />
+                          <Sparkles className="size-3.5 text-amber-700 dark:text-amber-400" />
                           Hình thức bao bì vàng nhẫn 24K:
                         </label>
-                        <span className="text-[10px] text-amber-400/90 font-medium">
+                        <span className="text-[10px] text-amber-800 dark:text-amber-400/90 font-medium">
                           {formGoldPackaging === "blister" ? "Ép vỉ thanh khoản cao hơn" : "Nhẫn trơn thông thường"}
                         </span>
                       </div>
@@ -1848,15 +1863,15 @@ export function Assets({
                           onClick={() => handleGoldPackagingChange("blister")}
                           className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 cursor-pointer transition-all ${
                             formGoldPackaging === "blister"
-                              ? "bg-amber-500/15 border-amber-500/80 text-amber-200 shadow-sm"
+                              ? "bg-amber-100/80 dark:bg-amber-500/15 border-amber-400 dark:border-amber-500/80 text-amber-900 dark:text-amber-200 shadow-sm"
                               : "bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900"
                           }`}
                         >
                           <span className="text-xl">🏷️</span>
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <p className="text-xs font-bold leading-tight text-amber-300">Ép vỉ (Thanh khoản cao)</p>
-                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">Khuyên dùng</span>
+                              <p className="text-xs font-bold leading-tight text-amber-800 dark:text-amber-300">Ép vỉ (Thanh khoản cao)</p>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-200 dark:bg-amber-500/20 text-amber-900 dark:text-amber-300">Khuyên dùng</span>
                             </div>
                             <p className="text-[10px] text-slate-400 mt-0.5">Bao bì niêm phong chuẩn tuổi, tiệm thu mua lại giá cao nhất</p>
                           </div>
@@ -1866,7 +1881,7 @@ export function Assets({
                           onClick={() => handleGoldPackagingChange("plain")}
                           className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 cursor-pointer transition-all ${
                             formGoldPackaging === "plain"
-                              ? "bg-amber-500/15 border-amber-500/80 text-amber-200 shadow-sm"
+                              ? "bg-amber-100/80 dark:bg-amber-500/15 border-amber-400 dark:border-amber-500/80 text-amber-900 dark:text-amber-200 shadow-sm"
                               : "bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900"
                           }`}
                         >
@@ -1892,7 +1907,7 @@ export function Assets({
                             ...GOLD_PURITY_OPTIONS.map(o => ({ value: o.value, label: `${o.label} (${Math.round(o.factor * 100)}%)` }))
                           ]}
                         />
-                        <button type="button" onClick={() => setShowGoldPurityInfo(true)} aria-label="Bảng quy ước tuổi vàng" title="Bảng quy ước tuổi vàng" className="shrink-0 size-9 rounded-lg bg-slate-800 border border-slate-700 text-amber-400 hover:bg-slate-700 flex items-center justify-center cursor-pointer">
+                        <button type="button" onClick={() => setShowGoldPurityInfo(true)} aria-label="Bảng quy ước tuổi vàng" title="Bảng quy ước tuổi vàng" className="shrink-0 size-9 rounded-lg bg-slate-800 border border-slate-700 text-amber-700 dark:text-amber-400 hover:bg-slate-700 flex items-center justify-center cursor-pointer">
                           <Info className="size-4" />
                         </button>
                       </div>
@@ -1912,8 +1927,8 @@ export function Assets({
 
                       <div className="md:col-span-2 xl:col-span-4 flex items-center justify-between flex-wrap gap-2 text-[10px]">
                         {formGoldStoreId ? (
-                          <div className="text-amber-300 font-semibold flex items-center gap-1.5">
-                            <Store className="size-3.5 text-amber-400" />
+                          <div className="text-amber-800 dark:text-amber-300 font-semibold flex items-center gap-1.5">
+                            <Store className="size-3.5 text-amber-700 dark:text-amber-400" />
                             <span>
                               Đang áp dụng bảng giá tiệm: <b>{formGoldSource}</b> ({formGoldPackaging === "blister" ? "Ép vỉ" : "Loại thường"})
                             </span>
@@ -1926,7 +1941,7 @@ export function Assets({
                         <button
                           type="button"
                           onClick={() => setGoldStoresModalOpen(true)}
-                          className="text-amber-400 hover:text-amber-300 font-bold underline flex items-center gap-1 cursor-pointer"
+                          className="text-amber-700 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300 font-bold underline flex items-center gap-1 cursor-pointer"
                         >
                           <Store className="size-3" /> Quản lý danh mục & bảng giá tiệm vàng
                         </button>
@@ -2305,7 +2320,7 @@ export function Assets({
 
       <GoldStoresModal
         isOpen={goldStoresModalOpen}
-        onClose={() => setGoldStoresModalOpen(false)}
+        onClose={closeGoldStoresModal}
         goldStores={goldStores}
         assets={assets}
         onRefresh={async () => {
