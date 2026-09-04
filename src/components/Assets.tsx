@@ -54,6 +54,7 @@ import {
   MarketPrices,
   effectiveGoldWeight,
   getEffectiveValue,
+  getMarketUnitPrice,
   goldPurityFactor,
   goldPurityLabel,
   isGoldType,
@@ -216,8 +217,10 @@ export function Assets({
   const [formOwnerId, setFormOwnerId] = useState("");
   const [formQuantity, setFormQuantity] = useState<number>(1);
   const [formUnit, setFormUnit] = useState(defaultUnitForType("gold_bar"));
-  const [formEstimatedValue, setFormEstimatedValue] = useState<number>(0);
+  const [formPurchaseUnitPrice, setFormPurchaseUnitPrice] = useState<number>(0);
   const [formPurchaseValue, setFormPurchaseValue] = useState<number>(0);
+  const [formEstimatedUnitPrice, setFormEstimatedUnitPrice] = useState<number>(0);
+  const [formEstimatedValue, setFormEstimatedValue] = useState<number>(0);
   const [formCurrency, setFormCurrency] = useState<"VND" | "USD">("VND");
   const [formPurchaseDate, setFormPurchaseDate] = useState("");
   const [formLocation, setFormLocation] = useState("");
@@ -268,33 +271,79 @@ export function Assets({
 
   const marketPricesStatus: "loading" | "ok" = widgetsOverview ? "ok" : "loading";
 
+  // Đơn vị giá thị trường theo 1 đơn vị tài sản hiện tại
+  const marketUnitPrice = useMemo(() => {
+    return getMarketUnitPrice(
+      {
+        type: formType,
+        unit: formUnit,
+        weightUnit: formUnit,
+        goldPurity: formGoldPurity,
+        symbol: formSymbol,
+        currency: formCurrency
+      },
+      marketPrices
+    );
+  }, [marketPrices, formType, formUnit, formGoldPurity, formSymbol, formCurrency]);
+
   // Live auto-value preview inside the form (recalculates as user types weight/quantity/symbol)
   const formAutoValue = useMemo(() => {
-    if (!marketPrices) return null;
-    // Với vàng, "Số lượng/Đơn vị" chính là trọng lượng/đơn vị vàng.
-    if (isGoldType(formType) && formQuantity > 0) {
-      const gold = marketPrices.gold;
-      if (!gold) return null;
-      const wu = formUnit.toLowerCase().trim();
-      const isUsd = formCurrency === "USD";
-      let ppu: number;
-      if (wu === "lượng") ppu = isUsd ? gold.pricePerLuongUsd : gold.pricePerLuongVnd;
-      else if (wu === "gram" || wu === "g") ppu = isUsd ? gold.pricePerGramUsd : gold.pricePerGramVnd;
-      else ppu = isUsd ? gold.pricePerChiUsd : gold.pricePerChiVnd;
+    if (marketUnitPrice <= 0 || formQuantity <= 0) return null;
+    const v = Math.round(formQuantity * marketUnitPrice);
+    if (isGoldType(formType)) {
       const factor = goldPurityFactor(formGoldPurity);
-      const v = Math.round(formQuantity * ppu * factor);
       const purityNote = factor < 1 ? ` × ${Math.round(factor * 100)}% tuổi vàng` : "";
-      return v > 0 ? { value: v, label: `${formQuantity} ${formUnit} × giá 9999${purityNote}` } : null;
+      return { value: v, unitPrice: marketUnitPrice, label: `${formQuantity} ${formUnit} × giá 9999${purityNote}` };
     }
-    if (formType === "crypto" && formSymbol && formQuantity > 0) {
-      const coin = marketPrices.crypto[formSymbol.toUpperCase()];
-      if (!coin) return null;
-      const price = formCurrency === "USD" ? coin.usd : coin.vnd;
-      const v = Math.round(formQuantity * price);
-      return v > 0 ? { value: v, label: `${formQuantity} ${formSymbol} × $${coin.usd.toLocaleString("en-US")}` } : null;
+    if (formType === "crypto" && formSymbol) {
+      return { value: v, unitPrice: marketUnitPrice, label: `${formQuantity} ${formSymbol} × ${formatMoney(marketUnitPrice, formCurrency)}` };
     }
-    return null;
-  }, [marketPrices, formType, formGoldPurity, formCurrency, formSymbol, formQuantity, formUnit]);
+    return { value: v, unitPrice: marketUnitPrice, label: `${formQuantity} ${formUnit} × ${formatMoney(marketUnitPrice, formCurrency)}` };
+  }, [marketUnitPrice, formQuantity, formType, formGoldPurity, formUnit, formSymbol, formCurrency]);
+
+  const handleQuantityChange = (newQty: number) => {
+    const q = Math.max(0, newQty);
+    setFormQuantity(q);
+    if (formType === "land") setFormAreaM2(q);
+    if (formPurchaseUnitPrice > 0) {
+      setFormPurchaseValue(Math.round(q * formPurchaseUnitPrice));
+    }
+    if (formEstimatedUnitPrice > 0) {
+      setFormEstimatedValue(Math.round(q * formEstimatedUnitPrice));
+    }
+  };
+
+  const handlePurchaseUnitPriceChange = (unitPrice: number) => {
+    setFormPurchaseUnitPrice(unitPrice);
+    const q = Number(formQuantity) || 0;
+    if (q > 0) {
+      setFormPurchaseValue(Math.round(q * unitPrice));
+    }
+  };
+
+  const handlePurchaseValueChange = (total: number) => {
+    setFormPurchaseValue(total);
+    const q = Number(formQuantity) || 0;
+    if (q > 0) {
+      setFormPurchaseUnitPrice(Math.round(total / q));
+    }
+  };
+
+  const handleEstimatedUnitPriceChange = (unitPrice: number) => {
+    setFormEstimatedUnitPrice(unitPrice);
+    const q = Number(formQuantity) || 0;
+    if (q > 0) {
+      setFormEstimatedValue(Math.round(q * unitPrice));
+    }
+  };
+
+  const handleEstimatedValueChange = (total: number) => {
+    setFormEstimatedValue(total);
+    const q = Number(formQuantity) || 0;
+    if (q > 0) {
+      setFormEstimatedUnitPrice(Math.round(total / q));
+    }
+  };
 
   const filteredAssets = useMemo(() => {
     const text = searchTerm.trim().toLowerCase();
@@ -342,8 +391,10 @@ export function Assets({
     setFormOwnerId("");
     setFormQuantity(1);
     setFormUnit(defaultUnitForType("gold_bar"));
-    setFormEstimatedValue(0);
+    setFormPurchaseUnitPrice(0);
     setFormPurchaseValue(0);
+    setFormEstimatedUnitPrice(0);
+    setFormEstimatedValue(0);
     setFormCurrency("VND");
     setFormPurchaseDate("");
     setFormLocation("");
@@ -375,16 +426,53 @@ export function Assets({
     setFormType(asset.type);
     setFormName(asset.name);
     setFormOwnerId(asset.ownerId || "");
-    // Với vàng, gộp trọng lượng cũ (field weight) vào ô Số lượng/Đơn vị.
-    if (isGoldType(asset.type)) {
-      setFormQuantity(Number(asset.weight || asset.quantity || 1));
-      setFormUnit(asset.weightUnit || asset.unit || "chỉ");
-    } else {
-      setFormQuantity(Number(asset.quantity || 1));
-      setFormUnit(asset.unit || defaultUnitForType(asset.type));
+
+    // Số lượng & đơn vị
+    const q = isGoldType(asset.type)
+      ? Number(asset.weight || asset.quantity || 1)
+      : asset.type === "land"
+      ? Number(asset.areaM2 || asset.quantity || 1)
+      : Number(asset.quantity || 1);
+    const u = isGoldType(asset.type)
+      ? (asset.weightUnit || asset.unit || "chỉ")
+      : asset.type === "land"
+      ? "m2"
+      : (asset.unit || defaultUnitForType(asset.type));
+
+    setFormQuantity(q);
+    setFormUnit(u);
+
+    // Tính toán đơn giá mua và tổng giá mua ban đầu
+    let initialPurchaseUnitPrice = Number(asset.purchaseUnitPrice || 0);
+    let initialPurchaseValue = Number(asset.purchaseValue || 0);
+    if (!initialPurchaseUnitPrice && initialPurchaseValue > 0) {
+      if (q > 1 && (isGoldType(asset.type) || asset.type === "crypto" || asset.type === "land") && initialPurchaseValue > 1_000_000 && initialPurchaseValue < 100_000_000) {
+        // Dữ liệu cũ người dùng nhập đơn giá 1 đơn vị vào ô tổng (ví dụ 10.950.000 cho 11 chỉ)
+        initialPurchaseUnitPrice = initialPurchaseValue;
+        initialPurchaseValue = Math.round(q * initialPurchaseUnitPrice);
+      } else {
+        initialPurchaseUnitPrice = Math.round(initialPurchaseValue / q);
+      }
     }
-    setFormEstimatedValue(Number(asset.estimatedValue || 0));
-    setFormPurchaseValue(Number(asset.purchaseValue || 0));
+
+    // Tính toán đơn giá ước tính và tổng giá trị ước tính
+    let initialEstimatedUnitPrice = Number(asset.estimatedUnitPrice || 0);
+    let initialEstimatedValue = Number(asset.estimatedValue || 0);
+    if (!initialEstimatedUnitPrice && initialEstimatedValue > 0) {
+      if (q > 1 && (isGoldType(asset.type) || asset.type === "crypto" || asset.type === "land") && initialEstimatedValue > 1_000_000 && initialEstimatedValue < 100_000_000) {
+        // Dữ liệu cũ người dùng nhập đơn giá 1 đơn vị vào ô tổng (ví dụ 13.000.000 cho 11 chỉ)
+        initialEstimatedUnitPrice = initialEstimatedValue;
+        initialEstimatedValue = Math.round(q * initialEstimatedUnitPrice);
+      } else if (q > 0) {
+        initialEstimatedUnitPrice = Math.round(initialEstimatedValue / q);
+      }
+    }
+
+    setFormPurchaseUnitPrice(initialPurchaseUnitPrice);
+    setFormPurchaseValue(initialPurchaseValue);
+    setFormEstimatedUnitPrice(initialEstimatedUnitPrice);
+    setFormEstimatedValue(initialEstimatedValue);
+
     setFormCurrency(asset.currency || "VND");
     setFormPurchaseDate(asset.purchaseDate || "");
     setFormLocation(asset.location || "");
@@ -395,7 +483,7 @@ export function Assets({
     setFormWalletLabel(asset.walletLabel || "");
     setFormWalletAddressMasked(asset.walletAddressMasked || "");
     setFormAddress(asset.address || "");
-    setFormAreaM2(Number(asset.areaM2 || 0));
+    setFormAreaM2(Number(asset.areaM2 || (asset.type === "land" ? q : 0)));
     setFormCertificateNo(asset.certificateNo || "");
     setFormParcelNo(asset.parcelNo || "");
     setFormGoldPurity(asset.goldPurity || "");
@@ -679,8 +767,10 @@ export function Assets({
         ownerId: formOwnerId || undefined,
         quantity: Number(formQuantity) || 0,
         unit: formUnit.trim() || defaultUnitForType(formType),
-        estimatedValue: Number(formEstimatedValue) || 0,
+        purchaseUnitPrice: Number(formPurchaseUnitPrice) || undefined,
         purchaseValue: Number(formPurchaseValue) || undefined,
+        estimatedUnitPrice: Number(formEstimatedUnitPrice) || undefined,
+        estimatedValue: Number(formEstimatedValue) || 0,
         currency: formCurrency,
         purchaseDate: formPurchaseDate || undefined,
         location: formLocation.trim(),
@@ -1019,12 +1109,15 @@ export function Assets({
                     </div>
                     {(() => {
                       const ev = getEffectiveValue(asset, marketPrices);
-                      // Lời/lỗ: chỉ tính khi có giá mua ban đầu và giá hiện tại không phải chính giá mua đó.
                       const purchase = Number(asset.purchaseValue || 0);
                       const showPL = purchase > 0 && ev.value > 0 && ev.source !== "purchase";
                       const diff = ev.value - purchase;
                       const pct = purchase > 0 ? (diff / purchase) * 100 : 0;
                       const up = diff >= 0;
+                      const q = isGoldType(asset.type) ? effectiveGoldWeight(asset) : Number(asset.quantity || 0);
+                      const u = isGoldType(asset.type) ? (asset.weightUnit || asset.unit || "chỉ") : (asset.unit || "món");
+                      const estUnitPrice = asset.estimatedUnitPrice || (q > 0 ? Math.round(ev.value / q) : 0);
+                      const buyUnitPrice = asset.purchaseUnitPrice || (q > 0 && purchase > 0 ? Math.round(purchase / q) : 0);
                       return (
                         <>
                           <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -1048,12 +1141,25 @@ export function Assets({
                               </span>
                             )}
                           </div>
-                          {showPL && (
-                            <p className="mt-1 text-[11px] text-slate-500">
-                              Vốn {formatMoney(purchase, asset.currency)} ·{" "}
-                              <span className={up ? "text-emerald-400" : "text-rose-400"}>
-                                {up ? "Lời" : "Lỗ"} {formatMoney(Math.abs(diff), asset.currency)}
-                              </span>
+                          {q > 1 && estUnitPrice > 0 && (
+                            <p className="mt-0.5 text-[11px] text-slate-400 font-mono">
+                              Đơn giá: <span className="text-slate-200 font-semibold">{formatMoney(estUnitPrice, asset.currency)}/{u}</span>
+                            </p>
+                          )}
+                          {purchase > 0 && (
+                            <p className="mt-0.5 text-[11px] text-slate-500 font-mono">
+                              Vốn {formatMoney(purchase, asset.currency)}
+                              {q > 1 && buyUnitPrice > 0 && (
+                                <span className="text-slate-500"> ({formatMoney(buyUnitPrice, asset.currency)}/{u})</span>
+                              )}
+                              {showPL && (
+                                <>
+                                  {" "}·{" "}
+                                  <span className={up ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
+                                    {up ? "Lời" : "Lỗ"} {formatMoney(Math.abs(diff), asset.currency)}
+                                  </span>
+                                </>
+                              )}
                             </p>
                           )}
                         </>
@@ -1258,7 +1364,7 @@ export function Assets({
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                   <div className="space-y-1">
-                    <label className="text-slate-400 block font-semibold">Chủ sở hữu</label>
+                    <label className="text-slate-400 block font-semibold text-xs">Chủ sở hữu</label>
                     <FancySelect
                       value={formOwnerId}
                       onChange={setFormOwnerId}
@@ -1270,33 +1376,77 @@ export function Assets({
                       ]}
                     />
                   </div>
-                  {formType !== "land" && (
+                  {formType === "land" ? (
                     <>
                       <div className="space-y-1">
-                        <label className="text-slate-400 block font-semibold">{isGoldType(formType) ? "Trọng lượng" : "Số lượng"}</label>
-                        <input type="number" min="0" step="0.000001" value={formQuantity || ""} onChange={(e) => setFormQuantity(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                        <label className="text-slate-400 block font-semibold text-xs">Diện tích đất</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formQuantity || ""}
+                            onChange={(e) => handleQuantityChange(Number(e.target.value))}
+                            placeholder="Diện tích"
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono text-xs"
+                          />
+                          <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono">m2</span>
+                        </div>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-slate-400 block font-semibold">Đơn vị</label>
+                        <label className="text-slate-400 block font-semibold text-xs">Đơn vị</label>
+                        <input
+                          disabled
+                          value="m2"
+                          className="w-full bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 text-slate-400 outline-none font-mono text-xs cursor-not-allowed"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-1">
+                        <label className="text-slate-400 block font-semibold text-xs">
+                          {isGoldType(formType) ? "Trọng lượng vàng" : "Số lượng"}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={formQuantity || ""}
+                          onChange={(e) => handleQuantityChange(Number(e.target.value))}
+                          placeholder="Số lượng"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-slate-400 block font-semibold text-xs">Đơn vị</label>
                         {isGoldType(formType) ? (
                           <FancySelect
                             value={formUnit}
-                            onChange={setFormUnit}
+                            onChange={(v) => {
+                              setFormUnit(v);
+                            }}
                             ariaLabel="Đơn vị"
                             options={[
                               { value: "chỉ", label: "chỉ" },
-                              { value: "lượng", label: "lượng" },
-                              { value: "gram", label: "gram" }
+                              { value: "lượng", label: "lượng (cây)" },
+                              { value: "gram", label: "gram" },
+                              { value: "phân", label: "phân (0.1 chỉ)" }
                             ]}
                           />
                         ) : (
-                          <input value={formUnit} onChange={(e) => setFormUnit(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                          <input
+                            value={formUnit}
+                            onChange={(e) => setFormUnit(e.target.value)}
+                            placeholder="VD: cái, chiếc, coin..."
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none text-xs"
+                          />
                         )}
                       </div>
                     </>
                   )}
                   <div className="space-y-1">
-                    <label className="text-slate-400 block font-semibold">Tiền tệ</label>
+                    <label className="text-slate-400 block font-semibold text-xs">Tiền tệ</label>
                     <FancySelect
                       value={formCurrency}
                       onChange={(v) => setFormCurrency(v as "VND" | "USD")}
@@ -1309,38 +1459,218 @@ export function Assets({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-slate-400 block font-semibold">
-                      Giá trị ước tính
+                {/* KHỐI 1: GIÁ MUA BAN ĐẦU (VỐN ĐẦU TƯ) */}
+                <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Wallet className="size-3.5 text-amber-400" />
+                      Giá mua ban đầu (Vốn đầu tư)
+                    </span>
+                    {formQuantity > 0 && formPurchaseUnitPrice > 0 && (
+                      <span className="text-[11px] text-amber-400/80 font-mono">
+                        {formQuantity} {formUnit} × {formatMoney(formPurchaseUnitPrice, formCurrency)}/{formUnit}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-slate-400 block font-semibold text-xs">
+                        Đơn giá mua / 1 {formUnit || "đơn vị"}
+                      </label>
+                      <div className="relative">
+                        <input
+                          inputMode="numeric"
+                          placeholder="Ví dụ: 10.950.000"
+                          value={formatMoneyInput(formPurchaseUnitPrice)}
+                          onChange={(e) => handlePurchaseUnitPriceChange(parseMoneyInput(e.target.value))}
+                          className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-lg p-2.5 pr-14 text-slate-200 outline-none font-mono text-xs"
+                        />
+                        <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono pointer-events-none">
+                          /{formUnit}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-400 block font-semibold text-xs">
+                          Tổng giá mua ban đầu
+                        </label>
+                        <span className="text-[9px] text-amber-400/80 font-mono">Tự tính: SL × Đơn giá</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          inputMode="numeric"
+                          placeholder="Tự động nhân từ đơn giá"
+                          value={formatMoneyInput(formPurchaseValue)}
+                          onChange={(e) => handlePurchaseValueChange(parseMoneyInput(e.target.value))}
+                          className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-lg p-2.5 pr-12 text-slate-200 outline-none font-mono text-xs font-bold"
+                        />
+                        <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono pointer-events-none">
+                          {formCurrency}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-400 block font-semibold text-xs">Ngày mua / ghi nhận</label>
+                      <DateInputDMY value={formPurchaseDate} onChange={setFormPurchaseDate} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono text-xs" />
+                    </div>
+                  </div>
+
+                  {formPurchaseValue > 0 && (
+                    <div className="text-[11px] text-slate-400 font-mono flex items-center justify-between pt-1 border-t border-slate-850">
+                      <span>
+                        ∑ Tổng vốn: <b className="text-slate-200">{formatMoney(formPurchaseValue, formCurrency)}</b>
+                        {formQuantity > 0 && formPurchaseUnitPrice > 0 && (
+                          <span className="text-slate-500 ml-1">
+                            (= {formQuantity} {formUnit} × {formatMoney(formPurchaseUnitPrice, formCurrency)}/{formUnit})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* KHỐI 2: GIÁ TRỊ ƯỚC TÍNH HIỆN TẠI (TỪ ĐƠN VỊ NHỎ NHẤT NHÂN LÊN) */}
+                <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                      <TrendingUp className="size-3.5 text-emerald-400" />
+                      Giá trị ước tính hiện tại
                       {formAutoValue && formEstimatedValue === 0 && (
-                        <span className="ml-1.5 text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">AUTO</span>
+                        <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">LIVE AUTO</span>
                       )}
-                    </label>
-                    <input inputMode="numeric" value={formatMoneyInput(formEstimatedValue)} onChange={(e) => setFormEstimatedValue(parseMoneyInput(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono" />
-                    {formAutoValue && (
-                      <p className="text-[10px] text-emerald-400/70 flex items-center gap-1">
-                        <TrendingUp className="size-3 shrink-0" />
-                        ≈ {formatMoney(formAutoValue.value, formCurrency)}
-                        <span className="text-slate-600">({formAutoValue.label})</span>
-                        {formEstimatedValue === 0 && <span className="text-slate-500"> — Để 0 để dùng tự động</span>}
-                      </p>
-                    )}
-                    {!formAutoValue && (isGoldType(formType) || formType === "crypto") && marketPrices && (
-                      <p className="text-[10px] text-slate-600">
-                        {isGoldType(formType)
-                          ? `Nhập trọng lượng để tự tính từ giá vàng thị trường`
-                          : `Nhập mã coin & số lượng để tự tính giá thị trường`}
-                      </p>
-                    )}
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      {marketUnitPrice > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleEstimatedUnitPriceChange(marketUnitPrice);
+                          }}
+                          className="text-[10px] text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 px-2 py-0.5 rounded-md font-semibold cursor-pointer transition-colors"
+                          title="Điền theo bảng giá thị trường đang có"
+                        >
+                          Dùng giá thị trường ({formatMoney(marketUnitPrice, formCurrency)}/{formUnit})
+                        </button>
+                      )}
+                      {formPurchaseUnitPrice > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleEstimatedUnitPriceChange(formPurchaseUnitPrice);
+                          }}
+                          className="text-[10px] text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-750 px-2 py-0.5 rounded-md font-medium cursor-pointer transition-colors"
+                          title="Sao chép từ đơn giá mua ban đầu"
+                        >
+                          = Giá mua
+                        </button>
+                      )}
+                      {formEstimatedValue > 0 && marketUnitPrice > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormEstimatedUnitPrice(0);
+                            setFormEstimatedValue(0);
+                          }}
+                          className="text-[10px] text-slate-400 hover:text-amber-400 bg-slate-800/80 px-2 py-0.5 rounded-md font-medium cursor-pointer transition-colors"
+                          title="Để trống để tự động dùng giá thị trường LIVE"
+                        >
+                          Xóa để dùng LIVE
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-slate-400 block font-semibold">Giá mua ban đầu</label>
-                    <input inputMode="numeric" value={formatMoneyInput(formPurchaseValue)} onChange={(e) => setFormPurchaseValue(parseMoneyInput(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono" />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Đơn vị nhỏ nhất */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-400 block font-semibold text-xs">
+                          Đơn giá ước tính / 1 {formUnit || "đơn vị"}
+                        </label>
+                        {marketUnitPrice > 0 && (
+                          <span className="text-[10px] text-emerald-400 font-mono">
+                            Thị trường: {formatMoney(marketUnitPrice, formCurrency)}/{formUnit}
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          inputMode="numeric"
+                          placeholder={marketUnitPrice > 0 ? formatMoneyInput(marketUnitPrice) : "Nhập đơn giá / 1 đơn vị"}
+                          value={formatMoneyInput(formEstimatedUnitPrice)}
+                          onChange={(e) => handleEstimatedUnitPriceChange(parseMoneyInput(e.target.value))}
+                          className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2.5 pr-14 text-slate-200 outline-none font-mono text-xs"
+                        />
+                        <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono pointer-events-none">
+                          /{formUnit}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Tổng giá trị ước tính */}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-slate-400 block font-semibold text-xs">
+                          Tổng giá trị ước tính
+                        </label>
+                        <span className="text-[9px] text-emerald-400/80 font-mono">Tự tính: SL × Đơn giá</span>
+                      </div>
+                      <div className="relative">
+                        <input
+                          inputMode="numeric"
+                          placeholder={formAutoValue ? `Tự động: ${formatMoney(formAutoValue.value, formCurrency)}` : "Tự động nhân từ đơn vị nhỏ nhất"}
+                          value={formatMoneyInput(formEstimatedValue)}
+                          onChange={(e) => handleEstimatedValueChange(parseMoneyInput(e.target.value))}
+                          className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2.5 pr-12 text-slate-200 outline-none font-mono text-xs font-bold"
+                        />
+                        <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono pointer-events-none">
+                          {formCurrency}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-slate-400 block font-semibold">Ngày mua / ghi nhận</label>
-                    <DateInputDMY value={formPurchaseDate} onChange={setFormPurchaseDate} className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none font-mono" />
+
+                  <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-slate-850 text-xs">
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      {formQuantity > 0 && formEstimatedUnitPrice > 0 ? (
+                        <span>
+                          ∑ Ước tính: <b className="text-emerald-300">{formatMoney(formEstimatedValue, formCurrency)}</b>
+                          <span className="text-slate-500 ml-1">
+                            (= {formQuantity} {formUnit} × {formatMoney(formEstimatedUnitPrice, formCurrency)}/{formUnit})
+                          </span>
+                        </span>
+                      ) : formAutoValue ? (
+                        <span className="text-emerald-400 flex items-center gap-1">
+                          <TrendingUp className="size-3" />
+                          LIVE: <b>{formatMoney(formAutoValue.value, formCurrency)}</b>
+                          <span className="text-slate-500">({formAutoValue.label}) — Để trống ô đơn giá để tự dùng giá live</span>
+                        </span>
+                      ) : (
+                        <span className="text-slate-500">Nhập đơn giá để tự nhân tổng giá trị ước tính từ đơn vị nhỏ nhất.</span>
+                      )}
+                    </div>
+
+                    {/* Lời/lỗ dự kiến */}
+                    {(() => {
+                      const cur = formEstimatedValue > 0 ? formEstimatedValue : (formAutoValue?.value || 0);
+                      const buy = formPurchaseValue;
+                      if (cur > 0 && buy > 0) {
+                        const diff = cur - buy;
+                        const pct = (diff / buy) * 100;
+                        const up = diff >= 0;
+                        return (
+                          <span className={`text-[11px] font-bold font-mono px-2 py-0.5 rounded-lg border ${up ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20"}`}>
+                            {up ? "Dự kiến lời:" : "Dự kiến lỗ:"} {up ? "+" : "−"}{formatMoney(Math.abs(diff), formCurrency)} ({up ? "+" : ""}{pct.toFixed(1)}%)
+                          </span>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 </div>
 

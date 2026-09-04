@@ -339,8 +339,10 @@ export interface FamilyAsset {
   ownerId?: string;
   quantity: number;
   unit: string;
-  estimatedValue: number;
+  purchaseUnitPrice?: number;
   purchaseValue?: number;
+  estimatedUnitPrice?: number;
+  estimatedValue: number;
   currency: "VND" | "USD";
   purchaseDate?: string;
   location?: string;

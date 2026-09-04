@@ -11,6 +11,7 @@ import {
   calculateProfitLoss,
   effectiveGoldWeight,
   getEffectiveValue,
+  getMarketUnitPrice,
   goldPurityFactor,
   goldPurityLabel,
   isGoldType,
@@ -266,3 +267,64 @@ describe("GOLD_PURITY_OPTIONS", () => {
     expect(factors).toEqual(sorted);
   });
 });
+
+// ---- getMarketUnitPrice & Auto-multiplication -----------------------------
+
+describe("getMarketUnitPrice", () => {
+  it("trả về đúng đơn vị giá vàng theo chỉ, lượng, gram, phân", () => {
+    // 14.7tr / chỉ
+    expect(getMarketUnitPrice({ type: "gold_bar", unit: "chỉ", goldPurity: "9999" }, market)).toBe(14_700_000);
+    // 147tr / lượng
+    expect(getMarketUnitPrice({ type: "gold_bar", unit: "lượng", goldPurity: "9999" }, market)).toBe(147_000_000);
+    // 3.92tr / gram
+    expect(getMarketUnitPrice({ type: "gold_bar", unit: "gram", goldPurity: "9999" }, market)).toBe(3_920_000);
+    // 1.47tr / phân (0.1 chỉ)
+    expect(getMarketUnitPrice({ type: "gold_bar", unit: "phân", goldPurity: "9999" }, market)).toBe(1_470_000);
+  });
+
+  it("áp dụng hệ số tuổi vàng khi tính đơn giá", () => {
+    // Vàng 18K (750) = 0.72 * 14.700.000 = 10.584.000 đ/chỉ
+    const unitPrice18k = getMarketUnitPrice({ type: "gold_ring", unit: "chỉ", goldPurity: "750" }, market);
+    expect(unitPrice18k).toBe(Math.round(14_700_000 * 0.72));
+  });
+
+  it("trả về đúng đơn vị giá crypto (BTC)", () => {
+    const btcVnd = getMarketUnitPrice({ type: "crypto", symbol: "BTC", currency: "VND" }, market);
+    expect(btcVnd).toBe(2_500_000_000);
+    const btcUsd = getMarketUnitPrice({ type: "crypto", symbol: "BTC", currency: "USD" }, market);
+    expect(btcUsd).toBe(100_000);
+  });
+});
+
+describe("getEffectiveValue with unit prices", () => {
+  it("tự động nhân số lượng với đơn giá ước tính thủ công", () => {
+    // 11 chỉ vàng với đơn giá ước tính 13.000.000 đ/chỉ = 143.000.000 đ
+    const asset = makeAsset({
+      type: "gold_ring",
+      quantity: 11,
+      unit: "chỉ",
+      estimatedUnitPrice: 13_000_000,
+      estimatedValue: 143_000_000,
+      purchaseUnitPrice: 10_950_000,
+      purchaseValue: 120_450_000
+    });
+    const result = getEffectiveValue(asset, market);
+    expect(result.value).toBe(143_000_000);
+    expect(result.source).toBe("manual");
+  });
+
+  it("tự động nhân số lượng với đơn giá thị trường khi không có estimatedUnitPrice", () => {
+    // 11 chỉ vàng 9999 x 14.700.000 đ/chỉ = 161.700.000 đ
+    const asset = makeAsset({
+      type: "gold_ring",
+      quantity: 11,
+      unit: "chỉ",
+      goldPurity: "9999",
+      estimatedValue: 0
+    });
+    const result = getEffectiveValue(asset, market);
+    expect(result.value).toBe(11 * 14_700_000);
+    expect(result.source).toBe("live");
+  });
+});
+

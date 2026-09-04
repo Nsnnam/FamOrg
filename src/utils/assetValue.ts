@@ -120,36 +120,72 @@ export function calculateProfitLoss(currentValue: number, purchaseValue: number)
 }
 
 /**
+ * Lấy đơn vị giá thị trường theo 1 đơn vị của tài sản (đã nhân hệ số tuổi vàng hoặc tỷ giá USD/VND).
+ * Áp dụng cho các loại có giá live như Vàng (theo chỉ, lượng, cây, gram, phân) và Crypto (theo coin).
+ */
+export function getMarketUnitPrice(
+  assetOrConfig: {
+    type: AssetType;
+    unit?: string;
+    weightUnit?: string;
+    goldPurity?: string;
+    symbol?: string;
+    currency?: "VND" | "USD";
+  },
+  marketPrices: MarketPrices | null
+): number {
+  if (!marketPrices) return 0;
+  const isUsd = assetOrConfig.currency === "USD";
+  if (isGoldType(assetOrConfig.type)) {
+    const gold = marketPrices.gold;
+    if (!gold) return 0;
+    const wu = (assetOrConfig.weightUnit || assetOrConfig.unit || "chỉ").toLowerCase().trim();
+    let ppu: number;
+    if (wu === "lượng" || wu === "cây") ppu = isUsd ? gold.pricePerLuongUsd : gold.pricePerLuongVnd;
+    else if (wu === "gram" || wu === "g") ppu = isUsd ? gold.pricePerGramUsd : gold.pricePerGramVnd;
+    else if (wu === "phân") ppu = Math.round((isUsd ? gold.pricePerChiUsd : gold.pricePerChiVnd) / 10);
+    else ppu = isUsd ? gold.pricePerChiUsd : gold.pricePerChiVnd;
+    const factor = goldPurityFactor(assetOrConfig.goldPurity);
+    return Math.round(ppu * factor);
+  }
+
+  if (assetOrConfig.type === "crypto" && assetOrConfig.symbol) {
+    const coin = marketPrices.crypto[assetOrConfig.symbol.toUpperCase()];
+    if (!coin) return 0;
+    return Math.round(isUsd ? coin.usd : coin.vnd);
+  }
+
+  return 0;
+}
+
+/**
  * Giá trị hiệu dụng của tài sản theo thứ tự ưu tiên:
- * 1) estimatedValue nhập tay  2) giá thị trường live (vàng/crypto)
- * 3) giá mua ban đầu  4) không xác định.
+ * 1) estimatedUnitPrice / estimatedValue nhập tay
+ * 2) giá thị trường live (vàng/crypto)
+ * 3) giá mua ban đầu
+ * 4) không xác định.
  */
 export function getEffectiveValue(asset: FamilyAsset, marketPrices: MarketPrices | null): EffectiveValue {
+  const quantity = isGoldType(asset.type) ? effectiveGoldWeight(asset) : Number(asset.quantity || 0);
+
+  if (asset.estimatedUnitPrice && asset.estimatedUnitPrice > 0 && quantity > 0) {
+    return { value: Math.round(quantity * asset.estimatedUnitPrice), source: "manual" };
+  }
+
   if (Number(asset.estimatedValue) > 0) return { value: Number(asset.estimatedValue), source: "manual" };
 
   if (marketPrices) {
     const goldWeight = effectiveGoldWeight(asset);
     if (isGoldType(asset.type) && goldWeight > 0) {
-      const gold = marketPrices.gold;
-      if (gold) {
-        const wu = (asset.weightUnit || asset.unit || "chỉ").toLowerCase().trim();
-        const isUsd = asset.currency === "USD";
-        let pricePerUnit: number;
-        if (wu === "lượng") pricePerUnit = isUsd ? gold.pricePerLuongUsd : gold.pricePerLuongVnd;
-        else if (wu === "gram" || wu === "g") pricePerUnit = isUsd ? gold.pricePerGramUsd : gold.pricePerGramVnd;
-        else pricePerUnit = isUsd ? gold.pricePerChiUsd : gold.pricePerChiVnd;
-        const v = Math.round(goldWeight * pricePerUnit * goldPurityFactor(asset.goldPurity));
-        if (v > 0) return { value: v, source: "live" };
-      }
+      const unitPrice = getMarketUnitPrice(asset, marketPrices);
+      const v = Math.round(goldWeight * unitPrice);
+      if (v > 0) return { value: v, source: "live" };
     }
 
     if (asset.type === "crypto" && asset.symbol && asset.quantity > 0) {
-      const coin = marketPrices.crypto[asset.symbol.toUpperCase()];
-      if (coin) {
-        const price = asset.currency === "USD" ? coin.usd : coin.vnd;
-        const v = Math.round(asset.quantity * price);
-        if (v > 0) return { value: v, source: "live" };
-      }
+      const unitPrice = getMarketUnitPrice(asset, marketPrices);
+      const v = Math.round(asset.quantity * unitPrice);
+      if (v > 0) return { value: v, source: "live" };
     }
   }
 

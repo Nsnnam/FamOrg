@@ -1926,10 +1926,18 @@ export class FamilyDB {
     const db = this.readRaw();
     const now = new Date().toISOString();
     const safeQuantity = Number.isFinite(Number(data.quantity)) ? Number(data.quantity) : 1;
-    const safeEstimatedValue = Number.isFinite(Number(data.estimatedValue)) ? Number(data.estimatedValue) : 0;
+    const safePurchaseUnitPrice = data.purchaseUnitPrice !== undefined && Number.isFinite(Number(data.purchaseUnitPrice))
+      ? Number(data.purchaseUnitPrice)
+      : undefined;
     const safePurchaseValue = data.purchaseValue !== undefined && Number.isFinite(Number(data.purchaseValue))
       ? Number(data.purchaseValue)
+      : (safePurchaseUnitPrice !== undefined && safeQuantity > 0 ? Math.round(safeQuantity * safePurchaseUnitPrice) : undefined);
+    const safeEstimatedUnitPrice = data.estimatedUnitPrice !== undefined && Number.isFinite(Number(data.estimatedUnitPrice))
+      ? Number(data.estimatedUnitPrice)
       : undefined;
+    const safeEstimatedValue = Number.isFinite(Number(data.estimatedValue))
+      ? Number(data.estimatedValue)
+      : (safeEstimatedUnitPrice !== undefined && safeQuantity > 0 ? Math.round(safeQuantity * safeEstimatedUnitPrice) : 0);
 
     if (data.id) {
       const idx = db.assets.findIndex(a => a.id === data.id);
@@ -1942,8 +1950,10 @@ export class FamilyDB {
         type: data.type && VALID_ASSET_TYPES.has(data.type) ? data.type : existing.type,
         name: nextName || existing.name,
         quantity: safeQuantity,
-        estimatedValue: safeEstimatedValue,
+        purchaseUnitPrice: safePurchaseUnitPrice !== undefined ? safePurchaseUnitPrice : existing.purchaseUnitPrice,
         purchaseValue: safePurchaseValue,
+        estimatedUnitPrice: safeEstimatedUnitPrice !== undefined ? safeEstimatedUnitPrice : existing.estimatedUnitPrice,
+        estimatedValue: safeEstimatedValue,
         currency: data.currency || existing.currency || "VND",
         goldSource: data.goldSource !== undefined ? String(data.goldSource).trim() : existing.goldSource || "",
         photos: Array.isArray(data.photos) ? data.photos : existing.photos || [],
@@ -1967,8 +1977,10 @@ export class FamilyDB {
       ownerId: data.ownerId || undefined,
       quantity: safeQuantity,
       unit: (data.unit || "mục").trim(),
-      estimatedValue: safeEstimatedValue,
+      purchaseUnitPrice: safePurchaseUnitPrice,
       purchaseValue: safePurchaseValue,
+      estimatedUnitPrice: safeEstimatedUnitPrice,
+      estimatedValue: safeEstimatedValue,
       currency: data.currency || "VND",
       purchaseDate: data.purchaseDate || undefined,
       location: data.location?.trim() || "",
