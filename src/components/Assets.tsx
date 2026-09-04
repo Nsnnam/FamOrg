@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState, useCallback, useRef } from "react";
+import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import {
   Calendar,
   Car,
@@ -20,6 +20,8 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Sparkles,
+  Store,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -37,6 +39,8 @@ import {
   AssetType,
   FamilyAsset,
   FinancialTransaction,
+  GoldPackaging,
+  PrivateGoldStore,
   TransactionType,
   User,
   UserRole
@@ -49,6 +53,7 @@ import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
 import { DateInputDMY } from "./DateTimePicker24.js";
+import { GoldStoresModal } from "./GoldStoresModal.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
@@ -236,8 +241,29 @@ export function Assets({
   const [formParcelNo, setFormParcelNo] = useState("");
   const [formGoldPurity, setFormGoldPurity] = useState("");
   const [formGoldSource, setFormGoldSource] = useState("");
+  const [formGoldPackaging, setFormGoldPackaging] = useState<GoldPackaging>("blister");
+  const [formGoldStoreId, setFormGoldStoreId] = useState<string>("");
   const [formBrand, setFormBrand] = useState("");
   const [formSerialNo, setFormSerialNo] = useState("");
+
+  const [goldStores, setGoldStores] = useState<PrivateGoldStore[]>([]);
+  const [goldStoresModalOpen, setGoldStoresModalOpen] = useState(false);
+
+  const fetchGoldStores = useCallback(async () => {
+    try {
+      const res = await fetch("/api/finance/gold-stores");
+      if (res.ok) {
+        const data = await res.json();
+        setGoldStores(data.goldStores || []);
+      }
+    } catch (err) {
+      console.error("Lỗi tải danh mục tiệm vàng:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGoldStores();
+  }, [fetchGoldStores]);
 
   const widgetsOverview = widgets ?? null;
 
@@ -345,6 +371,69 @@ export function Assets({
     }
   };
 
+  const handleGoldPackagingChange = (pkg: GoldPackaging) => {
+    setFormGoldPackaging(pkg);
+    if (formGoldStoreId) {
+      const store = goldStores.find(s => s.id === formGoldStoreId);
+      if (store) {
+        const unitPrice = pkg === "blister"
+          ? (store.prices?.ringBlisterBuyPrice || store.prices?.ringBlisterSellPrice || 0)
+          : (store.prices?.ringPlainBuyPrice || store.prices?.ringPlainSellPrice || 0);
+        if (unitPrice > 0) {
+          handleEstimatedUnitPriceChange(unitPrice);
+        }
+      }
+    }
+  };
+
+  const handleGoldSourceChange = (val: string) => {
+    setFormGoldSource(val);
+    const valLower = val.toLowerCase().trim();
+    const matchingStore = goldStores.find(
+      s => s.name.toLowerCase().trim() === valLower || s.id === val || (valLower.length >= 3 && valLower.includes(s.name.toLowerCase().trim()))
+    );
+    if (matchingStore) {
+      setFormGoldStoreId(matchingStore.id);
+      if (!formBrand) setFormBrand(matchingStore.name);
+      const unitPrice = formGoldPackaging === "blister"
+        ? (matchingStore.prices?.ringBlisterBuyPrice || matchingStore.prices?.ringBlisterSellPrice || 0)
+        : (matchingStore.prices?.ringPlainBuyPrice || matchingStore.prices?.ringPlainSellPrice || 0);
+      if (unitPrice > 0) {
+        handleEstimatedUnitPriceChange(unitPrice);
+      }
+    } else {
+      const curStore = goldStores.find(s => s.id === formGoldStoreId);
+      if (curStore && curStore.name !== val) {
+        setFormGoldStoreId("");
+      }
+    }
+  };
+
+  const goldSourceOptions = useMemo(() => {
+    const storeOptions = goldStores.map(s => ({
+      value: s.name,
+      label: `🏪 ${s.name} ${s.prices?.ringBlisterBuyPrice ? `(Vỉ: ${formatMoney(s.prices.ringBlisterBuyPrice)} · Thường: ${formatMoney(s.prices.ringPlainBuyPrice || 0)})` : ""}`
+    }));
+
+    const brandOptions = [
+      { value: "SJC", label: "🏢 Hãng SJC" },
+      { value: "DOJI", label: "🏢 Hãng DOJI" },
+      { value: "PNJ", label: "🏢 Hãng PNJ" },
+      { value: "BTMC", label: "🏢 Bảo Tín Minh Châu" },
+      { value: "Vàng tư nhân khác", label: "🏪 Vàng tư nhân khác" },
+      { value: "Khác", label: "🏢 Hãng khác" }
+    ];
+
+    return [
+      { value: "", label: "— Chọn nguồn / tiệm mua vàng —" },
+      ...storeOptions,
+      ...brandOptions,
+      ...(formGoldSource && !storeOptions.some(o => o.value === formGoldSource) && !brandOptions.some(o => o.value === formGoldSource)
+        ? [{ value: formGoldSource, label: `🏪 ${formGoldSource}` }]
+        : [])
+    ];
+  }, [goldStores, formGoldSource]);
+
   const filteredAssets = useMemo(() => {
     const text = searchTerm.trim().toLowerCase();
     return assets.filter(asset => {
@@ -410,6 +499,8 @@ export function Assets({
     setFormParcelNo("");
     setFormGoldPurity("");
     setFormGoldSource("");
+    setFormGoldPackaging("blister");
+    setFormGoldStoreId("");
     setFormBrand("");
     setFormSerialNo("");
   };
@@ -488,6 +579,8 @@ export function Assets({
     setFormParcelNo(asset.parcelNo || "");
     setFormGoldPurity(asset.goldPurity || "");
     setFormGoldSource(asset.goldSource || "");
+    setFormGoldPackaging(asset.goldPackaging || (/ép vỉ|vỉ/i.test(asset.name) ? "blister" : "plain"));
+    setFormGoldStoreId(asset.goldStoreId || "");
     setFormBrand(asset.brand || "");
     setFormSerialNo(asset.serialNo || "");
     setFormError("");
@@ -786,6 +879,8 @@ export function Assets({
         parcelNo: formParcelNo.trim(),
         goldPurity: formGoldPurity.trim(),
         goldSource: isGoldType(formType) ? formGoldSource.trim() : "",
+        goldPackaging: isGoldType(formType) ? formGoldPackaging : undefined,
+        goldStoreId: isGoldType(formType) ? (formGoldStoreId || undefined) : undefined,
         // Vàng: trọng lượng lưu từ Số lượng/Đơn vị (gộp, tránh nhập 2 lần).
         weight: isGoldType(formType) ? (Number(formQuantity) || undefined) : undefined,
         weightUnit: isGoldType(formType) ? formUnit.trim() : "",
@@ -1007,6 +1102,19 @@ export function Assets({
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
+              onClick={() => setGoldStoresModalOpen(true)}
+              className="bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-200 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+              title="Quản lý tiệm vàng tư nhân và bảng giá thời điểm"
+            >
+              <Store className="size-4 text-amber-400" /> Tiệm vàng & Bảng giá
+              {goldStores.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/30 text-amber-300 font-bold ml-0.5">
+                  {goldStores.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={openGoldImport}
               className="bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
             >
@@ -1081,9 +1189,22 @@ export function Assets({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${typeClass(asset.type)}`}>
-                          {assetTypeLabel(asset.type)}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${typeClass(asset.type)}`}>
+                            {assetTypeLabel(asset.type)}
+                          </span>
+                          {isGoldType(asset.type) && (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-bold ${
+                                asset.goldPackaging === "blister"
+                                  ? "text-amber-300 bg-amber-500/20 border-amber-500/40 shadow-xs"
+                                  : "text-slate-300 bg-slate-800/80 border-slate-700"
+                              }`}
+                            >
+                              {asset.goldPackaging === "blister" ? "🏷️ Ép vỉ (Thanh khoản cao)" : "💍 Loại thường"}
+                            </span>
+                          )}
+                        </div>
                         <h3 className="mt-1 text-sm font-bold text-slate-100 truncate">{asset.name}</h3>
                       </div>
                       {canManageAsset(asset) && (
@@ -1194,7 +1315,12 @@ export function Assets({
                     <>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Trọng lượng: <span className="text-amber-400 font-bold tabular-nums">{asset.weight ? `${asset.weight} ${asset.weightUnit || asset.unit}` : "—"}</span></p>
                       <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Tuổi vàng: <span className="text-slate-200">{goldPurityLabel(asset.goldPurity)}</span></p>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Nguồn: <span className="text-amber-300 font-semibold">{asset.goldSource || "Chưa phân loại"}</span></p>
+                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400 col-span-1 sm:col-span-2 flex items-center justify-between flex-wrap gap-1">
+                        <span>Tiệm / Nguồn: <span className="text-amber-300 font-bold">🏪 {asset.goldSource || "Tiệm vàng tư nhân"}</span></span>
+                        <span className="text-[10px] text-slate-400">
+                          {asset.goldPackaging === "blister" ? "🏷️ Nhẫn ép vỉ" : "💍 Nhẫn trơn thường"}
+                        </span>
+                      </p>
                     </>
                   )}
                   {asset.type === "vehicle" && (
@@ -1704,47 +1830,117 @@ export function Assets({
                 )}
 
                 {isGoldType(formType) && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
-                    <div className="flex items-center gap-1.5">
-                      <FancySelect
-                        value={normalizeGoldPurity(formGoldPurity)}
-                        onChange={setFormGoldPurity}
-                        ariaLabel="Tuổi vàng"
-                        placeholder="— Tuổi vàng —"
-                        className="flex-1 min-w-0"
-                        options={[
-                          { value: "", label: "— Tuổi vàng —" },
-                          ...GOLD_PURITY_OPTIONS.map(o => ({ value: o.value, label: `${o.label} (${Math.round(o.factor * 100)}%)` }))
-                        ]}
-                      />
-                      <button type="button" onClick={() => setShowGoldPurityInfo(true)} aria-label="Bảng quy ước tuổi vàng" title="Bảng quy ước tuổi vàng" className="shrink-0 size-9 rounded-lg bg-slate-800 border border-slate-700 text-amber-400 hover:bg-slate-700 flex items-center justify-center cursor-pointer">
-                        <Info className="size-4" />
-                      </button>
-                    </div>
-                    <FancySelect
-                      value={formGoldSource}
-                      onChange={setFormGoldSource}
-                      ariaLabel="Nguồn vàng"
-                      placeholder="— Mua tại hãng / tư nhân —"
-                      options={[
-                        { value: "", label: "— Nguồn vàng —" },
-                        ...GOLD_SOURCE_OPTIONS,
-                        ...(formGoldSource && !GOLD_SOURCE_OPTIONS.some(o => o.value === formGoldSource)
-                          ? [{ value: formGoldSource, label: formGoldSource }]
-                          : [])
-                      ]}
-                    />
-                    <input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="Nhãn hiệu/dòng sản phẩm" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
-                    <input value={formSerialNo} onChange={(e) => setFormSerialNo(e.target.value)} placeholder="Số seri nếu có" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
-                    {marketPrices?.gold && (
-                      <div className="md:col-span-2 xl:col-span-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-amber-400/80">
-                        <span className="flex items-center gap-1"><TrendingUp className="size-3" /> Giá vàng 9999 tham chiếu:</span>
-                        <span className="font-bold">{formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ</span>
-                        <span className="text-amber-400/50">· {formatMoney(Math.round(marketPrices.gold.pricePerLuongVnd))}/lượng</span>
-                        <span className="text-amber-400/50">· {formatMoney(Math.round(marketPrices.gold.pricePerGramVnd))}/gram</span>
-                        <span className="text-slate-500">— giá tuổi vàng khác = giá 9999 × hệ số quy ước</span>
+                  <div className="space-y-3 bg-slate-950/40 border border-slate-800 rounded-xl p-3">
+                    {/* Hình thức bao bì: Ép vỉ vs Loại thường */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                          <Sparkles className="size-3.5 text-amber-400" />
+                          Hình thức bao bì vàng nhẫn 24K:
+                        </label>
+                        <span className="text-[10px] text-amber-400/90 font-medium">
+                          {formGoldPackaging === "blister" ? "Ép vỉ thanh khoản cao hơn" : "Nhẫn trơn thông thường"}
+                        </span>
                       </div>
-                    )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleGoldPackagingChange("blister")}
+                          className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 cursor-pointer transition-all ${
+                            formGoldPackaging === "blister"
+                              ? "bg-amber-500/15 border-amber-500/80 text-amber-200 shadow-sm"
+                              : "bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900"
+                          }`}
+                        >
+                          <span className="text-xl">🏷️</span>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-bold leading-tight text-amber-300">Ép vỉ (Thanh khoản cao)</p>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">Khuyên dùng</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-0.5">Bao bì niêm phong chuẩn tuổi, tiệm thu mua lại giá cao nhất</p>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGoldPackagingChange("plain")}
+                          className={`p-2.5 rounded-xl border text-left flex items-start gap-2.5 cursor-pointer transition-all ${
+                            formGoldPackaging === "plain"
+                              ? "bg-amber-500/15 border-amber-500/80 text-amber-200 shadow-sm"
+                              : "bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900"
+                          }`}
+                        >
+                          <span className="text-xl">💍</span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold leading-tight text-slate-200">Loại thường / Nhẫn trơn</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">Nhẫn tròn trơn truyền thống, thanh khoản theo giá vàng thường</p>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 pt-1 border-t border-slate-850">
+                      <div className="flex items-center gap-1.5">
+                        <FancySelect
+                          value={normalizeGoldPurity(formGoldPurity)}
+                          onChange={setFormGoldPurity}
+                          ariaLabel="Tuổi vàng"
+                          placeholder="— Tuổi vàng —"
+                          className="flex-1 min-w-0"
+                          options={[
+                            { value: "", label: "— Tuổi vàng —" },
+                            ...GOLD_PURITY_OPTIONS.map(o => ({ value: o.value, label: `${o.label} (${Math.round(o.factor * 100)}%)` }))
+                          ]}
+                        />
+                        <button type="button" onClick={() => setShowGoldPurityInfo(true)} aria-label="Bảng quy ước tuổi vàng" title="Bảng quy ước tuổi vàng" className="shrink-0 size-9 rounded-lg bg-slate-800 border border-slate-700 text-amber-400 hover:bg-slate-700 flex items-center justify-center cursor-pointer">
+                          <Info className="size-4" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-1">
+                        <FancySelect
+                          value={formGoldSource}
+                          onChange={handleGoldSourceChange}
+                          ariaLabel="Nguồn vàng"
+                          placeholder="— Mua tại tiệm tư nhân / hãng —"
+                          options={goldSourceOptions}
+                        />
+                      </div>
+
+                      <input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="Nhãn hiệu/tiệm vàng" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+                      <input value={formSerialNo} onChange={(e) => setFormSerialNo(e.target.value)} placeholder="Số seri nếu có" className="bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none" />
+
+                      <div className="md:col-span-2 xl:col-span-4 flex items-center justify-between flex-wrap gap-2 text-[10px]">
+                        {formGoldStoreId ? (
+                          <div className="text-amber-300 font-semibold flex items-center gap-1.5">
+                            <Store className="size-3.5 text-amber-400" />
+                            <span>
+                              Đang áp dụng bảng giá tiệm: <b>{formGoldSource}</b> ({formGoldPackaging === "blister" ? "Ép vỉ" : "Loại thường"})
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500">
+                            Chọn tiệm vàng tư nhân để tự động điền đơn giá thu mua theo hình thức bao bì
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setGoldStoresModalOpen(true)}
+                          className="text-amber-400 hover:text-amber-300 font-bold underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Store className="size-3" /> Quản lý danh mục & bảng giá tiệm vàng
+                        </button>
+                      </div>
+
+                      {marketPrices?.gold && (
+                        <div className="md:col-span-2 xl:col-span-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-amber-400/80 pt-1 border-t border-slate-850">
+                          <span className="flex items-center gap-1"><TrendingUp className="size-3" /> Giá vàng 9999 thị trường live:</span>
+                          <span className="font-bold">{formatMoney(Math.round(marketPrices.gold.pricePerChiVnd))}/chỉ</span>
+                          <span className="text-amber-400/50">· {formatMoney(Math.round(marketPrices.gold.pricePerLuongVnd))}/lượng</span>
+                          <span className="text-amber-400/50">· {formatMoney(Math.round(marketPrices.gold.pricePerGramVnd))}/gram</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -2106,6 +2302,17 @@ export function Assets({
           </motion.div>
         </div>
       )}
+
+      <GoldStoresModal
+        isOpen={goldStoresModalOpen}
+        onClose={() => setGoldStoresModalOpen(false)}
+        goldStores={goldStores}
+        assets={assets}
+        onRefresh={async () => {
+          await fetchGoldStores();
+          if (onRefreshData) await onRefreshData();
+        }}
+      />
 
       {ConfirmDialog}
     </div>

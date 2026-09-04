@@ -1986,6 +1986,54 @@ app.get("/api/finance/gold-price-imports", requireAuth, requireRole([UserRole.AD
   res.json({ imports: FamilyDB.getGoldPriceImports() });
 });
 
+// --- PRIVATE GOLD STORES & PRICES ---
+app.get("/api/finance/gold-stores", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (_req: AuthRequest, res: Response) => {
+  res.json({ goldStores: FamilyDB.getGoldStores() });
+});
+
+app.post("/api/finance/gold-stores", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const store = FamilyDB.saveGoldStore(req.body, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { goldStoreId: store.id });
+    res.json({ store });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/finance/gold-stores/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    FamilyDB.deleteGoldStore(req.params.id, session.userId, session.username);
+    broadcastSyncEvent("FINANCE_UPDATE", { deletedGoldStoreId: req.params.id });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/finance/gold-stores/:id/prices", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
+  const session = req.userSession!;
+  try {
+    const result = FamilyDB.updateGoldStorePrices(
+      req.params.id,
+      req.body.prices || {},
+      req.body.note,
+      req.body.autoConvertAssets !== false,
+      session.userId,
+      session.username
+    );
+    broadcastSyncEvent("FINANCE_UPDATE", { goldStoreId: req.params.id, updatedAssetsCount: result.updatedAssetsCount });
+    res.json({
+      ...result,
+      assets: FamilyDB.getAssets()
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.delete("/api/finance/assets/:id", requireAuth, requireRole([UserRole.ADMIN, UserRole.MEMBER]), (req: AuthRequest, res: Response) => {
   const session = req.userSession!;
   const existing = FamilyDB.getAssets().find(a => a.id === req.params.id);

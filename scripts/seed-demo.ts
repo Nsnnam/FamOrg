@@ -855,7 +855,8 @@ const demoDB: FamilyOrganizerDB = {
   activityLogs: [],
   backups: [],
   assetPriceLogs: [],
-  goldPriceImports: []
+  goldPriceImports: [],
+  goldStores: []
 };
 
 console.log("\n🌱  Family Organizer — Demo Seed");

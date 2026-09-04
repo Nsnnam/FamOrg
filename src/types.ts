@@ -332,6 +332,40 @@ export interface AssetPhoto {
   createdAt: string;
 }
 
+export type GoldPackaging = "blister" | "plain";
+
+export interface GoldStorePrices {
+  ringBlisterBuyPrice?: number;
+  ringBlisterSellPrice?: number;
+  ringPlainBuyPrice?: number;
+  ringPlainSellPrice?: number;
+  goldOtherBuyPrice?: number;
+  updatedAt: string;
+}
+
+export interface GoldStorePriceHistoryEntry {
+  id: string;
+  date: string;
+  ringBlisterBuyPrice?: number;
+  ringBlisterSellPrice?: number;
+  ringPlainBuyPrice?: number;
+  ringPlainSellPrice?: number;
+  note?: string;
+  updatedBy?: string;
+}
+
+export interface PrivateGoldStore {
+  id: string;
+  name: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  prices: GoldStorePrices;
+  priceHistory?: GoldStorePriceHistoryEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface FamilyAsset {
   id: string;
   type: AssetType;
@@ -359,6 +393,10 @@ export interface FamilyAsset {
   goldPurity?: string;
   /** Nguồn vàng: thương hiệu/hãng (SJC, DOJI, PNJ...) hoặc vàng tư nhân. */
   goldSource?: string;
+  /** Hình thức bao bì vàng nhẫn/vàng: "blister" (ép vỉ - thanh khoản cao hơn) | "plain" (loại thường / nhẫn trơn) */
+  goldPackaging?: GoldPackaging;
+  /** ID cửa hàng vàng tư nhân nếu mua tại tiệm tư nhân */
+  goldStoreId?: string;
   weight?: number;
   weightUnit?: string;
   brand?: string;
@@ -636,6 +674,7 @@ export interface FamilyOrganizerDB {
   assets: FamilyAsset[];
   assetPriceLogs: AssetPriceLog[];
   goldPriceImports: GoldPriceImport[];
+  goldStores: PrivateGoldStore[];
   medications: MedicationReminder[];
   medicationLogs: MedicationLog[];
   vaccinations: VaccinationRecord[];

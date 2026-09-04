@@ -326,5 +326,44 @@ describe("getEffectiveValue with unit prices", () => {
     expect(result.value).toBe(11 * 14_700_000);
     expect(result.source).toBe("live");
   });
+
+  it("phân biệt bao bì ép vỉ và loại thường khi tính giá theo tiệm vàng", () => {
+    // Tiệm vàng Gia Bảo: Nhẫn ép vỉ 14.950.000 đ/chỉ, Nhẫn thường 14.800.000 đ/chỉ
+    const storePrices = {
+      ringBlisterBuyPrice: 14_950_000,
+      ringPlainBuyPrice: 14_800_000
+    };
+
+    const blisterAsset = makeAsset({
+      type: "gold_ring",
+      quantity: 10,
+      unit: "chỉ",
+      goldPackaging: "blister",
+      goldStoreId: "store_giabao",
+      goldSource: "Tiệm vàng Gia Bảo",
+      estimatedUnitPrice: storePrices.ringBlisterBuyPrice,
+      estimatedValue: 10 * storePrices.ringBlisterBuyPrice
+    });
+
+    const plainAsset = makeAsset({
+      type: "gold_ring",
+      quantity: 10,
+      unit: "chỉ",
+      goldPackaging: "plain",
+      goldStoreId: "store_giabao",
+      goldSource: "Tiệm vàng Gia Bảo",
+      estimatedUnitPrice: storePrices.ringPlainBuyPrice,
+      estimatedValue: 10 * storePrices.ringPlainBuyPrice
+    });
+
+    expect(blisterAsset.goldPackaging).toBe("blister");
+    expect(plainAsset.goldPackaging).toBe("plain");
+
+    // Ép vỉ có giá thanh khoản cao hơn loại thường (149.5tr vs 148tr)
+    expect(blisterAsset.estimatedValue).toBe(149_500_000);
+    expect(plainAsset.estimatedValue).toBe(148_000_000);
+    expect(blisterAsset.estimatedValue).toBeGreaterThan(plainAsset.estimatedValue);
+  });
 });
+
 

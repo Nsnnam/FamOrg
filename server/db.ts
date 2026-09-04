@@ -23,6 +23,10 @@ import {
   AssetPriceLog,
   GoldPriceImport,
   GoldPriceImportRow,
+  GoldPackaging,
+  GoldStorePrices,
+  GoldStorePriceHistoryEntry,
+  PrivateGoldStore,
   MedicationReminder,
   MedicationLog,
   FamilyDocument,
@@ -45,6 +49,7 @@ import {
 } from "../src/types.js";
 import { SEED_DISHES } from "../src/utils/mealPlan.js";
 import { isDebtFullyPaid } from "../src/utils/debt.js";
+import { isGoldType, effectiveGoldWeight } from "../src/utils/assetValue.js";
 import { sqliteIsEmpty, sqliteLoad, sqliteSave, sqliteCheckpoint } from "./sqlite.js";
 import { deleteMediaByUrl } from "./media.js";
 import { dispatchPush } from "./push.js";
@@ -191,6 +196,7 @@ const initialDBState = (): FamilyOrganizerDB => {
     assets: [],
     assetPriceLogs: [],
     goldPriceImports: [],
+    goldStores: [],
     medications: [],
     medicationLogs: [],
     vaccinations: [],
@@ -224,6 +230,104 @@ function normalizeDB(db: any): FamilyOrganizerDB {
   db.assets = db.assets || [];
   db.assetPriceLogs = db.assetPriceLogs || [];
   db.goldPriceImports = db.goldPriceImports || [];
+  db.goldStores = db.goldStores || [];
+  if (db.goldStores.length === 0) {
+    const now = new Date().toISOString();
+    db.goldStores = [
+      {
+        id: "store_giabao",
+        name: "Tiệm vàng Gia Bảo",
+        phone: "",
+        address: "",
+        notes: "Tiệm vàng tư nhân quen thuộc",
+        prices: {
+          ringBlisterBuyPrice: 14950000,
+          ringBlisterSellPrice: 15200000,
+          ringPlainBuyPrice: 14800000,
+          ringPlainSellPrice: 15050000,
+          updatedAt: now
+        },
+        priceHistory: [
+          {
+            id: "sph_init_1",
+            date: now,
+            ringBlisterBuyPrice: 14950000,
+            ringBlisterSellPrice: 15200000,
+            ringPlainBuyPrice: 14800000,
+            ringPlainSellPrice: 15050000,
+            note: "Khởi tạo bảng giá ban đầu"
+          }
+        ],
+        createdAt: now,
+        updatedAt: now
+      },
+      {
+        id: "store_xuantruong",
+        name: "Tiệm vàng Xuân Trường",
+        phone: "",
+        address: "",
+        notes: "Tiệm vàng tư nhân quen thuộc",
+        prices: {
+          ringBlisterBuyPrice: 14950000,
+          ringBlisterSellPrice: 15200000,
+          ringPlainBuyPrice: 14850000,
+          ringPlainSellPrice: 15100000,
+          updatedAt: now
+        },
+        priceHistory: [
+          {
+            id: "sph_init_2",
+            date: now,
+            ringBlisterBuyPrice: 14950000,
+            ringBlisterSellPrice: 15200000,
+            ringPlainBuyPrice: 14850000,
+            ringPlainSellPrice: 15100000,
+            note: "Khởi tạo bảng giá ban đầu"
+          }
+        ],
+        createdAt: now,
+        updatedAt: now
+      }
+    ];
+  }
+
+  db.assets = db.assets.map((asset: any) => {
+    let goldPackaging = asset.goldPackaging;
+    let goldStoreId = asset.goldStoreId;
+    let goldSource = asset.goldSource;
+
+    if (isGoldType(asset.type)) {
+      if (!goldPackaging) {
+        const nameLower = (asset.name || "").toLowerCase();
+        const notesLower = (asset.notes || "").toLowerCase();
+        if (nameLower.includes("vỉ") || notesLower.includes("vỉ") || nameLower.includes("ép vỉ")) {
+          goldPackaging = "blister";
+        } else {
+          goldPackaging = "plain";
+        }
+      }
+
+      if (!goldStoreId) {
+        const brandLower = (asset.brand || "").toLowerCase();
+        const nameLower = (asset.name || "").toLowerCase();
+        const sourceLower = (asset.goldSource || "").toLowerCase();
+        if (brandLower.includes("gia bảo") || nameLower.includes("gia bảo") || sourceLower.includes("gia bảo")) {
+          goldStoreId = "store_giabao";
+          if (!goldSource || goldSource === "Vàng tư nhân") goldSource = "Tiệm vàng Gia Bảo";
+        } else if (brandLower.includes("xuân trường") || nameLower.includes("xuân trường") || sourceLower.includes("xuân trường")) {
+          goldStoreId = "store_xuantruong";
+          if (!goldSource || goldSource === "Vàng tư nhân") goldSource = "Tiệm vàng Xuân Trường";
+        }
+      }
+    }
+
+    return {
+      ...asset,
+      goldPackaging,
+      goldStoreId,
+      goldSource
+    };
+  });
   db.medications = db.medications || [];
   db.medicationLogs = db.medicationLogs || [];
   db.vaccinations = db.vaccinations || [];
@@ -526,6 +630,10 @@ export class FamilyDB {
 
   public static getAssets() {
     return this.readRaw().assets;
+  }
+
+  public static getGoldStores() {
+    return this.readRaw().goldStores;
   }
 
   public static getAssetPriceLogs(assetId?: string) {
@@ -1956,6 +2064,8 @@ export class FamilyDB {
         estimatedValue: safeEstimatedValue,
         currency: data.currency || existing.currency || "VND",
         goldSource: data.goldSource !== undefined ? String(data.goldSource).trim() : existing.goldSource || "",
+        goldPackaging: data.goldPackaging !== undefined ? data.goldPackaging : existing.goldPackaging,
+        goldStoreId: data.goldStoreId !== undefined ? (data.goldStoreId?.trim() || undefined) : existing.goldStoreId,
         photos: Array.isArray(data.photos) ? data.photos : existing.photos || [],
         createdById: existing.createdById,
         createdAt: existing.createdAt,
@@ -1996,6 +2106,8 @@ export class FamilyDB {
       parcelNo: data.parcelNo?.trim() || "",
       goldPurity: data.goldPurity?.trim() || "",
       goldSource: data.goldSource?.trim() || "",
+      goldPackaging: data.goldPackaging || undefined,
+      goldStoreId: data.goldStoreId?.trim() || undefined,
       weight: data.weight !== undefined && Number.isFinite(Number(data.weight)) ? Number(data.weight) : undefined,
       weightUnit: data.weightUnit?.trim() || "",
       brand: data.brand?.trim() || "",
@@ -2115,6 +2227,171 @@ export class FamilyDB {
     // Remove all stored photo files for this asset.
     assetPhotoUrls(asset).forEach(deleteMediaByUrl);
     this.logActivity(userId, username, "Xóa tài sản", `Đã xóa tài sản "${asset.name}".`);
+  }
+
+  // --- PRIVATE GOLD STORES & PRICES ---
+  public static saveGoldStore(data: Partial<PrivateGoldStore>, userId: string, username: string): PrivateGoldStore {
+    const db = this.readRaw();
+    const now = new Date().toISOString();
+    const name = (data.name || "").trim();
+    if (!name) throw new Error("Vui lòng nhập tên tiệm vàng tư nhân.");
+
+    if (data.id) {
+      const idx = db.goldStores.findIndex(s => s.id === data.id);
+      if (idx === -1) throw new Error("Không tìm thấy thông tin cửa hàng vàng.");
+      const existing = db.goldStores[idx];
+      const updated: PrivateGoldStore = {
+        ...existing,
+        name,
+        phone: data.phone !== undefined ? data.phone.trim() : existing.phone,
+        address: data.address !== undefined ? data.address.trim() : existing.address,
+        notes: data.notes !== undefined ? data.notes.trim() : existing.notes,
+        prices: data.prices ? { ...existing.prices, ...data.prices, updatedAt: now } : existing.prices,
+        updatedAt: now
+      };
+      db.goldStores[idx] = updated;
+      this.writeRaw(db);
+      this.logActivity(userId, username, "Cập nhật tiệm vàng", `Đã cập nhật thông tin tiệm "${updated.name}".`);
+      return updated;
+    }
+
+    const newStore: PrivateGoldStore = {
+      id: `store_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      phone: data.phone?.trim() || "",
+      address: data.address?.trim() || "",
+      notes: data.notes?.trim() || "",
+      prices: {
+        ringBlisterBuyPrice: Number(data.prices?.ringBlisterBuyPrice || 0) || undefined,
+        ringBlisterSellPrice: Number(data.prices?.ringBlisterSellPrice || 0) || undefined,
+        ringPlainBuyPrice: Number(data.prices?.ringPlainBuyPrice || 0) || undefined,
+        ringPlainSellPrice: Number(data.prices?.ringPlainSellPrice || 0) || undefined,
+        goldOtherBuyPrice: Number(data.prices?.goldOtherBuyPrice || 0) || undefined,
+        updatedAt: now
+      },
+      priceHistory: [
+        {
+          id: `sph_${Date.now()}`,
+          date: now,
+          ringBlisterBuyPrice: Number(data.prices?.ringBlisterBuyPrice || 0) || undefined,
+          ringBlisterSellPrice: Number(data.prices?.ringBlisterSellPrice || 0) || undefined,
+          ringPlainBuyPrice: Number(data.prices?.ringPlainBuyPrice || 0) || undefined,
+          ringPlainSellPrice: Number(data.prices?.ringPlainSellPrice || 0) || undefined,
+          note: "Khởi tạo tiệm vàng",
+          updatedBy: username
+        }
+      ],
+      createdAt: now,
+      updatedAt: now
+    };
+
+    db.goldStores.push(newStore);
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Thêm tiệm vàng", `Đã thêm tiệm vàng tư nhân "${newStore.name}".`);
+    return newStore;
+  }
+
+  public static deleteGoldStore(id: string, userId: string, username: string): void {
+    const db = this.readRaw();
+    const idx = db.goldStores.findIndex(s => s.id === id);
+    if (idx === -1) return;
+    const store = db.goldStores[idx];
+    db.goldStores.splice(idx, 1);
+
+    // Unlink any assets associated with this store id
+    db.assets.forEach(a => {
+      if (a.goldStoreId === id) {
+        a.goldStoreId = undefined;
+      }
+    });
+
+    this.writeRaw(db);
+    this.logActivity(userId, username, "Xóa tiệm vàng", `Đã xóa tiệm vàng "${store.name}".`);
+  }
+
+  public static updateGoldStorePrices(
+    storeId: string,
+    prices: Partial<GoldStorePrices>,
+    note?: string,
+    autoConvertAssets = true,
+    userId = "system",
+    username = "Hệ thống"
+  ): { store: PrivateGoldStore; updatedAssetsCount: number; updatedAssetNames: string[] } {
+    const db = this.readRaw();
+    const store = db.goldStores.find(s => s.id === storeId);
+    if (!store) throw new Error("Không tìm thấy tiệm vàng.");
+
+    const now = new Date().toISOString();
+    const ringBlisterBuyPrice = prices.ringBlisterBuyPrice !== undefined && Number(prices.ringBlisterBuyPrice) > 0 ? Number(prices.ringBlisterBuyPrice) : store.prices.ringBlisterBuyPrice;
+    const ringBlisterSellPrice = prices.ringBlisterSellPrice !== undefined && Number(prices.ringBlisterSellPrice) > 0 ? Number(prices.ringBlisterSellPrice) : store.prices.ringBlisterSellPrice;
+    const ringPlainBuyPrice = prices.ringPlainBuyPrice !== undefined && Number(prices.ringPlainBuyPrice) > 0 ? Number(prices.ringPlainBuyPrice) : store.prices.ringPlainBuyPrice;
+    const ringPlainSellPrice = prices.ringPlainSellPrice !== undefined && Number(prices.ringPlainSellPrice) > 0 ? Number(prices.ringPlainSellPrice) : store.prices.ringPlainSellPrice;
+    const goldOtherBuyPrice = prices.goldOtherBuyPrice !== undefined && Number(prices.goldOtherBuyPrice) > 0 ? Number(prices.goldOtherBuyPrice) : store.prices.goldOtherBuyPrice;
+
+    store.prices = {
+      ringBlisterBuyPrice,
+      ringBlisterSellPrice,
+      ringPlainBuyPrice,
+      ringPlainSellPrice,
+      goldOtherBuyPrice,
+      updatedAt: now
+    };
+
+    store.priceHistory = store.priceHistory || [];
+    store.priceHistory.unshift({
+      id: `sph_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      date: now,
+      ringBlisterBuyPrice,
+      ringBlisterSellPrice,
+      ringPlainBuyPrice,
+      ringPlainSellPrice,
+      note: note?.trim() || undefined,
+      updatedBy: username
+    });
+    store.updatedAt = now;
+
+    const updatedAssetNames: string[] = [];
+
+    if (autoConvertAssets) {
+      const storeNameLower = store.name.toLowerCase().trim();
+      db.assets.forEach(asset => {
+        if (!isGoldType(asset.type)) return;
+
+        const matchesStore =
+          asset.goldStoreId === store.id ||
+          (asset.goldSource && asset.goldSource.toLowerCase().includes(storeNameLower)) ||
+          (asset.brand && (storeNameLower.includes(asset.brand.toLowerCase()) || asset.brand.toLowerCase().includes(storeNameLower))) ||
+          (asset.name && asset.name.toLowerCase().includes(storeNameLower));
+
+        if (!matchesStore) return;
+
+        // Determine price by packaging: "blister" (ép vỉ) vs "plain" (loại thường)
+        const isBlister = asset.goldPackaging === "blister" || (asset.name && /ép vỉ|vỉ/i.test(asset.name));
+        const unitPrice = isBlister
+          ? (ringBlisterBuyPrice || ringBlisterSellPrice || 0)
+          : (ringPlainBuyPrice || ringPlainSellPrice || 0);
+
+        if (unitPrice > 0) {
+          const weightOrQty = effectiveGoldWeight(asset);
+          asset.estimatedUnitPrice = unitPrice;
+          asset.estimatedValue = Math.round(weightOrQty * unitPrice);
+          asset.goldStoreId = store.id;
+          asset.goldSource = store.name;
+          if (!asset.goldPackaging) asset.goldPackaging = isBlister ? "blister" : "plain";
+          asset.updatedAt = now;
+          updatedAssetNames.push(asset.name);
+        }
+      });
+    }
+
+    this.writeRaw(db);
+    const count = updatedAssetNames.length;
+    const desc = count > 0
+      ? `Đã cập nhật bảng giá tiệm "${store.name}" và tự động chuyển đổi giá trị ${count} tài sản (${updatedAssetNames.join(", ")}).`
+      : `Đã cập nhật bảng giá tiệm "${store.name}".`;
+    this.logActivity(userId, username, "Cập nhật giá tiệm vàng", desc);
+
+    return { store, updatedAssetsCount: count, updatedAssetNames };
   }
 
   // --- SHOPPING LIST ---
