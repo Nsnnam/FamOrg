@@ -30,7 +30,15 @@ const SUPPORTED =
 type Msg = { kind: "ok" | "err" | "info"; text: string };
 
 export function PushNotificationsCard() {
-  const [perm, setPerm] = useState<NotificationPermission>(SUPPORTED ? Notification.permission : "denied");
+  const [perm, setPerm] = useState<NotificationPermission>(() => {
+    try {
+      return (SUPPORTED && typeof Notification !== "undefined" && Notification.permission)
+        ? Notification.permission
+        : "denied";
+    } catch {
+      return "denied";
+    }
+  });
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg | null>(null);

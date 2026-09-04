@@ -80,6 +80,7 @@ const ChildHealth = lazy(() => import("./components/ChildHealth.js").then(m => (
 const Assistant = lazy(() => import("./components/Assistant.js").then(m => ({ default: m.Assistant })));
 const Settings = lazy(() => import("./components/Settings.js").then(m => ({ default: m.Settings })));
 const ServerMonitor = lazy(() => import("./components/ServerMonitor.js").then(m => ({ default: m.ServerMonitor })));
+import { ErrorBoundary } from "./components/ErrorBoundary.js";
 
 type SettingsTab = "profile" | "members" | "backups" | "logs";
 
@@ -2056,7 +2057,8 @@ export default function App() {
               transition={{ duration: 0.15 }}
               className="min-h-full pb-[max(6rem,calc(env(safe-area-inset-bottom)+5rem))]"
             >
-              <Suspense fallback={<div className="min-h-[18rem] rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center"><div className="flex items-center gap-2 text-xs text-slate-400"><span className="size-4 rounded-full border-2 border-slate-700 border-t-sky-400 animate-spin" /> Đang tải khu vực...</div></div>}>
+              <ErrorBoundary key={activeTab} onReset={() => setActiveTab("dashboard")}>
+                <Suspense fallback={<div className="min-h-[18rem] rounded-2xl border border-slate-800 bg-slate-900/50 flex items-center justify-center"><div className="flex items-center gap-2 text-xs text-slate-400"><span className="size-4 rounded-full border-2 border-slate-700 border-t-sky-400 animate-spin" /> Đang tải khu vực...</div></div>}>
               {activeTab === "dashboard" && (
                 <Dashboard
                   currentUser={currentUser}
@@ -2235,7 +2237,8 @@ export default function App() {
                   onDashboardPrefsChange={(p) => setDashboardPrefs(mergeDashboardPrefs(p))}
                 />
               )}
-              </Suspense>
+                </Suspense>
+              </ErrorBoundary>
             </motion.div>
           </AnimatePresence>
         </main>

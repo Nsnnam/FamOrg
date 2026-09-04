@@ -1071,7 +1071,7 @@ export function Settings({
 
         {/* Current status info tag */}
         <span className="text-[10px] uppercase font-mono bg-slate-950 text-slate-400 border border-slate-850 px-2.5 py-1 rounded-lg">
-          Quyền hạn: <span className="text-sky-400 font-bold">{ROLE_LABELS[currentUser.role]}</span>
+          Quyền hạn: <span className="text-sky-400 font-bold">{ROLE_LABELS[currentUser?.role] || currentUser?.role || "Thành viên"}</span>
         </span>
       </div>
 
@@ -1975,7 +1975,7 @@ export function Settings({
 
           <p className="text-[11px] font-semibold text-slate-400">Thứ tự khối (kéo ▲▼)</p>
           <ul className="space-y-1 max-h-56 overflow-y-auto">
-            {(dashDraft.widgetOrder || []).map((id, idx) => (
+            {(dashDraft?.widgetOrder || []).map((id, idx) => (
               <li key={id}
                 draggable
                 onDragStart={e => { e.dataTransfer.setData("text/plain", String(idx)); e.dataTransfer.effectAllowed = "move"; }}
@@ -2078,18 +2078,18 @@ export function Settings({
               className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200" />
             <div className="flex-1 min-w-[240px]"><FinanceIconPicker value={newGroupEmoji} onChange={setNewGroupEmoji} /></div>
             <button type="button" disabled={finBusy || !newGroupName.trim()} onClick={() => {
-              const g: FinanceCategoryGroup = { id: `grp_${Date.now()}`, name: newGroupName.trim(), emoji: newGroupEmoji || "📁", sortOrder: finCats.groups.length };
-              void saveFinCats({ ...finCats, groups: [...finCats.groups, g] });
+              const g: FinanceCategoryGroup = { id: `grp_${Date.now()}`, name: newGroupName.trim(), emoji: newGroupEmoji || "📁", sortOrder: finCats?.groups?.length || 0 };
+              void saveFinCats({ ...finCats, groups: [...(finCats?.groups || []), g] });
               setNewGroupName("");
               setNewGroupEmoji("📁");
             }} className="text-[11px] font-bold bg-slate-800 text-sky-300 px-2.5 py-1.5 rounded-lg">+ Nhóm</button>
           </div>
           <div className="text-[11px] text-slate-400">Icon các nhóm hiện có</div>
           <ul className="flex flex-wrap gap-1.5">
-            {finCats.groups.map(g => (
+            {(finCats?.groups || []).map(g => (
               <li key={g.id} className="flex items-center gap-1.5 bg-slate-900/60 border border-slate-800 rounded-lg px-2 py-1">
                 <select value={g.emoji || "📁"} aria-label={`Icon nhóm ${g.name}`} onChange={e => {
-                  const next = { ...finCats, groups: finCats.groups.map(x => x.id === g.id ? { ...x, emoji: e.target.value } : x) };
+                  const next = { ...finCats, groups: (finCats?.groups || []).map(x => x.id === g.id ? { ...x, emoji: e.target.value } : x) };
                   void saveFinCats(next);
                 }} className="bg-transparent text-base w-8">
                   {FINANCE_ICON_OPTIONS.map(icon => <option key={icon} value={icon}>{icon}</option>)}
@@ -2111,17 +2111,17 @@ export function Settings({
             <button type="button" disabled={finBusy || !newCatName.trim()} onClick={() => {
               const c: FinanceCategory = {
                 id: `cat_${Date.now()}`, name: newCatName.trim(), emoji: newCatEmoji || "🏷️",
-                kind: newCatKind, sortOrder: finCats.categories.length, isSystem: false
+                kind: newCatKind, sortOrder: finCats?.categories?.length || 0, isSystem: false
               };
-              void saveFinCats({ ...finCats, categories: [...finCats.categories, c] });
+              void saveFinCats({ ...finCats, categories: [...(finCats?.categories || []), c] });
               setNewCatName("");
             }} className="text-[11px] font-bold bg-emerald-500/20 text-emerald-300 px-2.5 py-1.5 rounded-lg">+ Danh mục</button>
           </div>
           <ul className="max-h-48 overflow-y-auto space-y-1 text-[11px]">
-            {finCats.categories.map(c => (
+            {(finCats?.categories || []).map(c => (
               <li key={c.id} className="flex items-center gap-2 bg-slate-900/50 rounded-lg px-2 py-1 border border-slate-800/80">
                 <select value={c.emoji || "🏷️"} aria-label={`Icon danh mục ${c.name}`} onChange={e => {
-                  const next = { ...finCats, categories: finCats.categories.map(x => x.id === c.id ? { ...x, emoji: e.target.value } : x) };
+                  const next = { ...finCats, categories: (finCats?.categories || []).map(x => x.id === c.id ? { ...x, emoji: e.target.value } : x) };
                   void saveFinCats(next);
                 }} className="bg-transparent text-base w-8">
                   {FINANCE_ICON_OPTIONS.map(icon => <option key={icon} value={icon}>{icon}</option>)}
@@ -2130,7 +2130,7 @@ export function Settings({
                 <span className="text-slate-500 font-mono">{c.kind}</span>
                 {!c.isSystem && (
                   <button type="button" className="text-rose-400" onClick={() => {
-                    void saveFinCats({ ...finCats, categories: finCats.categories.filter(x => x.id !== c.id) });
+                    void saveFinCats({ ...finCats, categories: (finCats?.categories || []).filter(x => x.id !== c.id) });
                   }}>xóa</button>
                 )}
               </li>
@@ -2378,7 +2378,7 @@ export function Settings({
           )}
 
           {/* Gửi báo cáo thu chi & chỉ tiêu chi tiêu qua Telegram theo yêu cầu */}
-          {tgStatus.configured && (
+          {tgStatus?.configured && (
             <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3.5 space-y-2.5">
               <div className="space-y-0.5">
                 <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
