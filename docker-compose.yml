@@ -43,7 +43,7 @@ services:
       - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_HTTP_API_TOKEN:-}
       - GITHUB_REPO=${GITHUB_REPO:-your-github-user/FamOrg}
     labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.enable=${WATCHTOWER_ENABLE:-false}"
     logging:
       driver: "json-file"
       options:

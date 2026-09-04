@@ -1289,14 +1289,18 @@ export function Finance({
           return (
             <div
               key={acc.key}
-              onClick={() => setDrilldown({
-                title: `Dòng tiền: ${acc.label}`,
-                subtitle: `Các giao dịch qua ${acc.label} trong ${periodLabel(periodMode, anchor)}`,
-                badge: acc.label,
-                account: acc.key,
-                type: "all",
-                icon: <CreditCard className="w-5 h-5 text-cyan-400" />
-              })}
+              onClick={() => {
+                setDrilldownScope("all");
+                setDrilldown({
+                  title: `Dòng tiền: ${acc.label}`,
+                  subtitle: `Các giao dịch qua ${acc.label}`,
+                  badge: acc.label,
+                  account: acc.key,
+                  type: "all",
+                  periodScoped: false,
+                  icon: <CreditCard className="w-5 h-5 text-cyan-400" />
+                });
+              }}
               className="bg-slate-900 border border-slate-800 hover:border-sky-500/50 hover:bg-slate-850/70 rounded-2xl p-3 sm:p-4 shadow-md min-w-0 cursor-pointer transition-all group active:scale-[0.99]"
               title={`Bấm xem chi tiết giao dịch qua ${acc.label}, chỉnh sửa hoặc xóa`}
             >
@@ -2102,7 +2106,7 @@ export function Finance({
       <AnimatePresence>
         {drilldown && (
           <div
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-40 p-3 sm:p-4"
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center z-50 p-3 sm:p-4"
             id="finance-drilldown-modal"
             onClick={() => setDrilldown(null)}
           >
