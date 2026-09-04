@@ -11,6 +11,7 @@ import {
   calculateProfitLoss,
   effectiveGoldWeight,
   getEffectiveValue,
+  getHoldingDuration,
   getMarketUnitPrice,
   goldPurityFactor,
   goldPurityLabel,
@@ -363,6 +364,44 @@ describe("getEffectiveValue with unit prices", () => {
     expect(blisterAsset.estimatedValue).toBe(149_500_000);
     expect(plainAsset.estimatedValue).toBe(148_000_000);
     expect(blisterAsset.estimatedValue).toBeGreaterThan(plainAsset.estimatedValue);
+  });
+});
+
+describe("getHoldingDuration", () => {
+  const refDate = new Date("2026-09-04T12:00:00Z");
+
+  it("trả về rỗng khi không có ngày hoặc ngày không hợp lệ", () => {
+    expect(getHoldingDuration("")).toBe("");
+    expect(getHoldingDuration(null)).toBe("");
+    expect(getHoldingDuration(undefined)).toBe("");
+    expect(getHoldingDuration("invalid-date")).toBe("");
+  });
+
+  it("trả về rỗng khi ngày mua ở tương lai", () => {
+    expect(getHoldingDuration("2026-10-01", refDate)).toBe("");
+  });
+
+  it("trả về 'Hôm nay' khi mua trong ngày", () => {
+    expect(getHoldingDuration("2026-09-04", refDate)).toBe("Hôm nay");
+  });
+
+  it("trả về số ngày khi dưới 30 ngày", () => {
+    expect(getHoldingDuration("2026-08-25", refDate)).toBe("10 ngày");
+    expect(getHoldingDuration("2026-08-15", refDate)).toBe("20 ngày");
+  });
+
+  it("trả về tháng và ngày khi dưới 1 năm", () => {
+    // 2026-07-27 đến 2026-09-04 -> 1 tháng 8 ngày
+    expect(getHoldingDuration("2026-07-27", refDate)).toBe("1 tháng 8 ngày");
+    // ~328 ngày -> 10 tháng 24 ngày
+    expect(getHoldingDuration("2025-10-11", refDate)).toBe("10 tháng 24 ngày");
+  });
+
+  it("trả về năm và ngày/tháng khi từ 1 năm trở lên", () => {
+    // 2025-08-18 đến 2026-09-04 (382 ngày -> 1 năm 17 ngày)
+    expect(getHoldingDuration("2025-08-18", refDate)).toBe("1 năm 17 ngày");
+    // 2 năm tròn
+    expect(getHoldingDuration("2024-09-04", refDate)).toBe("2 năm");
   });
 });
 

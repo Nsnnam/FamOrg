@@ -7,6 +7,7 @@ import React, { useMemo, useState, useCallback, useRef, useEffect } from "react"
 import {
   Calendar,
   Car,
+  Clock,
   Coins,
   FileText,
   Gem,
@@ -52,13 +53,14 @@ import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
-import { DateInputDMY } from "./DateTimePicker24.js";
+import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 import { GoldStoresModal } from "./GoldStoresModal.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
   effectiveGoldWeight,
   getEffectiveValue,
+  getHoldingDuration,
   getMarketUnitPrice,
   goldPurityFactor,
   goldPurityLabel,
@@ -146,13 +148,21 @@ function defaultUnitForType(type: AssetType) {
   return "món";
 }
 
+const SORT_OPTIONS = [
+  { value: "updated_desc", label: "Mới cập nhật" },
+  { value: "purchase_desc", label: "📅 Ngày mua: Mới nhất" },
+  { value: "purchase_asc", label: "📅 Ngày mua: Cũ nhất" },
+  { value: "value_desc", label: "💰 Giá trị cao nhất" },
+  { value: "profit_desc", label: "📈 Tỷ lệ lời cao nhất" }
+] as const;
+
 function typeClass(type: AssetType) {
-  if (type === "crypto") return "text-sky-400 bg-sky-500/10 border-sky-500/20";
-  if (type === "land") return "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
+  if (type === "crypto") return "text-sky-700 dark:text-sky-400 bg-sky-100 dark:bg-sky-500/10 border-sky-300 dark:border-sky-500/20";
+  if (type === "land") return "text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/20";
   if (isGoldType(type)) return "text-amber-800 dark:text-amber-400 bg-amber-100 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/20 font-semibold";
-  if (type === "vehicle") return "text-orange-400 bg-orange-500/10 border-orange-500/20";
-  if (type === "stock") return "text-violet-400 bg-violet-500/10 border-violet-500/20";
-  return "text-slate-400 bg-slate-800 border-slate-700";
+  if (type === "vehicle") return "text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-500/10 border-orange-300 dark:border-orange-500/20";
+  if (type === "stock") return "text-violet-700 dark:text-violet-400 bg-violet-100 dark:bg-violet-500/10 border-violet-300 dark:border-violet-500/20";
+  return "text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 border-slate-300 dark:border-slate-700";
 }
 
 function formatMoney(value: number, currency: "VND" | "USD" = "VND") {
@@ -185,6 +195,7 @@ export function Assets({
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<AssetType | "all">("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"updated_desc" | "purchase_desc" | "purchase_asc" | "value_desc" | "profit_desc">("updated_desc");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<FamilyAsset | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{ asset: FamilyAsset; photo: AssetPhoto } | null>(null);
@@ -456,10 +467,38 @@ export function Assets({
         asset.address,
         asset.certificateNo,
         asset.brand,
-        asset.serialNo
+        asset.serialNo,
+        asset.goldSource,
+        asset.purchaseDate
       ].some(value => String(value || "").toLowerCase().includes(text));
-    }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }, [assets, searchTerm, typeFilter, ownerFilter]);
+    }).sort((a, b) => {
+      if (sortBy === "purchase_desc") {
+        const da = a.purchaseDate || a.createdAt || "";
+        const db = b.purchaseDate || b.createdAt || "";
+        return db.localeCompare(da);
+      }
+      if (sortBy === "purchase_asc") {
+        const da = a.purchaseDate || a.createdAt || "";
+        const db = b.purchaseDate || b.createdAt || "";
+        return da.localeCompare(db);
+      }
+      if (sortBy === "value_desc") {
+        const va = getEffectiveValue(a, marketPrices).value;
+        const vb = getEffectiveValue(b, marketPrices).value;
+        return vb - va;
+      }
+      if (sortBy === "profit_desc") {
+        const eva = getEffectiveValue(a, marketPrices).value;
+        const evb = getEffectiveValue(b, marketPrices).value;
+        const pa = Number(a.purchaseValue || 0);
+        const pb = Number(b.purchaseValue || 0);
+        const pcta = pa > 0 ? (eva - pa) / pa : -9999;
+        const pctb = pb > 0 ? (evb - pb) / pb : -9999;
+        return pctb - pcta;
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+  }, [assets, searchTerm, typeFilter, ownerFilter, sortBy, marketPrices]);
 
   // Totals are kept per-currency — VND and USD must never be summed together.
   // Uses effective values: live market price → manual estimatedValue → purchaseValue fallback.
@@ -1080,29 +1119,29 @@ export function Assets({
       </Reveal>
 
       <Reveal delay={0.06} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div className="bg-slate-900 border border-slate-850 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
           <p className="text-[11px] text-slate-500">Tổng tài sản ước tính</p>
           <p className="mt-1 text-xl font-extrabold text-slate-100 tabular-nums">{formatMoney(stats.totalVnd)}</p>
           {stats.totalUsd > 0 && <p className="text-xs font-bold text-slate-400 tabular-nums">+ {formatMoney(stats.totalUsd, "USD")}</p>}
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div className="bg-slate-900 border border-slate-850 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
           <p className="text-[11px] text-slate-500">Vàng các loại</p>
           <p className="mt-1 text-lg font-extrabold text-amber-700 dark:text-amber-400 tabular-nums">{formatMoney(stats.goldVnd)}</p>
           {stats.goldUsd > 0 && <p className="text-xs font-bold text-amber-700/80 dark:text-amber-400/70 tabular-nums">+ {formatMoney(stats.goldUsd, "USD")}</p>}
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div className="bg-slate-900 border border-slate-850 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
           <p className="text-[11px] text-slate-500">Crypto</p>
-          <p className="mt-1 text-lg font-extrabold text-sky-400 tabular-nums">{formatMoney(stats.cryptoVnd)}</p>
-          {stats.cryptoUsd > 0 && <p className="text-xs font-bold text-sky-400/70 tabular-nums">+ {formatMoney(stats.cryptoUsd, "USD")}</p>}
+          <p className="mt-1 text-lg font-extrabold text-sky-500 dark:text-sky-400 tabular-nums">{formatMoney(stats.cryptoVnd)}</p>
+          {stats.cryptoUsd > 0 && <p className="text-xs font-bold text-sky-500/70 dark:text-sky-400/70 tabular-nums">+ {formatMoney(stats.cryptoUsd, "USD")}</p>}
         </div>
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+        <div className="bg-slate-900 border border-slate-850 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
           <p className="text-[11px] text-slate-500">Sổ đất / BĐS</p>
-          <p className="mt-1 text-lg font-extrabold text-emerald-400 tabular-nums">{formatMoney(stats.landVnd)}</p>
-          {stats.landUsd > 0 && <p className="text-xs font-bold text-emerald-400/70 tabular-nums">+ {formatMoney(stats.landUsd, "USD")}</p>}
+          <p className="mt-1 text-lg font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">{formatMoney(stats.landVnd)}</p>
+          {stats.landUsd > 0 && <p className="text-xs font-bold text-emerald-600/70 dark:text-emerald-400/70 tabular-nums">+ {formatMoney(stats.landUsd, "USD")}</p>}
         </div>
       </Reveal>
 
-      <Reveal delay={0.12} className="relative overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3">
+      <Reveal delay={0.12} className="relative overflow-hidden bg-slate-900 border border-slate-850 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3">
         <ShimmerLine accent="emerald" />
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div className="relative flex-1">
@@ -1110,8 +1149,8 @@ export function Assets({
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Tìm tên tài sản, mã sổ, ví crypto, vị trí lưu giữ..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 outline-none focus:border-emerald-500"
+              placeholder="Tìm tên tài sản, tiệm vàng, mã sổ, ví crypto, vị trí lưu giữ..."
+              className="w-full pl-9 pr-3 py-2 bg-slate-950 border border-slate-850 dark:border-slate-800 rounded-xl text-xs text-slate-200 outline-none focus:border-emerald-500 transition-colors"
             />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1138,13 +1177,13 @@ export function Assets({
             <button
               type="button"
               onClick={openCreateForm}
-              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
             >
               <Plus className="size-4" /> Thêm tài sản
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
           <div>
             <label className="text-slate-500 block mb-1">Loại tài sản</label>
             <FancySelect
@@ -1167,6 +1206,15 @@ export function Assets({
               ]}
             />
           </div>
+          <div>
+            <label className="text-slate-500 block mb-1">Sắp xếp theo</label>
+            <FancySelect
+              value={sortBy}
+              onChange={(v) => setSortBy(v as any)}
+              ariaLabel="Sắp xếp danh sách tài sản"
+              options={SORT_OPTIONS}
+            />
+          </div>
         </div>
       </Reveal>
 
@@ -1186,190 +1234,386 @@ export function Assets({
             const Icon = asset.type === "land" ? Landmark : asset.type === "crypto" ? Coins : asset.type === "vehicle" ? Car : asset.type === "stock" ? LineChart : isGoldType(asset.type) ? Gem : Wallet;
 
             return (
-              <Reveal as="article" key={asset.id} delay={0.16 + staggerDelay(assetIndex)} hoverLift className="bg-slate-900 border border-slate-800 hover:border-emerald-500/25 rounded-2xl p-4 shadow-lg hover:shadow-emerald-500/5 transition-[box-shadow,border-color] duration-300 space-y-4">
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    disabled={!firstPhoto}
-                    onClick={() => firstPhoto && setSelectedPhoto({ asset, photo: firstPhoto })}
-                    className="size-20 rounded-xl border border-slate-800 bg-slate-950 overflow-hidden shrink-0 flex items-center justify-center disabled:cursor-default cursor-pointer"
-                    aria-label={firstPhoto ? `Xem ảnh tài sản ${asset.name}` : `Tài sản ${asset.name} chưa có ảnh`}
-                  >
-                    {firstPhoto ? (
-                      <img src={firstPhoto.thumbnailDataUrl} alt={asset.name} className="size-full object-cover" />
-                    ) : (
-                      <Icon className="size-8 text-slate-600" />
-                    )}
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${typeClass(asset.type)}`}>
-                            {assetTypeLabel(asset.type)}
-                          </span>
-                          {isGoldType(asset.type) && (
-                            <span
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-bold ${
-                                asset.goldPackaging === "blister"
-                                  ? "text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/20 border-amber-300 dark:border-amber-500/40 shadow-xs"
-                                  : "text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 border-slate-300 dark:border-slate-700"
-                              }`}
-                            >
-                              {asset.goldPackaging === "blister" ? "🏷️ Ép vỉ (Thanh khoản cao)" : "💍 Loại thường"}
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="mt-1 text-sm font-bold text-slate-100 truncate">{asset.name}</h3>
-                      </div>
-                      {canManageAsset(asset) && (
-                        <div className="flex items-center gap-1 shrink-0">
-                          {supportsManualPrice(asset) && onSaveAssetPriceLog && (
-                            <button type="button" onClick={() => void openPriceLogForm(asset)} aria-label={`Cập nhật giá ${asset.name}`} title="Cập nhật giá thủ công và xem lịch sử" className="size-8 rounded-lg bg-slate-950 border border-slate-800 text-slate-500 hover:text-sky-400 flex items-center justify-center cursor-pointer">
-                              <RefreshCw className="size-3.5" />
-                            </button>
-                          )}
-                          {onSaveTransaction && (
-                            <button type="button" onClick={() => openSellForm(asset)} aria-label={`Bán tài sản ${asset.name}`} title="Bán tài sản" className="size-8 rounded-lg bg-slate-950 border border-slate-800 text-slate-500 hover:text-emerald-400 flex items-center justify-center cursor-pointer">
-                              <HandCoins className="size-3.5" />
-                            </button>
-                          )}
-                          <button type="button" onClick={() => openEditForm(asset)} aria-label={`Sửa tài sản ${asset.name}`} className="size-8 rounded-lg bg-slate-950 border border-slate-800 text-slate-500 hover:text-amber-400 flex items-center justify-center cursor-pointer">
-                            <Pencil className="size-3.5" />
-                          </button>
-                          <button type="button" onClick={() => handleDelete(asset)} aria-label={`Xóa tài sản ${asset.name}`} className="size-8 rounded-lg bg-slate-950 border border-slate-800 text-slate-500 hover:text-rose-400 flex items-center justify-center cursor-pointer">
-                            <Trash2 className="size-3.5" />
-                          </button>
+              <Reveal
+                as="article"
+                key={asset.id}
+                delay={0.16 + staggerDelay(assetIndex)}
+                hoverLift
+                className="bg-slate-900 border border-slate-850 dark:border-slate-800 hover:border-emerald-500/30 rounded-2xl p-4 sm:p-5 shadow-sm hover:shadow-md hover:shadow-emerald-500/5 transition-[box-shadow,border-color] duration-300 flex flex-col justify-between gap-3.5"
+              >
+                <div className="space-y-3.5">
+                  {/* Card Header: Avatar, Badges, Title, Action buttons */}
+                  <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      disabled={!firstPhoto}
+                      onClick={() => firstPhoto && setSelectedPhoto({ asset, photo: firstPhoto })}
+                      className="size-14 sm:size-16 rounded-2xl border border-slate-850 bg-slate-950/80 overflow-hidden shrink-0 flex items-center justify-center disabled:cursor-default cursor-pointer shadow-xs group"
+                      aria-label={firstPhoto ? `Xem ảnh tài sản ${asset.name}` : `Tài sản ${asset.name} chưa có ảnh`}
+                    >
+                      {firstPhoto ? (
+                        <img src={firstPhoto.thumbnailDataUrl} alt={asset.name} className="size-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      ) : (
+                        <div className={`size-full flex items-center justify-center ${
+                          isGoldType(asset.type)
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                            : asset.type === "crypto"
+                            ? "bg-sky-500/10 text-sky-500 dark:text-sky-400"
+                            : asset.type === "land"
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : asset.type === "vehicle"
+                            ? "bg-orange-500/10 text-orange-500 dark:text-orange-400"
+                            : asset.type === "stock"
+                            ? "bg-violet-500/10 text-violet-500 dark:text-violet-400"
+                            : "bg-slate-800/40 text-slate-400"
+                        }`}>
+                          <Icon className="size-6 sm:size-7" />
                         </div>
                       )}
+                    </button>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-lg border text-[10px] font-bold ${typeClass(asset.type)}`}>
+                              {assetTypeLabel(asset.type)}
+                            </span>
+                            {isGoldType(asset.type) && (
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-bold ${
+                                  asset.goldPackaging === "blister"
+                                    ? "text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/20 border-amber-300 dark:border-amber-500/40 shadow-xs"
+                                    : "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/80 border-slate-300 dark:border-slate-700"
+                                }`}
+                              >
+                                {asset.goldPackaging === "blister" ? "🏷️ Ép vỉ (Thanh khoản cao)" : "💍 Loại thường"}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-medium bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300">
+                              <UserIcon className="size-2.5 text-slate-400" />
+                              {owner ? owner.fullName : "Tài sản chung"}
+                            </span>
+                          </div>
+                          <h3 className="mt-1 text-base font-bold text-slate-100 truncate" title={asset.name}>
+                            {asset.name}
+                          </h3>
+                        </div>
+
+                        {canManageAsset(asset) && (
+                          <div className="flex items-center gap-1 shrink-0 bg-slate-950/60 border border-slate-850 p-1 rounded-xl shadow-xs">
+                            {supportsManualPrice(asset) && onSaveAssetPriceLog && (
+                              <button
+                                type="button"
+                                onClick={() => void openPriceLogForm(asset)}
+                                aria-label={`Cập nhật giá ${asset.name}`}
+                                title="Cập nhật giá thủ công và xem lịch sử"
+                                className="size-7 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-sky-500 flex items-center justify-center transition-colors cursor-pointer"
+                              >
+                                <RefreshCw className="size-3.5" />
+                              </button>
+                            )}
+                            {onSaveTransaction && (
+                              <button
+                                type="button"
+                                onClick={() => openSellForm(asset)}
+                                aria-label={`Bán tài sản ${asset.name}`}
+                                title="Bán tài sản"
+                                className="size-7 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-emerald-500 flex items-center justify-center transition-colors cursor-pointer"
+                              >
+                                <HandCoins className="size-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openEditForm(asset)}
+                              aria-label={`Sửa tài sản ${asset.name}`}
+                              title="Chỉnh sửa tài sản"
+                              className="size-7 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-amber-500 flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(asset)}
+                              aria-label={`Xóa tài sản ${asset.name}`}
+                              title="Xóa tài sản"
+                              className="size-7 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-rose-500 flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    {(() => {
-                      const ev = getEffectiveValue(asset, marketPrices);
-                      const purchase = Number(asset.purchaseValue || 0);
-                      const showPL = purchase > 0 && ev.value > 0 && ev.source !== "purchase";
-                      const diff = ev.value - purchase;
-                      const pct = purchase > 0 ? (diff / purchase) * 100 : 0;
-                      const up = diff >= 0;
-                      const q = isGoldType(asset.type) ? effectiveGoldWeight(asset) : Number(asset.quantity || 0);
-                      const u = isGoldType(asset.type) ? (asset.weightUnit || asset.unit || "chỉ") : (asset.unit || "món");
-                      const estUnitPrice = asset.estimatedUnitPrice || (q > 0 ? Math.round(ev.value / q) : 0);
-                      const buyUnitPrice = asset.purchaseUnitPrice || (q > 0 && purchase > 0 ? Math.round(purchase / q) : 0);
-                      return (
-                        <>
-                          <div className="mt-2 flex items-center gap-2 flex-wrap">
-                            <p className="text-lg font-extrabold text-slate-100 tabular-nums">
+                  </div>
+
+                  {/* Financial Metrics & Purchase Date Block */}
+                  {(() => {
+                    const ev = getEffectiveValue(asset, marketPrices);
+                    const purchase = Number(asset.purchaseValue || 0);
+                    const showPL = purchase > 0 && ev.value > 0 && ev.source !== "purchase";
+                    const diff = ev.value - purchase;
+                    const pct = purchase > 0 ? (diff / purchase) * 100 : 0;
+                    const up = diff >= 0;
+                    const q = isGoldType(asset.type) ? effectiveGoldWeight(asset) : Number(asset.quantity || 0);
+                    const u = isGoldType(asset.type) ? (asset.weightUnit || asset.unit || "chỉ") : (asset.unit || "món");
+                    const estUnitPrice = asset.estimatedUnitPrice || (q > 0 ? Math.round(ev.value / q) : 0);
+                    const buyUnitPrice = asset.purchaseUnitPrice || (q > 0 && purchase > 0 ? Math.round(purchase / q) : 0);
+                    const holdingText = getHoldingDuration(asset.purchaseDate);
+
+                    return (
+                      <div className="bg-slate-950/70 border border-slate-850 rounded-xl p-3 sm:p-3.5 space-y-2.5 shadow-xs">
+                        {/* Value + Profit/Loss Pill */}
+                        <div className="flex items-baseline justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xl sm:text-2xl font-black text-slate-100 tabular-nums tracking-tight">
                               {ev.source === "live" ? "≈ " : ""}{formatMoney(ev.value, asset.currency)}
-                            </p>
+                            </span>
                             {ev.source === "live" && (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                                <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />LIVE
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />LIVE
                               </span>
                             )}
                             {ev.source === "purchase" && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-800 border border-slate-700 text-slate-400">
-                                giá mua
-                              </span>
-                            )}
-                            {showPL && (
-                              <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border ${up ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-rose-500/10 border-rose-500/20 text-rose-400"}`}>
-                                {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
-                                {up ? "+" : "−"}{Math.abs(pct).toFixed(1)}%
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-slate-800 border border-slate-700/80 text-slate-400">
+                                theo giá vốn
                               </span>
                             )}
                           </div>
+
+                          {showPL && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border tabular-nums ${
+                              up ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400"
+                            }`}>
+                              {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+                              {up ? "+" : "−"}{Math.abs(pct).toFixed(1)}%
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Breakdown: Unit Price & Capital & Absolute Profit/Loss */}
+                        <div className="flex flex-col gap-1 text-xs text-slate-400 font-mono border-t border-slate-850/80 pt-2">
                           {q > 1 && estUnitPrice > 0 && (
-                            <p className="mt-0.5 text-[11px] text-slate-400 font-mono">
-                              Đơn giá: <span className="text-slate-200 font-semibold">{formatMoney(estUnitPrice, asset.currency)}/{u}</span>
-                            </p>
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-slate-500">Đơn giá hiện tại:</span>
+                              <span className="text-slate-200 font-semibold">{formatMoney(estUnitPrice, asset.currency)}/{u}</span>
+                            </div>
                           )}
                           {purchase > 0 && (
-                            <p className="mt-0.5 text-[11px] text-slate-500 font-mono">
-                              Vốn {formatMoney(purchase, asset.currency)}
-                              {q > 1 && buyUnitPrice > 0 && (
-                                <span className="text-slate-500"> ({formatMoney(buyUnitPrice, asset.currency)}/{u})</span>
-                              )}
+                            <div className="flex items-center justify-between flex-wrap gap-1 text-[11px]">
+                              <span className="text-slate-500">
+                                Vốn mua: <b className="text-slate-300 font-medium">{formatMoney(purchase, asset.currency)}</b>
+                                {q > 1 && buyUnitPrice > 0 && <span className="text-slate-500 ml-1">({formatMoney(buyUnitPrice, asset.currency)}/{u})</span>}
+                              </span>
                               {showPL && (
-                                <>
-                                  {" "}·{" "}
-                                  <span className={up ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
-                                    {up ? "Lời" : "Lỗ"} {formatMoney(Math.abs(diff), asset.currency)}
-                                  </span>
-                                </>
+                                <span className={`font-semibold ${up ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                                  {up ? "Lời +" : "Lỗ −"}{formatMoney(Math.abs(diff), asset.currency)}
+                                </span>
                               )}
-                            </p>
+                            </div>
                           )}
-                        </>
-                      );
-                    })()}
-                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                      <span className="flex items-center gap-1"><UserIcon className="size-3" /> {owner ? owner.fullName : "Tài sản chung"}</span>
-                      <span className="tabular-nums">
-                        {isGoldType(asset.type)
-                          ? `${effectiveGoldWeight(asset)} ${asset.weightUnit || asset.unit}`
-                          : `${asset.quantity} ${asset.unit}`}
-                      </span>
-                      {asset.location && <span className="flex items-center gap-1"><MapPin className="size-3" /> {asset.location}</span>}
-                    </div>
-                  </div>
-                </div>
+                        </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                  {asset.type === "crypto" && (
-                    <>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Mã: <span className="text-sky-400 font-bold">{asset.symbol || "—"}</span></p>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Mạng: <span className="text-slate-200">{asset.network || "—"}</span></p>
-                    </>
-                  )}
-                  {asset.type === "land" && (
-                    <>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Diện tích: <span className="text-emerald-400 font-bold tabular-nums">{asset.areaM2 ? `${asset.areaM2} m2` : "—"}</span></p>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Số sổ: <span className="text-slate-200">{asset.certificateNo || "—"}</span></p>
-                    </>
-                  )}
-                  {isGoldType(asset.type) && (
-                    <>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Trọng lượng: <span className="text-amber-700 dark:text-amber-400 font-bold tabular-nums">{asset.weight ? `${asset.weight} ${asset.weightUnit || asset.unit}` : "—"}</span></p>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Tuổi vàng: <span className="text-slate-200">{goldPurityLabel(asset.goldPurity)}</span></p>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400 col-span-1 sm:col-span-2 flex items-center justify-between flex-wrap gap-1">
-                        <span>Tiệm / Nguồn: <span className="text-amber-800 dark:text-amber-300 font-bold">🏪 {asset.goldSource || "Tiệm vàng tư nhân"}</span></span>
-                        <span className="text-[10px] text-slate-400">
-                          {asset.goldPackaging === "blister" ? "🏷️ Nhẫn ép vỉ" : "💍 Nhẫn trơn thường"}
-                        </span>
-                      </p>
-                    </>
-                  )}
-                  {asset.type === "vehicle" && (
-                    <>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Hãng / dòng: <span className="text-orange-400 font-bold">{asset.brand || "—"}</span></p>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Biển số / số khung: <span className="text-slate-200">{asset.serialNo || "—"}</span></p>
-                    </>
-                  )}
-                  {asset.type === "stock" && (
-                    <>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Mã CP: <span className="text-violet-400 font-bold">{asset.symbol || "—"}</span></p>
-                      <p className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-slate-400">Sàn / Cty CK: <span className="text-slate-200">{asset.brand || "—"}</span></p>
-                    </>
-                  )}
-                </div>
-
-                {(asset.notes || asset.photos?.length > 1) && (
-                  <div className="pt-3 border-t border-slate-800 space-y-2">
-                    {asset.notes && <p className="text-xs text-slate-500 line-clamp-2">{asset.notes}</p>}
-                    {asset.photos?.length > 1 && (
-                      <div className="flex flex-wrap gap-2">
-                        {asset.photos.map(photo => (
-                          <button key={photo.id} type="button" onClick={() => setSelectedPhoto({ asset, photo })} className="size-10 rounded-lg border border-slate-800 overflow-hidden bg-slate-950 cursor-pointer" aria-label={`Xem ảnh ${photo.fileName}`}>
-                            <img src={photo.thumbnailDataUrl} alt={photo.fileName} className="size-full object-cover" />
-                          </button>
-                        ))}
+                        {/* Purchase Date & Holding Time (NỔI BẬT & RÕ RÀNG) */}
+                        <div className="flex items-center justify-between flex-wrap gap-2 text-xs border-t border-slate-850/80 pt-2 bg-slate-900/40 -mx-1 px-2.5 py-1.5 rounded-lg">
+                          <div className="flex items-center gap-1.5 text-slate-300">
+                            <Calendar className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span className="text-slate-500 text-[11px]">Ngày mua:</span>
+                            <strong className="font-semibold text-slate-100 font-mono text-[11px]">
+                              {asset.purchaseDate ? formatDateVN(asset.purchaseDate) : "Chưa cập nhật"}
+                            </strong>
+                          </div>
+                          {asset.purchaseDate && holdingText ? (
+                            <div className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300 font-medium">
+                              <Clock className="size-3 text-amber-600 dark:text-amber-400 shrink-0" />
+                              <span>Nắm giữ {holdingText}</span>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
+                    );
+                  })()}
+
+                  {/* Specifications Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    {isGoldType(asset.type) && (
+                      <>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Trọng lượng</span>
+                          <span className="text-amber-700 dark:text-amber-400 font-bold tabular-nums">
+                            {asset.weight ? `${asset.weight} ${asset.weightUnit || asset.unit || "chỉ"}` : `${asset.quantity} ${asset.unit || "chỉ"}`}
+                          </span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Tuổi vàng</span>
+                          <span className="text-slate-200 font-semibold truncate block">
+                            {goldPurityLabel(asset.goldPurity)}
+                          </span>
+                        </div>
+                        <div className={`bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 ${asset.location ? "" : "col-span-2 sm:col-span-1"}`}>
+                          <span className="text-[10px] text-slate-500 block">Tiệm / Nguồn</span>
+                          <span className="text-amber-800 dark:text-amber-300 font-semibold truncate block" title={asset.goldSource || "Tiệm vàng tư nhân"}>
+                            🏪 {asset.goldSource || "Tiệm vàng tư nhân"}
+                          </span>
+                        </div>
+                        {asset.location && (
+                          <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-3">
+                            <span className="text-[10px] text-slate-500 block">Vị trí lưu giữ</span>
+                            <span className="text-slate-300 font-medium flex items-center gap-1">
+                              <MapPin className="size-3 text-slate-400 shrink-0" /> {asset.location}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {asset.type === "crypto" && (
+                      <>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Mã token</span>
+                          <span className="text-sky-400 font-bold">{asset.symbol || "—"}</span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Mạng</span>
+                          <span className="text-slate-200 font-medium truncate block">{asset.network || "—"}</span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-1">
+                          <span className="text-[10px] text-slate-500 block">Số lượng</span>
+                          <span className="text-slate-200 font-semibold tabular-nums">{asset.quantity} {asset.unit}</span>
+                        </div>
+                        {(asset.walletAddressMasked || asset.address) && (
+                          <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-3">
+                            <span className="text-[10px] text-slate-500 block">Địa chỉ ví</span>
+                            <span className="text-slate-300 font-mono text-[11px] truncate block">{asset.walletAddressMasked || asset.address}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {asset.type === "land" && (
+                      <>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Diện tích</span>
+                          <span className="text-emerald-500 font-bold tabular-nums">{asset.areaM2 ? `${asset.areaM2} m²` : "—"}</span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Số sổ</span>
+                          <span className="text-slate-200 font-medium truncate block">{asset.certificateNo || "—"}</span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-1">
+                          <span className="text-[10px] text-slate-500 block">Số thửa</span>
+                          <span className="text-slate-200 font-medium truncate block">{asset.parcelNo || "—"}</span>
+                        </div>
+                        {(asset.address || asset.location) && (
+                          <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-3">
+                            <span className="text-[10px] text-slate-500 block">Địa chỉ BĐS</span>
+                            <span className="text-slate-300 font-medium flex items-center gap-1">
+                              <MapPin className="size-3 text-emerald-500 shrink-0" /> {asset.address || asset.location}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {asset.type === "vehicle" && (
+                      <>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Hãng / Dòng</span>
+                          <span className="text-orange-400 font-bold truncate block">{asset.brand || "—"}</span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Biển số / Khung</span>
+                          <span className="text-slate-200 font-mono text-[11px] truncate block">{asset.serialNo || "—"}</span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-1">
+                          <span className="text-[10px] text-slate-500 block">Số lượng</span>
+                          <span className="text-slate-200 font-semibold tabular-nums">{asset.quantity} {asset.unit}</span>
+                        </div>
+                        {asset.location && (
+                          <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-3">
+                            <span className="text-[10px] text-slate-500 block">Vị trí lưu giữ</span>
+                            <span className="text-slate-300 font-medium flex items-center gap-1">
+                              <MapPin className="size-3 text-slate-400 shrink-0" /> {asset.location}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {asset.type === "stock" && (
+                      <>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Mã CP</span>
+                          <span className="text-violet-400 font-bold">{asset.symbol || "—"}</span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Sàn / CTCK</span>
+                          <span className="text-slate-200 font-medium truncate block">{asset.brand || "—"}</span>
+                        </div>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-1">
+                          <span className="text-[10px] text-slate-500 block">Số lượng</span>
+                          <span className="text-slate-200 font-semibold tabular-nums">{asset.quantity} {asset.unit}</span>
+                        </div>
+                      </>
+                    )}
+
+                    {asset.type === "other" && (
+                      <>
+                        <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5">
+                          <span className="text-[10px] text-slate-500 block">Số lượng</span>
+                          <span className="text-slate-200 font-semibold tabular-nums">{asset.quantity} {asset.unit}</span>
+                        </div>
+                        {asset.location && (
+                          <div className="bg-slate-950/40 border border-slate-850 rounded-xl px-2.5 py-1.5 col-span-2 sm:col-span-2">
+                            <span className="text-[10px] text-slate-500 block">Vị trí lưu giữ</span>
+                            <span className="text-slate-300 font-medium flex items-center gap-1">
+                              <MapPin className="size-3 text-slate-400 shrink-0" /> {asset.location}
+                            </span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
-                )}
 
-                <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-600">
-                  <span>Tạo bởi {creator ? creator.fullName : "thành viên"}</span>
-                  <span className="tabular-nums">{new Date(asset.updatedAt).toLocaleDateString("vi-VN")}</span>
+                  {/* Notes Callout (có tiêu đề và icon rõ ràng, không bị trôi nổi) */}
+                  {asset.notes && (
+                    <div className="bg-slate-950/50 border border-slate-850/80 rounded-xl p-2.5 text-xs flex items-start gap-2">
+                      <FileText className="size-3.5 text-slate-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block mb-0.5">Ghi chú</span>
+                        <p className="text-slate-300 whitespace-pre-wrap">{asset.notes}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Additional photos preview */}
+                  {asset.photos?.length > 1 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {asset.photos.map(photo => (
+                        <button
+                          key={photo.id}
+                          type="button"
+                          onClick={() => setSelectedPhoto({ asset, photo })}
+                          className="size-11 rounded-xl border border-slate-850 overflow-hidden bg-slate-950 hover:border-emerald-500/50 transition-colors cursor-pointer shadow-xs"
+                          aria-label={`Xem ảnh ${photo.fileName}`}
+                        >
+                          <img src={photo.thumbnailDataUrl} alt={photo.fileName} className="size-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Card Footer: Người tạo & Ngày cập nhật */}
+                <div className="pt-2.5 border-t border-slate-850/80 flex items-center justify-between text-[11px] text-slate-500">
+                  <span className="flex items-center gap-1 truncate">
+                    <UserIcon className="size-3 text-slate-400 shrink-0" />
+                    <span>Tạo bởi {creator ? creator.fullName : "thành viên"}</span>
+                  </span>
+                  <span className="tabular-nums shrink-0">
+                    Cập nhật {new Date(asset.updatedAt).toLocaleDateString("vi-VN")}
+                  </span>
                 </div>
               </Reveal>
             );

@@ -195,3 +195,55 @@ export function getEffectiveValue(asset: FamilyAsset, marketPrices: MarketPrices
 
   return { value: 0, source: "none" };
 }
+
+/**
+ * Tính khoảng thời gian nắm giữ tài sản từ ngày mua đến hiện tại (hoặc mốc tham chiếu).
+ * Trả về chuỗi thân thiện: "Hôm nay", "15 ngày", "3 tháng 10 ngày", "1 năm 17 ngày", v.v.
+ */
+export function getHoldingDuration(dateStr?: string | null, referenceDate?: Date): string {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  const now = referenceDate ? new Date(referenceDate) : new Date();
+
+  const startYear = d.getFullYear();
+  const startMonth = d.getMonth();
+  const startDay = d.getDate();
+
+  const endYear = now.getFullYear();
+  const endMonth = now.getMonth();
+  const endDay = now.getDate();
+
+  if (new Date(startYear, startMonth, startDay) > new Date(endYear, endMonth, endDay)) {
+    return "";
+  }
+
+  let years = endYear - startYear;
+  let months = endMonth - startMonth;
+  let days = endDay - startDay;
+
+  if (days < 0) {
+    months -= 1;
+    // Lấy số ngày của tháng trước đó
+    const prevMonthDays = new Date(endYear, endMonth, 0).getDate();
+    days += prevMonthDays;
+  }
+
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  if (years === 0 && months === 0 && days === 0) {
+    return "Hôm nay";
+  }
+
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} năm`);
+  if (months > 0) parts.push(`${months} tháng`);
+  if (days > 0 && (years === 0 || months === 0)) {
+    parts.push(`${days} ngày`);
+  }
+
+  return parts.join(" ");
+}
