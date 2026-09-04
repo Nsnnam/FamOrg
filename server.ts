@@ -2389,6 +2389,94 @@ function parseAssistantJson(rawText: string): any | null {
   }
 }
 
+function getAssetAndGoldStoreContextForAI() {
+  const assets = FamilyDB.getAssets();
+  const goldStores = FamilyDB.getGoldStores();
+
+  const storeMap = new Map<string, (typeof goldStores)[0]>();
+  for (const s of goldStores) storeMap.set(s.id, s);
+
+  const now = new Date();
+  let totalPurchaseValue = 0;
+  let totalEstimatedValue = 0;
+
+  const assetSummaries = assets.map(a => {
+    const pVal = a.purchaseValue || ((a.quantity || 0) * (a.purchaseUnitPrice || 0)) || 0;
+    const eVal = a.estimatedValue || ((a.quantity || 0) * (a.estimatedUnitPrice || 0)) || 0;
+    totalPurchaseValue += pVal;
+    totalEstimatedValue += eVal;
+
+    const profitLoss = eVal - pVal;
+    const profitLossPct = pVal > 0 ? ((profitLoss / pVal) * 100).toFixed(1) : null;
+
+    let holdingDays: number | null = null;
+    if (a.purchaseDate) {
+      const pDate = new Date(a.purchaseDate);
+      if (!isNaN(pDate.getTime())) {
+        holdingDays = Math.max(0, Math.floor((now.getTime() - pDate.getTime()) / (1000 * 60 * 60 * 24)));
+      }
+    }
+
+    const linkedStore = a.goldStoreId ? storeMap.get(a.goldStoreId) : undefined;
+
+    return {
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      quantity: a.quantity,
+      unit: a.unit,
+      purchaseDate: a.purchaseDate || "Chưa ghi",
+      holdingDays: holdingDays !== null ? `${holdingDays} ngày` : "Chưa rõ",
+      purchaseUnitPrice: a.purchaseUnitPrice || (a.quantity ? Math.round(pVal / a.quantity) : undefined),
+      purchaseValue: pVal,
+      estimatedUnitPrice: a.estimatedUnitPrice || (a.quantity ? Math.round(eVal / a.quantity) : undefined),
+      estimatedValue: eVal,
+      currency: a.currency,
+      profitLoss,
+      profitLossPct: profitLossPct !== null ? `${profitLossPct}%` : "0%",
+      isGold: a.type === "gold",
+      goldPackaging: a.goldPackaging === "blister" ? "Ép vỉ (thanh khoản cao)" : a.goldPackaging === "plain" ? "Nhẫn trơn / loại thường" : a.goldPackaging || undefined,
+      goldPurity: a.goldPurity || undefined,
+      goldSource: a.goldSource || undefined,
+      linkedGoldStore: linkedStore ? { id: linkedStore.id, name: linkedStore.name } : undefined
+    };
+  });
+
+  const totalProfitLoss = totalEstimatedValue - totalPurchaseValue;
+  const totalProfitLossPct = totalPurchaseValue > 0 ? ((totalProfitLoss / totalPurchaseValue) * 100).toFixed(2) : "0";
+
+  const goldStoreSummaries = goldStores.map(s => {
+    const linkedAssets = assets.filter(a => a.goldStoreId === s.id);
+    return {
+      id: s.id,
+      name: s.name,
+      phone: s.phone || "",
+      address: s.address || "",
+      currentPrices: {
+        ringBlisterBuyPrice: s.prices?.ringBlisterBuyPrice || null,
+        ringBlisterSellPrice: s.prices?.ringBlisterSellPrice || null,
+        ringPlainBuyPrice: s.prices?.ringPlainBuyPrice || null,
+        ringPlainSellPrice: s.prices?.ringPlainSellPrice || null,
+        updatedAt: s.prices?.updatedAt || "Chưa cập nhật"
+      },
+      linkedAssetsCount: linkedAssets.length,
+      linkedAssetsNames: linkedAssets.map(a => `${a.name} (${a.quantity} ${a.unit})`)
+    };
+  });
+
+  return {
+    summary: {
+      totalAssetsCount: assets.length,
+      totalInitialCostVND: totalPurchaseValue,
+      totalCurrentValueVND: totalEstimatedValue,
+      totalProfitLossVND: totalProfitLoss,
+      totalProfitLossPct: `${totalProfitLossPct}%`
+    },
+    goldStores: goldStoreSummaries,
+    assets: assetSummaries
+  };
+}
+
 function normalizeAssistantActions(actions: any[]): any[] {
   if (!Array.isArray(actions)) return [];
 
@@ -2460,17 +2548,92 @@ function normalizeAssistantActions(actions: any[]): any[] {
         };
       }
 
+      if (action.type === "update_gold_store_prices") {
+        let storeId = String(action.storeId || "").trim();
+        let storeName = cleanAssistantText(action.storeName, 100);
+        const goldStores = FamilyDB.getGoldStores();
+
+        if (!storeId && storeName) {
+          const matched = goldStores.find(s =>
+            s.name.toLowerCase().includes(storeName.toLowerCase()) ||
+            storeName.toLowerCase().includes(s.name.toLowerCase())
+          );
+          if (matched) {
+            storeId = matched.id;
+            storeName = matched.name;
+          }
+        } else if (storeId) {
+          const matched = goldStores.find(s => s.id === storeId);
+          if (matched && !storeName) {
+            storeName = matched.name;
+          }
+        }
+
+        if (!storeId && goldStores.length === 1) {
+          storeId = goldStores[0].id;
+          storeName = goldStores[0].name;
+        }
+
+        const parsePrice = (v: any) => {
+          if (typeof v === "number" && !isNaN(v) && v > 0) return Math.round(v);
+          if (typeof v === "string") {
+            const clean = Number(v.replace(/[^0-9]/g, ""));
+            if (!isNaN(clean) && clean > 0) return clean;
+          }
+          return undefined;
+        };
+
+        const ringBlisterBuyPrice = parsePrice(action.ringBlisterBuyPrice);
+        const ringBlisterSellPrice = parsePrice(action.ringBlisterSellPrice);
+        const ringPlainBuyPrice = parsePrice(action.ringPlainBuyPrice);
+        const ringPlainSellPrice = parsePrice(action.ringPlainSellPrice);
+
+        if (!ringBlisterBuyPrice && !ringBlisterSellPrice && !ringPlainBuyPrice && !ringPlainSellPrice) {
+          return null;
+        }
+
+        return {
+          id: `assistant_action_${Date.now()}_${actionIndex}_${Math.random().toString(36).slice(2, 6)}`,
+          type: "update_gold_store_prices",
+          title: cleanAssistantText(action.title, 120) || `Cập nhật giá tiệm vàng ${storeName || ""}`.trim(),
+          storeId,
+          storeName: storeName || "Tiệm vàng tư nhân",
+          ringBlisterBuyPrice,
+          ringBlisterSellPrice,
+          ringPlainBuyPrice,
+          ringPlainSellPrice,
+          note: cleanAssistantText(action.note, 200) || "Cập nhật qua Trợ lý AI",
+          autoConvert: action.autoConvert !== false
+        };
+      }
+
       return null;
     })
     .filter(Boolean);
 }
 
 app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Response) => {
-  const message = String(req.body?.message || "").trim();
-  if (!message) {
-    res.status(400).json({ error: "Vui lòng nhập câu hỏi cho trợ lý" });
+  let message = String(req.body?.message || "").trim();
+  const rawFile = req.body?.file;
+  let file: { mimeType: string; dataBase64: string } | null = null;
+  if (rawFile && typeof rawFile.mimeType === "string" && typeof rawFile.dataBase64 === "string") {
+    const cleanBase64 = rawFile.dataBase64.replace(/^data:[^;]+;base64,/, "").trim();
+    if (cleanBase64) {
+      file = {
+        mimeType: rawFile.mimeType,
+        dataBase64: cleanBase64
+      };
+    }
+  }
+
+  if (!message && !file) {
+    res.status(400).json({ error: "Vui lòng nhập câu hỏi hoặc đính kèm ảnh cho trợ lý" });
     return;
   }
+  if (!message && file) {
+    message = "Trích xuất bảng giá tiệm vàng từ ảnh, đối chiếu với danh mục tài sản và tiệm vàng hiện có, tính toán lãi lỗ và đề xuất action cập nhật giá.";
+  }
+
   if (!getAiConfig().apiKey) {
     res.status(400).json({ error: "Chưa cấu hình API key AI. Vào Thiết lập → Trí tuệ AI để chọn provider (Gemini/Groq/OpenRouter…)." });
     return;
@@ -2485,7 +2648,10 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
     // 1. Dữ liệu tài chính chuẩn xác 100% (chỉ người lớn)
     const financialOverview = isAdult ? getComprehensiveFinancialContextForAI() : null;
 
-    // 2. Kho giấy tờ gia đình (lọc theo quyền)
+    // 2. Dữ liệu tài sản & tiệm vàng tư nhân kèm tính toán lãi lỗ (chỉ người lớn)
+    const assetsAndStoresContext = isAdult ? getAssetAndGoldStoreContextForAI() : null;
+
+    // 3. Kho giấy tờ gia đình (lọc theo quyền)
     const documents = isAdult
       ? FamilyDB.getDocuments().filter(doc => canViewDocument(doc, session)).map(d => ({
           id: d.id,
@@ -2502,7 +2668,7 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
         }))
       : [];
 
-    // 3. Ghi chú gia đình (lọc theo quyền)
+    // 4. Ghi chú gia đình (lọc theo quyền)
     const notes = FamilyDB.getNotes()
       .filter(n => n.isShared || n.creatorId === session.userId)
       .map(n => ({
@@ -2513,7 +2679,7 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
         updatedAt: n.updatedAt
       }));
 
-    // 4. Tasks, Plans, Medications, Shopping
+    // 5. Tasks, Plans, Medications, Shopping
     const tasks = FamilyDB.getTasks().slice(-30).map(t => ({
       id: t.id,
       title: t.title,
@@ -2563,8 +2729,21 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
 
     const prompt = [
       "Bạn là trợ lý AI thông minh, chu đáo và tận tâm của ứng dụng FamOrg (Gia đình Namdumimo).",
-      "Nhiệm vụ của bạn là hỗ trợ gia đình trong các việc: tài chính & chỉ tiêu thu chi, rà soát/tìm kiếm giấy tờ và ghi chú, quản lý công việc, lịch trình, thuốc men và thực đơn đi chợ.",
+      "Nhiệm vụ của bạn là hỗ trợ gia đình trong các việc: tài sản & tiệm vàng tư nhân, tài chính & chỉ tiêu thu chi, rà soát/tìm kiếm giấy tờ và ghi chú, quản lý công việc, lịch trình, thuốc men và thực đơn đi chợ.",
       "Trả lời tự nhiên, rõ ràng, hữu ích bằng tiếng Việt.",
+      "",
+      "QUY TẮC QUAN TRỌNG VỀ TÀI SẢN & TIỆM VÀNG TƯ NHÂN:",
+      "- Bạn có quyền tra cứu 'Danh muc tai san & Tiem vang tu nhan' dưới đây.",
+      "- Khi người dùng hỏi về tài sản hiện có, lãi lỗ tài sản, tổng tài sản, tình hình vàng nhẫn:",
+      "  + Báo cáo rõ ràng: Tổng số tài sản, Tổng vốn đầu tư ban đầu, Giá trị ước tính hiện tại, Tổng lãi/lỗ (số tiền tuyệt đối và tỷ lệ %).",
+      "  + Liệt kê chi tiết từng tài sản (đặc biệt là vàng nhẫn 24k ép vỉ vs nhẫn trơn): số lượng (chỉ/lượng), ngày mua, số ngày đã nắm giữ, giá mua ban đầu, giá ước tính hiện tại, lãi/lỗ bao nhiêu VNĐ và bao nhiêu %.",
+      "  + Giải thích rõ: Vàng nhẫn ép vỉ có thanh khoản cao hơn và giá bán cao hơn vàng nhẫn trơn loại thường.",
+      "- Khi người dùng gửi ảnh bảng giá vàng (hoặc biên nhận) hoặc nhắn tin giá vàng của tiệm vàng tư nhân:",
+      "  + Đọc/trích xuất: Tên tiệm vàng, giá mua vào/bán ra của nhẫn ép vỉ (ringBlisterBuyPrice, ringBlisterSellPrice) và nhẫn trơn (ringPlainBuyPrice, ringPlainSellPrice).",
+      "  + Lưu ý đơn vị tiền: Bảng giá vàng VN thường ghi theo nghìn đồng/chỉ (ví dụ '8.900' nghĩa là 8.900.000 VNĐ/chỉ, hay 89.000.000 VNĐ/lượng). Hãy quy đổi chính xác về con số tiền tuyệt đối theo VNĐ tương ứng với đơn vị mà tiệm và tài sản đang dùng.",
+      "  + Khớp với tiệm vàng trong danh sách 'goldStores'. Nếu tìm thấy, điền đúng `storeId` của tiệm.",
+      "  + Tính toán xem khi cập nhật bảng giá mới này thì các tài sản nào mua tại tiệm đó sẽ được tự động quy đổi giá trị, lãi/lỗ mới sẽ là bao nhiêu.",
+      "  + BẮT BUỘC tạo action `update_gold_store_prices` để người dùng có nút bấm một chạm cập nhật bảng giá và tự động quy đổi toàn bộ tài sản liên quan.",
       "",
       "QUY TẮC QUAN TRỌNG VỀ TÀI CHÍNH & CHỈ TIÊU:",
       "- Phần 'Tong quan tai chinh chinh xac' cung cấp số liệu thu chi & chỉ tiêu thực tế ĐÃ ĐƯỢC HỆ THỐNG TÍNH TOÁN CHÍNH XÁC 100% cho Hôm nay, Tuần này, Tháng này, Quý này.",
@@ -2586,10 +2765,12 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
       "  1. `create_shopping_items`: {\"type\":\"create_shopping_items\",\"title\":\"...\",\"items\":[{\"name\":\"...\",\"quantity\":\"...\",\"note\":\"...\"}]}",
       "  2. `download_files`: {\"type\":\"download_files\",\"title\":\"Tài liệu tải xuống\",\"files\":[{\"name\":\"...\",\"url\":\"...\",\"docTitle\":\"...\"}]}",
       "  3. `send_telegram_report`: {\"type\":\"send_telegram_report\",\"title\":\"Gửi báo cáo qua Telegram\",\"period\":\"day|week|month|quarter\"}",
+      "  4. `update_gold_store_prices`: {\"type\":\"update_gold_store_prices\",\"title\":\"Cập nhật giá tiệm [Tên tiệm]\",\"storeId\":\"<id tiệm>\",\"storeName\":\"<tên tiệm>\",\"ringBlisterBuyPrice\":...,\"ringBlisterSellPrice\":...,\"ringPlainBuyPrice\":...,\"ringPlainSellPrice\":...,\"note\":\"...\",\"autoConvert\":true}",
       "- Nếu không có hành động cụ thể, đặt `actions`: [].",
       "",
       `Nguoi hoi: ${session.fullName} (${session.role})`,
       financialOverview ? `Tong quan tai chinh chinh xac: ${JSON.stringify(financialOverview)}` : "Tài chính: Không xem được (tài khoản trẻ em/khách).",
+      assetsAndStoresContext ? `Danh muc tai san & Tiem vang tu nhan: ${JSON.stringify(assetsAndStoresContext)}` : "Tài sản & Tiệm vàng: Không xem được (tài khoản trẻ em/khách).",
       `Kho giay to: ${JSON.stringify(documents)}`,
       `Ghi chu gia dinh: ${JSON.stringify(notes)}`,
       `Tasks gan day: ${JSON.stringify(tasks)}`,
@@ -2599,7 +2780,12 @@ app.post("/api/assistant/chat", requireAuth, async (req: AuthRequest, res: Respo
       `Cau hoi cua nguoi dung: ${message}`
     ].join("\n\n");
 
-    const rawText = await aiGenerateText({ prompt, json: true, maxTokens: 4096 });
+    const rawText = await aiGenerateText({
+      prompt,
+      files: file ? [file] : undefined,
+      json: true,
+      maxTokens: 4096
+    });
     const parsed = parseAssistantJson(rawText);
     if (!parsed) {
       res.json({

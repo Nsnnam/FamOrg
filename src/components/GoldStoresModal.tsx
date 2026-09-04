@@ -24,6 +24,7 @@ import { FamilyAsset, PrivateGoldStore } from "../types.js";
 import { useModalA11y } from "../hooks/useModalA11y.js";
 import { useConfirm } from "./ConfirmDialog.js";
 import { effectiveGoldWeight, isGoldType } from "../utils/assetValue.js";
+import { MoneyInput } from "./MoneyInput.js";
 
 interface GoldStoresModalProps {
   isOpen: boolean;
@@ -334,14 +335,14 @@ export function GoldStoresModal({
 
         {/* Alerts */}
         {successMessage && (
-          <div className="mx-4 mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs flex items-center gap-2">
-            <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+          <div className="mx-4 mt-3 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs flex items-center gap-2 font-medium">
+            <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
             <span>{successMessage}</span>
           </div>
         )}
         {errorMessage && (
-          <div className="mx-4 mt-3 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl text-xs flex items-center gap-2">
-            <X className="size-4 shrink-0 text-rose-400" />
+          <div className="mx-4 mt-3 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-800 dark:text-rose-300 rounded-xl text-xs flex items-center gap-2 font-medium">
+            <X className="size-4 shrink-0 text-rose-600 dark:text-rose-400" />
             <span>{errorMessage}</span>
           </div>
         )}
@@ -353,7 +354,7 @@ export function GoldStoresModal({
             <div className="max-w-xl mx-auto bg-slate-950/60 border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
               <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                 <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                  <Store className="size-4 text-amber-400" />
+                  <Store className="size-4 text-amber-600 dark:text-amber-400" />
                   {editingStore ? `Chỉnh sửa: ${editingStore.name}` : "Thêm tiệm vàng tư nhân mới"}
                 </h3>
                 <button
@@ -420,48 +421,44 @@ export function GoldStoresModal({
                         <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
                           🏷️ Nhẫn 24K Ép vỉ (Thu mua)
                         </span>
-                        <input
-                          inputMode="numeric"
-                          value={formatMoneyInput(ringBlisterBuyPrice)}
-                          onChange={(e) => setRingBlisterBuyPrice(parseMoneyInput(e.target.value))}
+                        <MoneyInput
+                          value={ringBlisterBuyPrice || 0}
+                          onChange={(n) => setRingBlisterBuyPrice(n > 0 ? n : undefined)}
                           placeholder="VD: 14.950.000"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100"
+                          currency="đ/chỉ"
                         />
                       </div>
                       <div>
-                        <span className="text-[11px] font-bold text-slate-400 block mb-1">
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-400 block mb-1">
                           Nhẫn 24K Ép vỉ (Bán ra)
                         </span>
-                        <input
-                          inputMode="numeric"
-                          value={formatMoneyInput(ringBlisterSellPrice)}
-                          onChange={(e) => setRingBlisterSellPrice(parseMoneyInput(e.target.value))}
+                        <MoneyInput
+                          value={ringBlisterSellPrice || 0}
+                          onChange={(n) => setRingBlisterSellPrice(n > 0 ? n : undefined)}
                           placeholder="VD: 15.200.000"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100"
+                          currency="đ/chỉ"
                         />
                       </div>
                       <div>
                         <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
                           💍 Nhẫn 24K Loại thường (Thu mua)
                         </span>
-                        <input
-                          inputMode="numeric"
-                          value={formatMoneyInput(ringPlainBuyPrice)}
-                          onChange={(e) => setRingPlainBuyPrice(parseMoneyInput(e.target.value))}
+                        <MoneyInput
+                          value={ringPlainBuyPrice || 0}
+                          onChange={(n) => setRingPlainBuyPrice(n > 0 ? n : undefined)}
                           placeholder="VD: 14.850.000"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100"
+                          currency="đ/chỉ"
                         />
                       </div>
                       <div>
-                        <span className="text-[11px] font-bold text-slate-400 block mb-1">
+                        <span className="text-[11px] font-bold text-slate-700 dark:text-slate-400 block mb-1">
                           Nhẫn 24K Loại thường (Bán ra)
                         </span>
-                        <input
-                          inputMode="numeric"
-                          value={formatMoneyInput(ringPlainSellPrice)}
-                          onChange={(e) => setRingPlainSellPrice(parseMoneyInput(e.target.value))}
+                        <MoneyInput
+                          value={ringPlainSellPrice || 0}
+                          onChange={(n) => setRingPlainSellPrice(n > 0 ? n : undefined)}
                           placeholder="VD: 15.100.000"
-                          className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100"
+                          currency="đ/chỉ"
                         />
                       </div>
                     </div>
@@ -600,14 +597,14 @@ export function GoldStoresModal({
                           <div className="grid grid-cols-2 gap-2 pt-1">
                             <div>
                               <span className="text-[10px] text-slate-400 block">Thu mua (thanh khoản)</span>
-                              <span className="text-sm font-extrabold text-emerald-400 font-mono">
+                              <span className="text-sm font-extrabold text-emerald-700 dark:text-emerald-400 font-mono">
                                 {store.prices?.ringBlisterBuyPrice ? formatMoney(store.prices.ringBlisterBuyPrice) : "—"}
                               </span>
                               <span className="text-[10px] text-slate-500 font-mono">/chỉ</span>
                             </div>
                             <div>
                               <span className="text-[10px] text-slate-400 block">Bán ra</span>
-                              <span className="text-sm font-bold text-slate-300 font-mono">
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
                                 {store.prices?.ringBlisterSellPrice ? formatMoney(store.prices.ringBlisterSellPrice) : "—"}
                               </span>
                               <span className="text-[10px] text-slate-500 font-mono">/chỉ</span>
@@ -629,14 +626,14 @@ export function GoldStoresModal({
                           <div className="grid grid-cols-2 gap-2 pt-1">
                             <div>
                               <span className="text-[10px] text-slate-400 block">Thu mua (thanh khoản)</span>
-                              <span className="text-sm font-extrabold text-emerald-400 font-mono">
+                              <span className="text-sm font-extrabold text-emerald-700 dark:text-emerald-400 font-mono">
                                 {store.prices?.ringPlainBuyPrice ? formatMoney(store.prices.ringPlainBuyPrice) : "—"}
                               </span>
                               <span className="text-[10px] text-slate-500 font-mono">/chỉ</span>
                             </div>
                             <div>
                               <span className="text-[10px] text-slate-400 block">Bán ra</span>
-                              <span className="text-sm font-bold text-slate-300 font-mono">
+                              <span className="text-sm font-bold text-slate-700 dark:text-slate-300 font-mono">
                                 {store.prices?.ringPlainSellPrice ? formatMoney(store.prices.ringPlainSellPrice) : "—"}
                               </span>
                               <span className="text-[10px] text-slate-500 font-mono">/chỉ</span>
@@ -656,7 +653,7 @@ export function GoldStoresModal({
                           </b>
                         </span>
                         {linked.length > 0 && (
-                          <span className="text-amber-400/90">
+                          <span className="text-amber-800 dark:text-amber-300 font-semibold">
                             Có {linked.length} tài sản áp dụng giá tiệm này
                           </span>
                         )}
@@ -693,49 +690,45 @@ export function GoldStoresModal({
                                 </p>
                                 <div className="space-y-1">
                                   <label className="text-[10px] text-slate-400 block">Giá thu mua (Thanh khoản)</label>
-                                  <input
-                                    inputMode="numeric"
-                                    value={formatMoneyInput(ringBlisterBuyPrice)}
-                                    onChange={(e) => setRingBlisterBuyPrice(parseMoneyInput(e.target.value))}
+                                  <MoneyInput
+                                    value={ringBlisterBuyPrice || 0}
+                                    onChange={(n) => setRingBlisterBuyPrice(n > 0 ? n : undefined)}
                                     placeholder="VD: 14.950.000"
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs font-mono text-emerald-300 outline-none focus:border-amber-500"
+                                    currency="đ/chỉ"
                                   />
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-[10px] text-slate-400 block">Giá bán ra</label>
-                                  <input
-                                    inputMode="numeric"
-                                    value={formatMoneyInput(ringBlisterSellPrice)}
-                                    onChange={(e) => setRingBlisterSellPrice(parseMoneyInput(e.target.value))}
+                                  <MoneyInput
+                                    value={ringBlisterSellPrice || 0}
+                                    onChange={(n) => setRingBlisterSellPrice(n > 0 ? n : undefined)}
                                     placeholder="VD: 15.200.000"
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-200 outline-none focus:border-amber-500"
+                                    currency="đ/chỉ"
                                   />
                                 </div>
                               </div>
 
                               {/* Loại thường */}
                               <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-800">
-                                <p className="font-bold text-slate-300 text-[11px] flex items-center gap-1">
+                                <p className="font-bold text-slate-200 text-[11px] flex items-center gap-1">
                                   💍 Nhẫn 24K Loại Thường (đ/chỉ)
                                 </p>
                                 <div className="space-y-1">
                                   <label className="text-[10px] text-slate-400 block">Giá thu mua (Thanh khoản)</label>
-                                  <input
-                                    inputMode="numeric"
-                                    value={formatMoneyInput(ringPlainBuyPrice)}
-                                    onChange={(e) => setRingPlainBuyPrice(parseMoneyInput(e.target.value))}
+                                  <MoneyInput
+                                    value={ringPlainBuyPrice || 0}
+                                    onChange={(n) => setRingPlainBuyPrice(n > 0 ? n : undefined)}
                                     placeholder="VD: 14.850.000"
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs font-mono text-emerald-300 outline-none focus:border-amber-500"
+                                    currency="đ/chỉ"
                                   />
                                 </div>
                                 <div className="space-y-1">
                                   <label className="text-[10px] text-slate-400 block">Giá bán ra</label>
-                                  <input
-                                    inputMode="numeric"
-                                    value={formatMoneyInput(ringPlainSellPrice)}
-                                    onChange={(e) => setRingPlainSellPrice(parseMoneyInput(e.target.value))}
+                                  <MoneyInput
+                                    value={ringPlainSellPrice || 0}
+                                    onChange={(n) => setRingPlainSellPrice(n > 0 ? n : undefined)}
                                     placeholder="VD: 15.100.000"
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-200 outline-none focus:border-amber-500"
+                                    currency="đ/chỉ"
                                   />
                                 </div>
                               </div>
@@ -829,14 +822,14 @@ export function GoldStoresModal({
                                           {new Date(h.date).toLocaleString("vi-VN")}
                                         </td>
                                         <td className="py-1.5 px-2 font-mono">
-                                          <span className="text-emerald-400 font-bold">{h.ringBlisterBuyPrice ? formatMoney(h.ringBlisterBuyPrice) : "—"}</span>
+                                          <span className="text-emerald-700 dark:text-emerald-400 font-bold">{h.ringBlisterBuyPrice ? formatMoney(h.ringBlisterBuyPrice) : "—"}</span>
                                           <span className="text-slate-500"> / </span>
-                                          <span className="text-slate-400">{h.ringBlisterSellPrice ? formatMoney(h.ringBlisterSellPrice) : "—"}</span>
+                                          <span className="text-slate-700 dark:text-slate-400">{h.ringBlisterSellPrice ? formatMoney(h.ringBlisterSellPrice) : "—"}</span>
                                         </td>
                                         <td className="py-1.5 px-2 font-mono">
-                                          <span className="text-emerald-400 font-bold">{h.ringPlainBuyPrice ? formatMoney(h.ringPlainBuyPrice) : "—"}</span>
+                                          <span className="text-emerald-700 dark:text-emerald-400 font-bold">{h.ringPlainBuyPrice ? formatMoney(h.ringPlainBuyPrice) : "—"}</span>
                                           <span className="text-slate-500"> / </span>
-                                          <span className="text-slate-400">{h.ringPlainSellPrice ? formatMoney(h.ringPlainSellPrice) : "—"}</span>
+                                          <span className="text-slate-700 dark:text-slate-400">{h.ringPlainSellPrice ? formatMoney(h.ringPlainSellPrice) : "—"}</span>
                                         </td>
                                         <td className="py-1.5 px-2 text-slate-400">
                                           {h.note || "—"}

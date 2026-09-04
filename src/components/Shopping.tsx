@@ -12,6 +12,7 @@ import { useTabFab } from "./FabHost.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { generateMealPlan, FOOD_CATEGORY_ORDER, GroceryLine, FoodCategory } from "../utils/mealPlan.js";
 import { classifyMarketZone, MARKET_ZONE_ORDER, MARKET_ZONE_META, MarketZone } from "../utils/marketZones.js";
+import { MoneyInput } from "./MoneyInput.js";
 
 const WEEKDAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 const dayLabel = (i: number) => (i < WEEKDAYS.length ? WEEKDAYS[i] : `Ngày ${i + 1}`);
@@ -82,6 +83,7 @@ export function Shopping({
   const { confirm, ConfirmDialog } = useConfirm();
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [price, setPrice] = useState<number>(0);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
 
@@ -285,9 +287,14 @@ export function Shopping({
     }
     setAdding(true);
     try {
-      await onSaveItem({ name: name.trim(), quantity: quantity.trim() });
+      await onSaveItem({
+        name: name.trim(),
+        quantity: quantity.trim(),
+        price: price > 0 ? price : undefined
+      });
       setName("");
       setQuantity("");
+      setPrice(0);
     } catch (err: any) {
       setError(err.message || "Không thêm được món này");
     } finally {
@@ -328,17 +335,24 @@ export function Shopping({
       >
         <button
           onClick={() => onToggleItem(item.id)}
-          className={`shrink-0 transition-all cursor-pointer ${done ? "text-emerald-400" : "text-slate-500 hover:text-emerald-400"}`}
+          className={`shrink-0 transition-all cursor-pointer ${done ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400"}`}
           title={done ? "Bỏ đánh dấu" : "Đánh dấu đã mua"}
         >
           {done ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
         </button>
 
         <div className="flex-1 min-w-0">
-          <p className={`text-sm font-semibold truncate ${done ? "line-through text-slate-500" : "text-slate-200"}`}>
-            {item.name}
-            {item.quantity ? <span className="text-slate-500 font-normal"> · {item.quantity}</span> : null}
-          </p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className={`text-sm font-semibold truncate ${done ? "line-through text-slate-500" : "text-slate-200"}`}>
+              {item.name}
+              {item.quantity ? <span className="text-slate-500 font-normal"> · {item.quantity}</span> : null}
+            </p>
+            {item.price && item.price > 0 ? (
+              <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded border ${done ? "line-through text-slate-500 bg-slate-900 border-slate-800" : "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20"}`}>
+                {item.price.toLocaleString("vi-VN")} đ
+              </span>
+            ) : null}
+          </div>
           {item.note && (
             <p className={`text-[10px] leading-snug ${done ? "text-slate-600" : "text-slate-400"}`}>
               <ChefHat className="w-2.5 h-2.5 inline-block mr-0.5 -mt-0.5 text-slate-500" />{item.note}
@@ -370,26 +384,36 @@ export function Shopping({
         <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
           <IconChip accent="emerald"><ShoppingCart className="w-4 h-4" /></IconChip> Danh sách đi chợ chung
         </h3>
-        <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2.5">
+        <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center">
           <input
             ref={nameInputRef}
             type="text"
             placeholder="Tên món cần mua (vd: Sữa tươi, Rau cải...)"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="flex-1 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-200 placeholder-slate-500 text-xs focus:outline-none transition-all"
+            className="flex-1 w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-200 placeholder-slate-500 text-xs focus:outline-none transition-all"
           />
           <input
             type="text"
             placeholder="Số lượng (tùy chọn)"
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
-            className="sm:w-40 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-200 placeholder-slate-500 text-xs focus:outline-none transition-all"
+            className="w-full sm:w-36 bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3.5 py-2.5 text-slate-200 placeholder-slate-500 text-xs focus:outline-none transition-all"
           />
+          <div className="w-full sm:w-44">
+            <MoneyInput
+              value={price}
+              onChange={setPrice}
+              placeholder="Giá dự kiến"
+              showInWords={false}
+              quickZeros={true}
+              className="py-2.5"
+            />
+          </div>
           <button
             type="submit"
             disabled={adding}
-            className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shrink-0 cursor-pointer"
+            className="w-full sm:w-auto bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Thêm
           </button>

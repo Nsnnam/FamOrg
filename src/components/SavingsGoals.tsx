@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
+import { MoneyInput } from "./MoneyInput.js";
 
 interface SavingsGoalsProps {
   currentUser: User;
@@ -134,7 +135,7 @@ export function SavingsGoals({
             onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-slate-950/40 border border-slate-800 rounded-xl p-3 overflow-hidden"
           >
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Tên mục tiêu (vd: Tết 2027, Du lịch...)" className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500" />
-            <input inputMode="numeric" value={target > 0 ? fmtMoney(target) : ""} onChange={e => setTarget(parseMoney(e.target.value))} placeholder="Số tiền mục tiêu" className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500" />
+            <MoneyInput value={target} onChange={setTarget} placeholder="Số tiền mục tiêu" />
             <DateInputDMY value={deadline} onChange={setDeadline} className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-emerald-500 font-mono" />
             <FancySelect
               value={color}
@@ -213,15 +214,18 @@ export function SavingsGoals({
 
                 {/* Đóng góp nhanh */}
                 <div className="flex items-center gap-1.5">
-                  <input
-                    inputMode="numeric"
-                    value={contribDraft[goal.id] || ""}
-                    onChange={e => setContribDraft(prev => ({ ...prev, [goal.id]: e.target.value }))}
-                    placeholder="Số tiền bỏ vào / rút ra"
-                    className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 outline-none focus:border-emerald-500 text-[11px]"
-                  />
-                  <button disabled={busyGoal === goal.id} onClick={() => handleContribute(goal, 1)} className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer disabled:opacity-50" title="Bỏ thêm vào quỹ">+ Góp</button>
-                  <button disabled={busyGoal === goal.id} onClick={() => handleContribute(goal, -1)} className="bg-rose-500/10 text-rose-400 border border-rose-500/25 hover:bg-rose-500/20 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer disabled:opacity-50" title="Rút bớt khỏi quỹ">− Rút</button>
+                  <div className="flex-1 min-w-0">
+                    <MoneyInput
+                      value={parseMoney(contribDraft[goal.id] || "")}
+                      onChange={val => setContribDraft(prev => ({ ...prev, [goal.id]: val > 0 ? String(val) : "" }))}
+                      placeholder="Số tiền bỏ vào / rút ra"
+                      showInWords={false}
+                      quickZeros={true}
+                      className="py-1.5 text-[11px]"
+                    />
+                  </div>
+                  <button disabled={busyGoal === goal.id} onClick={() => handleContribute(goal, 1)} className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 rounded-lg px-2.5 py-2 text-[11px] font-bold cursor-pointer disabled:opacity-50 shrink-0" title="Bỏ thêm vào quỹ">+ Góp</button>
+                  <button disabled={busyGoal === goal.id} onClick={() => handleContribute(goal, -1)} className="bg-rose-500/10 text-rose-400 border border-rose-500/25 hover:bg-rose-500/20 rounded-lg px-2.5 py-2 text-[11px] font-bold cursor-pointer disabled:opacity-50 shrink-0" title="Rút bớt khỏi quỹ">− Rút</button>
                 </div>
 
                 {goal.contributions.length > 0 && (

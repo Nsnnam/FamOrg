@@ -11,6 +11,7 @@ import { optimizeAndUpload } from "../utils/uploadImage.js";
 import { ShimmerLine, Reveal, IconChip } from "./Lively.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 import { debtPaid, debtRemaining } from "../utils/debt.js";
+import { MoneyInput } from "./MoneyInput.js";
 
 interface DebtTrackerProps {
   currentUser: User;
@@ -224,14 +225,17 @@ export function DebtTracker({
 
         {!settled && (
           <div className="flex items-center gap-1.5">
-            <input
-              inputMode="numeric"
-              value={payDraft[debt.id] || ""}
-              onChange={e => setPayDraft(prev => ({ ...prev, [debt.id]: e.target.value }))}
-              placeholder={isBorrowed ? "Số tiền đã trả" : "Số tiền đã thu"}
-              className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 outline-none focus:border-sky-500 text-[11px]"
-            />
-            <button disabled={busy === debt.id} onClick={() => handlePay(debt)} className="bg-sky-500/15 text-sky-400 border border-sky-500/30 hover:bg-sky-500/25 rounded-lg px-2.5 py-1.5 text-[11px] font-bold cursor-pointer disabled:opacity-50">
+            <div className="flex-1 min-w-0">
+              <MoneyInput
+                value={parseMoney(payDraft[debt.id] || "")}
+                onChange={val => setPayDraft(prev => ({ ...prev, [debt.id]: val > 0 ? String(val) : "" }))}
+                placeholder={isBorrowed ? "Số tiền đã trả" : "Số tiền đã thu"}
+                showInWords={false}
+                quickZeros={true}
+                className="py-1.5 text-[11px]"
+              />
+            </div>
+            <button disabled={busy === debt.id} onClick={() => handlePay(debt)} className="bg-sky-500/15 text-sky-400 border border-sky-500/30 hover:bg-sky-500/25 rounded-lg px-2.5 py-2 text-[11px] font-bold cursor-pointer disabled:opacity-50 shrink-0">
               {isBorrowed ? "Đã trả" : "Đã thu"}
             </button>
           </div>
@@ -299,7 +303,9 @@ export function DebtTracker({
               <label className="text-[10px] text-slate-500 font-semibold">Tên người / tổ chức <span className="text-rose-400">*</span></label>
               <input value={counterparty} onChange={e => setCounterparty(e.target.value)} placeholder={direction === "borrowed" ? "VD: Anh Ba, Ngân hàng ACB..." : "VD: Chú Tư, bạn Lan..."} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500" />
             </div>
-            <input inputMode="numeric" value={amount > 0 ? fmtMoney(amount) : ""} onChange={e => setAmount(parseMoney(e.target.value))} placeholder="Số tiền" className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500" />
+            <div className="sm:col-span-2">
+              <MoneyInput value={amount} onChange={setAmount} placeholder="Số tiền" />
+            </div>
             <div className="space-y-1">
               <label className="text-[10px] text-slate-500 font-semibold">{direction === "borrowed" ? "Ngày mượn" : "Ngày cho mượn"} <span className="text-rose-400">*</span></label>
               <DateInputDMY value={loanDate} max={dueDate || undefined} onChange={setLoanDate} className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-200 outline-none focus:border-amber-500 font-mono" />

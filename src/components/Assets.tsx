@@ -55,6 +55,7 @@ import { ShimmerLine, Reveal, staggerDelay } from "./Lively.js";
 import { FancySelect } from "./FancySelect.js";
 import { DateInputDMY, formatDateVN } from "./DateTimePicker24.js";
 import { GoldStoresModal } from "./GoldStoresModal.js";
+import { MoneyInput } from "./MoneyInput.js";
 import {
   GOLD_PURITY_OPTIONS,
   MarketPrices,
@@ -1020,7 +1021,7 @@ export function Assets({
     if (pct === null || pct === undefined || isNaN(pct)) return null;
     const up = pct >= 0;
     return (
-      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${up ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"}`}>
+      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${up ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-rose-500/10 text-rose-700 dark:text-rose-400"}`}>
         {up ? "▲" : "▼"} {Math.abs(pct).toFixed(2)}%
       </span>
     );
@@ -1040,7 +1041,7 @@ export function Assets({
         <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-amber-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-amber-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[88px]">
           <ShimmerLine accent="amber" />
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-400">₿ Bitcoin</span>
+            <span className="text-xs font-bold text-amber-700 dark:text-amber-400">₿ Bitcoin</span>
             {widgetsOverview?.crypto?.bitcoin ? changeBadge(widgetsOverview.crypto.bitcoin.usd_24h_change) : null}
           </div>
           <div className="mt-2 flex flex-col gap-0.5">
@@ -1057,7 +1058,7 @@ export function Assets({
         <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-indigo-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[88px]">
           <ShimmerLine accent="indigo" />
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-indigo-400">Ξ Ethereum</span>
+            <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400">Ξ Ethereum</span>
             {widgetsOverview?.crypto?.ethereum ? changeBadge(widgetsOverview.crypto.ethereum.usd_24h_change) : null}
           </div>
           <div className="mt-2 flex flex-col gap-0.5">
@@ -1074,7 +1075,7 @@ export function Assets({
         <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-yellow-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-yellow-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[88px]">
           <ShimmerLine accent="yellow" />
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-yellow-500">🪙 {widgetsOverview?.gold?.source || "Vàng"}</span>
+            <span className="text-xs font-bold text-amber-700 dark:text-yellow-500">🪙 {widgetsOverview?.gold?.source || "Vàng"}</span>
             {widgetsOverview?.gold ? changeBadge(widgetsOverview.gold.changePct) : null}
           </div>
           <div className="mt-2 flex flex-col gap-0.5">
@@ -1093,10 +1094,10 @@ export function Assets({
         <div className="relative overflow-hidden bg-slate-900 border border-slate-800 hover:border-emerald-500/30 rounded-2xl p-4 shadow-md hover:shadow-lg hover:shadow-emerald-500/10 hover:-translate-y-0.5 transition-all duration-300 flex flex-col justify-between min-h-[88px]">
           <ShimmerLine accent="emerald" />
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-emerald-400">💵 USD/VND</span>
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">💵 USD/VND</span>
             {marketPricesStatus === "ok" && (
-              <span className="flex items-center gap-1 text-[9px] text-emerald-400/70">
-                <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+              <span className="flex items-center gap-1 text-[9px] text-emerald-700/80 dark:text-emerald-400/70">
+                <span className="size-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400 animate-pulse inline-block" />
                 Live
               </span>
             )}
@@ -1680,11 +1681,11 @@ export function Assets({
                     ) : (
                       <div className="space-y-2">
                         {goldImportPreview.rows.map(row => (
-                          <div key={row.id} className="grid grid-cols-1 sm:grid-cols-[1.2fr_1.2fr_135px_135px_95px] gap-2 items-end bg-slate-950/50 border border-slate-800 rounded-xl p-2.5">
+                          <div key={row.id} className="grid grid-cols-1 sm:grid-cols-[1.1fr_1.1fr_160px_160px_90px] gap-2 items-end bg-slate-950/50 border border-slate-800 rounded-xl p-2.5">
                             <label className="text-[10px] text-slate-500">Tên / loại<input value={row.label} onChange={(e) => updateGoldImportRow(row.id, { label: e.target.value })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200" /></label>
                             <label className="text-[10px] text-slate-500">Gắn vào tài sản<select value={row.assetId || ""} onChange={(e) => updateGoldImportRow(row.id, { assetId: e.target.value || undefined })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"><option value="">Chỉ lưu bảng giá</option>{assets.filter(asset => isGoldType(asset.type)).map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}</select></label>
-                            <label className="text-[10px] text-slate-500">Giá mua<input type="number" value={row.buyPrice || ""} onChange={(e) => updateGoldImportRow(row.id, { buyPrice: e.target.value ? Number(e.target.value) : undefined })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 font-mono" /></label>
-                            <label className="text-[10px] text-slate-500">Giá bán<input type="number" value={row.sellPrice || ""} onChange={(e) => updateGoldImportRow(row.id, { sellPrice: e.target.value ? Number(e.target.value) : undefined })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 font-mono" /></label>
+                            <div><label className="text-[10px] text-slate-500 block mb-1">Giá mua</label><MoneyInput value={row.buyPrice || 0} onChange={(val) => updateGoldImportRow(row.id, { buyPrice: val > 0 ? val : undefined })} placeholder="Giá mua" size="sm" showZeroShortcuts={true} /></div>
+                            <div><label className="text-[10px] text-slate-500 block mb-1">Giá bán</label><MoneyInput value={row.sellPrice || 0} onChange={(val) => updateGoldImportRow(row.id, { sellPrice: val > 0 ? val : undefined })} placeholder="Giá bán" size="sm" showZeroShortcuts={true} /></div>
                             <label className="text-[10px] text-slate-500">Đơn vị<select value={row.unit} onChange={(e) => updateGoldImportRow(row.id, { unit: e.target.value as GoldPriceImportRow["unit"] })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-slate-200"><option value="lượng">lượng</option><option value="chỉ">chỉ</option><option value="gram">gram</option></select></label>
                           </div>
                         ))}
@@ -1863,18 +1864,12 @@ export function Assets({
                       <label className="text-slate-400 block font-semibold text-xs">
                         Đơn giá mua / 1 {formUnit || "đơn vị"}
                       </label>
-                      <div className="relative">
-                        <input
-                          inputMode="numeric"
-                          placeholder="Ví dụ: 10.950.000"
-                          value={formatMoneyInput(formPurchaseUnitPrice)}
-                          onChange={(e) => handlePurchaseUnitPriceChange(parseMoneyInput(e.target.value))}
-                          className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-lg p-2.5 pr-14 text-slate-200 outline-none font-mono text-xs"
-                        />
-                        <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono pointer-events-none">
-                          /{formUnit}
-                        </span>
-                      </div>
+                      <MoneyInput
+                        value={formPurchaseUnitPrice}
+                        onChange={handlePurchaseUnitPriceChange}
+                        placeholder="Ví dụ: 10.950.000"
+                        currency={`/${formUnit || "đv"}`}
+                      />
                     </div>
 
                     <div className="space-y-1">
@@ -1884,18 +1879,12 @@ export function Assets({
                         </label>
                         <span className="text-[9px] text-amber-800 dark:text-amber-400/80 font-mono font-medium">Tự tính: SL × Đơn giá</span>
                       </div>
-                      <div className="relative">
-                        <input
-                          inputMode="numeric"
-                          placeholder="Tự động nhân từ đơn giá"
-                          value={formatMoneyInput(formPurchaseValue)}
-                          onChange={(e) => handlePurchaseValueChange(parseMoneyInput(e.target.value))}
-                          className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-lg p-2.5 pr-12 text-slate-200 outline-none font-mono text-xs font-bold"
-                        />
-                        <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono pointer-events-none">
-                          {formCurrency}
-                        </span>
-                      </div>
+                      <MoneyInput
+                        value={formPurchaseValue}
+                        onChange={handlePurchaseValueChange}
+                        placeholder="Tự động nhân từ đơn giá"
+                        currency={formCurrency}
+                      />
                     </div>
 
                     <div className="space-y-1">
@@ -1921,11 +1910,11 @@ export function Assets({
                 {/* KHỐI 2: GIÁ TRỊ ƯỚC TÍNH HIỆN TẠI (TỪ ĐƠN VỊ NHỎ NHẤT NHÂN LÊN) */}
                 <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3.5 space-y-3">
                   <div className="flex items-center justify-between flex-wrap gap-2">
-                    <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                      <TrendingUp className="size-3.5 text-emerald-400" />
+                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                      <TrendingUp className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                       Giá trị ước tính hiện tại
                       {formAutoValue && formEstimatedValue === 0 && (
-                        <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">LIVE AUTO</span>
+                        <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">LIVE AUTO</span>
                       )}
                     </span>
 
@@ -1936,7 +1925,7 @@ export function Assets({
                           onClick={() => {
                             handleEstimatedUnitPriceChange(marketUnitPrice);
                           }}
-                          className="text-[10px] text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 px-2 py-0.5 rounded-md font-semibold cursor-pointer transition-colors"
+                          className="text-[10px] text-sky-600 dark:text-sky-300 hover:text-sky-700 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 px-2 py-0.5 rounded-md font-semibold cursor-pointer transition-colors"
                           title="Điền theo bảng giá thị trường đang có"
                         >
                           Dùng giá thị trường ({formatMoney(marketUnitPrice, formCurrency)}/{formUnit})
@@ -1961,7 +1950,7 @@ export function Assets({
                             setFormEstimatedUnitPrice(0);
                             setFormEstimatedValue(0);
                           }}
-                          className="text-[10px] text-slate-400 hover:text-amber-400 bg-slate-800/80 px-2 py-0.5 rounded-md font-medium cursor-pointer transition-colors"
+                          className="text-[10px] text-slate-400 hover:text-amber-700 dark:hover:text-amber-400 bg-slate-800/80 px-2 py-0.5 rounded-md font-medium cursor-pointer transition-colors"
                           title="Để trống để tự động dùng giá thị trường LIVE"
                         >
                           Xóa để dùng LIVE
@@ -1978,23 +1967,17 @@ export function Assets({
                           Đơn giá ước tính / 1 {formUnit || "đơn vị"}
                         </label>
                         {marketUnitPrice > 0 && (
-                          <span className="text-[10px] text-emerald-400 font-mono">
+                          <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-mono">
                             Thị trường: {formatMoney(marketUnitPrice, formCurrency)}/{formUnit}
                           </span>
                         )}
                       </div>
-                      <div className="relative">
-                        <input
-                          inputMode="numeric"
-                          placeholder={marketUnitPrice > 0 ? formatMoneyInput(marketUnitPrice) : "Nhập đơn giá / 1 đơn vị"}
-                          value={formatMoneyInput(formEstimatedUnitPrice)}
-                          onChange={(e) => handleEstimatedUnitPriceChange(parseMoneyInput(e.target.value))}
-                          className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2.5 pr-14 text-slate-200 outline-none font-mono text-xs"
-                        />
-                        <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono pointer-events-none">
-                          /{formUnit}
-                        </span>
-                      </div>
+                      <MoneyInput
+                        value={formEstimatedUnitPrice}
+                        onChange={handleEstimatedUnitPriceChange}
+                        placeholder={marketUnitPrice > 0 ? formatMoneyInput(marketUnitPrice) : "Nhập đơn giá / 1 đơn vị"}
+                        currency={`/${formUnit || "đv"}`}
+                      />
                     </div>
 
                     {/* Tổng giá trị ước tính */}
@@ -2003,20 +1986,14 @@ export function Assets({
                         <label className="text-slate-400 block font-semibold text-xs">
                           Tổng giá trị ước tính
                         </label>
-                        <span className="text-[9px] text-emerald-400/80 font-mono">Tự tính: SL × Đơn giá</span>
+                        <span className="text-[9px] text-emerald-700/80 dark:text-emerald-400/80 font-mono">Tự tính: SL × Đơn giá</span>
                       </div>
-                      <div className="relative">
-                        <input
-                          inputMode="numeric"
-                          placeholder={formAutoValue ? `Tự động: ${formatMoney(formAutoValue.value, formCurrency)}` : "Tự động nhân từ đơn vị nhỏ nhất"}
-                          value={formatMoneyInput(formEstimatedValue)}
-                          onChange={(e) => handleEstimatedValueChange(parseMoneyInput(e.target.value))}
-                          className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-lg p-2.5 pr-12 text-slate-200 outline-none font-mono text-xs font-bold"
-                        />
-                        <span className="absolute right-2.5 top-2.5 text-[10px] text-slate-500 font-mono pointer-events-none">
-                          {formCurrency}
-                        </span>
-                      </div>
+                      <MoneyInput
+                        value={formEstimatedValue}
+                        onChange={handleEstimatedValueChange}
+                        placeholder={formAutoValue ? `Tự động: ${formatMoney(formAutoValue.value, formCurrency)}` : "Tự động nhân từ đơn vị nhỏ nhất"}
+                        currency={formCurrency}
+                      />
                     </div>
                   </div>
 
@@ -2024,13 +2001,13 @@ export function Assets({
                     <div className="text-[11px] text-slate-400 font-mono">
                       {formQuantity > 0 && formEstimatedUnitPrice > 0 ? (
                         <span>
-                          ∑ Ước tính: <b className="text-emerald-300">{formatMoney(formEstimatedValue, formCurrency)}</b>
+                          ∑ Ước tính: <b className="text-emerald-700 dark:text-emerald-400">{formatMoney(formEstimatedValue, formCurrency)}</b>
                           <span className="text-slate-500 ml-1">
                             (= {formQuantity} {formUnit} × {formatMoney(formEstimatedUnitPrice, formCurrency)}/{formUnit})
                           </span>
                         </span>
                       ) : formAutoValue ? (
-                        <span className="text-emerald-400 flex items-center gap-1">
+                        <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                           <TrendingUp className="size-3" />
                           LIVE: <b>{formatMoney(formAutoValue.value, formCurrency)}</b>
                           <span className="text-slate-500">({formAutoValue.label}) — Để trống ô đơn giá để tự dùng giá live</span>
@@ -2049,7 +2026,7 @@ export function Assets({
                         const pct = (diff / buy) * 100;
                         const up = diff >= 0;
                         return (
-                          <span className={`text-[11px] font-bold font-mono px-2 py-0.5 rounded-lg border ${up ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20"}`}>
+                          <span className={`text-[11px] font-bold font-mono px-2 py-0.5 rounded-lg border ${up ? "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-rose-700 dark:text-rose-400 bg-rose-500/10 border-rose-500/20"}`}>
                             {up ? "Dự kiến lời:" : "Dự kiến lỗ:"} {up ? "+" : "−"}{formatMoney(Math.abs(diff), formCurrency)} ({up ? "+" : ""}{pct.toFixed(1)}%)
                           </span>
                         );
@@ -2300,19 +2277,14 @@ export function Assets({
                     <button type="button" onClick={() => setPriceInputMode("total")} className={`px-2.5 py-1.5 ${priceInputMode === "total" ? "bg-sky-500 text-slate-950" : "bg-slate-900 text-slate-400 hover:text-slate-200"}`}>Tổng giá trị</button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    inputMode="decimal"
-                    value={priceInput || ""}
-                    onChange={(e) => setPriceInput(Number(e.target.value))}
+                <div className="w-full">
+                  <MoneyInput
+                    value={priceInput || 0}
+                    onChange={(val) => setPriceInput(val)}
                     placeholder="0"
-                    className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-lg p-2.5 text-slate-100 outline-none font-mono text-right"
-                    aria-label="Giá thủ công"
+                    currency={priceLogAsset.currency}
+                    showZeroShortcuts={true}
                   />
-                  <span className="text-xs text-slate-400 font-semibold">{priceLogAsset.currency}</span>
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
                   <span className="text-slate-500">Tổng ghi nhận</span>
@@ -2359,7 +2331,7 @@ export function Assets({
                           <tr key={log.id} className="border-t border-slate-800/70">
                             <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{new Date(log.recordedAt).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}</td>
                             <td className="px-3 py-2 text-right text-slate-200 font-semibold whitespace-nowrap">{formatMoney(log.price, log.currency)}{log.unitPrice ? <span className="block text-[10px] text-slate-600">{formatMoney(log.unitPrice, log.currency)}/{log.unit || "đơn vị"}</span> : null}</td>
-                            <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${log.profitLoss === undefined ? "text-slate-600" : log.profitLoss >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                            <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${log.profitLoss === undefined ? "text-slate-600" : log.profitLoss >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
                               {log.profitLoss === undefined ? "—" : `${log.profitLoss >= 0 ? "+" : "−"}${formatMoney(Math.abs(log.profitLoss), log.currency)}${log.profitLossPct !== undefined ? ` (${log.profitLossPct.toFixed(1)}%)` : ""}`}
                             </td>
                             <td className="px-3 py-2 text-slate-500 max-w-[190px] truncate" title={log.note || ""}>{log.note || "—"}</td>
@@ -2456,7 +2428,7 @@ export function Assets({
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
               <h3 className="text-md font-bold text-slate-100 flex items-center gap-1.5">
-                <HandCoins className="size-5 text-emerald-400" /> Bán tài sản
+                <HandCoins className="size-5 text-emerald-600 dark:text-emerald-400" /> Bán tài sản
               </h3>
               <button type="button" onClick={closeSell} disabled={selling} aria-label="Đóng" className="size-8 rounded-lg bg-slate-800 text-slate-400 hover:text-slate-200 flex items-center justify-center disabled:opacity-50">
                 <X className="size-4" />
@@ -2473,7 +2445,7 @@ export function Assets({
                 <p className="text-sm font-bold text-slate-100 truncate">{sellingAsset.name}</p>
                 <p className="mt-1 text-[11px] text-slate-500">
                   Giá trị ước lượng hiện tại:{" "}
-                  <span className="text-emerald-400 font-bold">{sellEstimate > 0 ? formatMoney(sellEstimate, sellingAsset.currency) : "Chưa xác định"}</span>
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold">{sellEstimate > 0 ? formatMoney(sellEstimate, sellingAsset.currency) : "Chưa xác định"}</span>
                 </p>
               </div>
 
@@ -2498,11 +2470,13 @@ export function Assets({
 
               <div className="space-y-1">
                 <label className="text-slate-400 block font-semibold">Giá bán thực tế ({sellingAsset.currency})</label>
-                <input
-                  inputMode="numeric"
-                  value={formatMoneyInput(sellPrice)}
-                  onChange={(e) => { setSellMode("custom"); setSellPrice(parseMoneyInput(e.target.value)); }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 outline-none focus:border-emerald-500 font-mono text-base font-bold"
+                <MoneyInput
+                  value={sellPrice}
+                  onChange={(val) => {
+                    setSellMode("custom");
+                    setSellPrice(val);
+                  }}
+                  currency={sellingAsset.currency}
                 />
                 {sellingAsset.currency === "USD" && sellPrice > 0 && (
                   <p className="text-[10px] text-slate-500">
@@ -2516,7 +2490,7 @@ export function Assets({
                   const up = diff >= 0;
                   const pct = (diff / purchase) * 100;
                   return (
-                    <p className={`text-[10px] flex items-center gap-1 ${up ? "text-emerald-400" : "text-rose-400"}`}>
+                    <p className={`text-[10px] flex items-center gap-1 ${up ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
                       {up ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
                       So với giá mua {formatMoney(purchase, sellingAsset.currency)}: {up ? "Lời" : "Lỗ"} {formatMoney(Math.abs(diff), sellingAsset.currency)} ({up ? "+" : "−"}{Math.abs(pct).toFixed(1)}%)
                     </p>
@@ -2546,7 +2520,7 @@ export function Assets({
               </div>
 
               <p className="text-[10px] text-slate-500 leading-relaxed">
-                Khi xác nhận: hệ thống ghi một khoản <span className="text-emerald-400 font-semibold">THU</span> với hạng mục "{ASSET_SALE_CATEGORY}" vào sổ thu chi, sau đó xóa tài sản này khỏi danh sách.
+                Khi xác nhận: hệ thống ghi một khoản <span className="text-emerald-700 dark:text-emerald-400 font-semibold">THU</span> với hạng mục "{ASSET_SALE_CATEGORY}" vào sổ thu chi, sau đó xóa tài sản này khỏi danh sách.
               </p>
             </div>
 
